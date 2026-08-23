@@ -1,0 +1,15 @@
+{
+  "config": {
+    "schema_version": 1,
+    "comfy": { "mode": "cloud", "url": "http://127.0.0.1:8188", "comfy_bin": null },
+    "llm": {
+      "provider": "open_ai_compat",
+      "base_url": "http://localhost:11434/v1",
+      "model": "gemma4:12b"
+    },
+    "default_profile_id": "ace-step-1.5-turbo"
+  },
+  "warnings": [
+    { "kind": "corrupt", "backup": "C:/x/config.json.corrupt-1", "detail": "expected value" }
+  ]
+}

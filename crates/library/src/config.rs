@@ -315,4 +315,20 @@ mod tests {
             "config.json must not contain token"
         );
     }
+
+    #[test]
+    fn test_wire_fixture_matches_current_types() {
+        // Shared with app/src/state/config.test.ts. If a rename makes this fail, the
+        // TypeScript types in app/src/bridge/config.ts must change in the same commit --
+        // that is the entire point of the shared file.
+        const FIXTURE: &str = include_str!("../../../testdata/wire/loaded-config.json");
+        let loaded: LoadedConfig = serde_json::from_str(FIXTURE).expect("fixture must parse");
+        let reserialised = serde_json::to_value(&loaded).unwrap();
+        let original: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        assert_eq!(
+            reserialised, original,
+            "wire format changed; update testdata/wire/loaded-config.json AND the TypeScript \
+             types in app/src/bridge/config.ts"
+        );
+    }
 }
