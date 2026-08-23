@@ -34,10 +34,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: package-lock.json
 
+      # `app` is an npm workspace, so one install at the root covers it. CI installs
+      # the same way the README tells a contributor to, which is the point: T-006 found
+      # a fresh clone failing precisely because CI installed differently from the docs.
       - name: Install
-        working-directory: app
         run: npm ci
 
       - name: Typecheck

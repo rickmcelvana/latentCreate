@@ -4,17 +4,20 @@
   "version": "0.1.0",
   "license": "Apache-2.0",
   "description": "Open-source desktop app for AI music creation",
+  "workspaces": [
+    "app"
+  ],
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
     "tauri": "tauri",
-    "app:dev": "npm run dev --prefix app",
-    "app:build": "npm run build --prefix app",
-    "app:test": "npm run test --prefix app",
-    "app:lint": "npm run lint --prefix app",
+    "app:dev": "npm run dev --workspace app",
+    "app:build": "npm run build --workspace app",
+    "app:test": "npm run test --workspace app",
+    "app:lint": "npm run lint --workspace app",
     "gate": "npm run gate:rust && npm run gate:app",
     "gate:rust": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace",
-    "gate:app": "npm run gate --prefix app"
+    "gate:app": "npm run gate --workspace app"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.3"

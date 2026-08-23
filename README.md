@@ -30,9 +30,9 @@ latentCreate is a Tauri desktop app that orchestrates the tools people already u
 ## Development
 
 ```bash
-npm install && npm install --prefix app   # deps (root owns the Tauri CLI)
-npm run dev                               # desktop app (Tauri + Vite)
-npm run gate                              # everything CI runs, in CI's order
+npm install     # installs the root and the app workspace in one go
+npm run dev     # desktop app (Tauri + Vite)
+npm run gate    # everything CI runs, in CI's order
 ```
 
 Requires Rust stable and Node 20+. `npm run gate` chains `cargo fmt --check`,
