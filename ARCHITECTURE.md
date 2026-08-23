@@ -177,7 +177,7 @@ library/
 Step order, each with live health checks and "why/how" help text:
 1. **ComfyUI** — choose Local or Cloud. Local: detect `comfy-mcp` on PATH (offer install instructions `pip install comfy-mcp` if missing), detect/launch ComfyUI (`launch_comfyui`), show server info. Cloud: API key entry (keychain), verify with a discovery call.
 2. **Music models** — `list_local_models` filtered against shipped profiles → show "ready" ✅ / "not installed" with one-click `install_model` (progress streamed). Curated catalog first (profiles we ship), full `search_models` search behind an "advanced" expander. Upgrades: profile knows current recommended file; if local differs, show non-nagging "update available".
-3. **Lyrics LLM (optional, skippable)** — provider pick, base URL/key, `list_models`, test call.
+3. **Lyrics LLM (optional, skippable)** — provider pick, base URL/key, `list_models`, test call. Models the suite recommends for lyrics (docs/MODELS.md — currently Gemma 4 12B, and 26B/31B for high-VRAM users) get a "recommended for lyrics" chip in the list and the 12B is preselected when nothing is chosen; the recommendation list is read as data, and the app never auto-pulls an LLM.
 4. **Cover art (optional, skippable)** — pick an installed image model/template.
 
 Config edits never block the main UI after first run; degraded states show as status pills (e.g. "ComfyUI offline — reconnect") not modal walls.

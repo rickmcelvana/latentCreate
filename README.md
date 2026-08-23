@@ -20,7 +20,7 @@ latentCreate is a Tauri desktop app that orchestrates the tools people already u
 | Need | Options |
 |---|---|
 | Music generation | Local ComfyUI + `comfy-mcp`, **or** Comfy Cloud MCP (API key) |
-| Lyric writing (optional) | Ollama, any OpenAI-compatible endpoint, OpenAI, Anthropic — or bring your own lyrics |
+| Lyric writing (optional) | Ollama, any OpenAI-compatible endpoint, OpenAI, Anthropic — or bring your own lyrics. Suggested local models: **Gemma 4 12B**, or 26B/31B if you have the VRAM ([why](docs/MODELS.md)) |
 | Cover art (optional) | Any image model in your ComfyUI |
 
 ## Status
