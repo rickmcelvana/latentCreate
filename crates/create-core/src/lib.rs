@@ -4,10 +4,19 @@
 //!
 //! [`profile`] holds the model capability schema (T-003), the abstraction the whole
 //! app is built on: supporting a new music model is a JSON file, not code.
-//! `Project`, `LyricDoc`, `Track`, `GenerationSpec` and `Provenance` arrive in T-003b.
+//! [`generation`] holds what the user asked for before it is fanned out to slots.
+//! [`project`] holds the library's project, lyric and track-id types.
+//! [`provenance`] holds the reproducible recipe for one generated asset.
 
+pub mod generation;
 pub mod profile;
+pub mod project;
+pub mod provenance;
+
+pub use generation::*;
 pub use profile::*;
+pub use project::*;
+pub use provenance::*;
 
 #[cfg(test)]
 mod tests {

@@ -10,7 +10,7 @@
 - Serde types in `create-core` are the single source of truth for anything crossing the Tauri boundary; frontend types are generated or hand-mirrored *with a test that round-trips fixtures*.
 - Secrets only via `keyring`; never in `config.json`, logs, sidecars, or error strings.
 - Third-party API surfaces (rmcp, comfy-mcp tools, Tauri plugins, provider REST APIs) verified against actual docs before landing in a brief — never from memory. Pin versions.
-- Public items documented with `///` including units (`duration_s`, `vram_gb`); every Rust module with logic gets `#[cfg(test)] mod tests`.
+- Every public **type, enum, trait and function** carries a `///` doc comment. **Fields and variants** get one when meaning, units or constraints are not obvious from the name and type (`duration_s`, `vram_gb`, "passed to ComfyUI verbatim") — not on `pub name: String`. Verified with `RUSTFLAGS="-W missing_docs" cargo build`, reading the output with that distinction in mind rather than driving it to zero. Every Rust module with logic gets `#[cfg(test)] mod tests`.
 
 ## TypeScript / React
 - Strict TS, no `any` (use `unknown` + narrowing).
