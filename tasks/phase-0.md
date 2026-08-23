@@ -78,7 +78,7 @@ no overflow, click switches heading and moves `aria-current`, fresh-tab console 
 
 ---
 
-# T-003: create-core profile schema
+# T-003: create-core profile schema — ✅ **DONE 2026-08-23**
 **Depends:** T-001 | **Crate:** `crates/create-core` | **Executor:** Aider
 
 Full brief: **[t-003-brief.md](t-003-brief.md)**. Paste it into Aider after launching.
@@ -95,6 +95,22 @@ Rust rather than taste: `int`/`float` are separate input types because ACE-Step'
 range reaches `u64::MAX` and `f64` cannot hold it exactly, and unsupported inputs are
 **declared** (`"type": "unsupported"` with a reason) rather than omitted, so verified
 absence is distinguishable from oversight.
+
+## Outcome (2026-08-23) — commit `f3ea89a`
+**Aider result: PASS**, the cleanest executor run so far. Types matched the brief, and the
+fixture was **byte-identical** to the verified values — nothing rounded or "improved".
+Eight tests green, clippy clean. `--no-auto-commits` worked: changes arrived in the working
+tree for review rather than as commits, fixing T-002's failure mode at the source.
+
+Fixed in review:
+1. **`test_seed_max_roundtrips_exactly` was vacuous** — it round-tripped a bare `u64`
+   through `serde_json` without touching our types, so it would have passed unchanged even
+   if `Seed` became a float, which is the exact regression it exists to catch. **The brief's
+   wording caused this** ("re-parse `u64::MAX` as a seed value through `serde_json`"), so it
+   counts as a brief defect. Lesson for future briefs: *describe the invariant, not the
+   mechanics* — say "prove a seed cannot be float-backed", not "round-trip a u64".
+2. `cargo fmt`: import order, one over-long assert.
+3. Crate docs still said "Populated by T-003" and listed types that do not exist yet.
 
 ## Aider launch
 ```bash

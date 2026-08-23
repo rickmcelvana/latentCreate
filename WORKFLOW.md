@@ -70,7 +70,7 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ## 4. Architect's diff review checklist
 1. Diff touches only listed files; ARCHITECTURE.md interfaces unchanged.
-2. Acceptance tests exist and actually assert the spec (not vacuous).
+2. Acceptance tests exist and actually assert the spec (not vacuous). **Ask of each test: would it fail if the thing it guards were broken?** T-003 shipped a seed test that round-tripped a `u64` through `serde_json` without touching the crate's own types — green, and blind to the regression it existed to catch. Briefs cause this by naming mechanics; name the **invariant** instead.
 3. No `unwrap()`/`expect()` on I/O or network paths; errors typed per crate.
 4. Third-party API surfaces (rmcp, Tauri, comfy-mcp tool schemas, provider APIs) were verified against real docs/source in the brief — never from model memory.
 5. Frontend: every new `className` has a rule in `theme.css`; `invoke`/`listen` only inside `app/src/bridge/`.
