@@ -7,6 +7,8 @@
 - **Aider (executor):** implements exactly one brief per run. Default model: `ollama_chat/kimi-k2.7-code:cloud`. If a brief is ambiguous, Aider must stop and list numbered questions (footer rule), not guess.
 - **You (producer):** run Aider with the provided launch command, run builds, click through the app, merge, arbitrate.
 
+**What makes an executor run succeed (measured over T-002, T-003, T-003b):** briefs that carry **full reference code** plus, for each test, the **invariant it must protect** produced near-clean runs needing only `cargo fmt`. The one brief written as prose spec without reference code (T-002) came back not compiling. Write the code in the brief; let the executor transcribe, wire up and test it.
+
 **Model routing:** everything here is plumbing/UI → kimi lane by default. If a task class racks up repeated failed fix-up rounds (3+ attempts on one T-number), stop and ask the producer to try a different model — record the switch in the decisions log.
 
 ## 2. The loop (per task)

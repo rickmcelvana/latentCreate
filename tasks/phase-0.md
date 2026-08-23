@@ -119,7 +119,7 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-003b: create-core project, generation and provenance types
+# T-003b: create-core project, generation and provenance types — ✅ **DONE 2026-08-23**
 **Depends:** T-003 | **Crate:** `crates/create-core` | **Executor:** Aider
 
 Full brief: **[t-003b-brief.md](t-003b-brief.md)**. Paste it into Aider after launching.
@@ -139,6 +139,21 @@ ARCHITECTURE §8:
   values actually submitted. The first powers "re-use these settings"; the second is the
   only record of what the graph really received, and makes the duration/seed fan-out
   testable.
+
+## Outcome (2026-08-23) — commit `4ce24f0`
+**Aider result: PASS**, cleanest run yet — the only fix needed was `cargo fmt`. 19 tests
+across the crate, clippy clean. Types matched the brief; all eleven named tests present
+and non-vacuous, confirmed by reading each one rather than trusting the green.
+
+Side finding: CONVENTIONS' "public items documented with `///`" was an overclaim. Checked
+with `RUSTFLAGS="-W missing_docs"`: every public type, enum and function *is* documented;
+the 49 gaps are all self-evident struct fields (`pub name: String`). The rule now states
+the bar actually wanted rather than one nobody intends to meet.
+
+**Pattern worth keeping:** three runs in, the executor lane is reliable when the brief
+carries full reference code and names the *invariant* each test must protect. T-002 (prose
+spec, no reference code) failed; T-003 and T-003b (full reference code) needed only
+formatting.
 
 ## Aider launch
 ```bash
