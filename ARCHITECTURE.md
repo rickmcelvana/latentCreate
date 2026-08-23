@@ -229,7 +229,7 @@ library/
 ## 9. Player & visualizer
 
 - Playback in the webview: `<audio>`/Web Audio graph → `AnalyserNode` FFT → canvas spectrum + waveform. **Read-only visualizer, zero custom DSP** — `AnalyserNode` provides the data; we only draw. No Rust audio path, no realtime constraints.
-- Visual language matches Latent Mixing/Mastering: GitHub-dark ground (`#0d1117`) with a **blue accent (`#58a6ff`)**, meters-as-decoration. Palette tokens are copied verbatim from the siblings' `theme.css` so the three apps read as one suite -- the owner's own design tokens, reused deliberately (T-001). The sibling repos' viz code is closed-source; the owner may port pieces they own outright, but default is a clean-room reimplementation (it's ~200 lines against AnalyserNode) so this repo stays unencumbered. Anything ported must be listed in THIRD-PARTY-LICENSES bookkeeping.
+- Visual language follows **`latentbeats.com`**, the umbrella brand (`../website/latentbeats.com/css/style.css`): deep blue-black ground `#0a0e1a`, accent `#58a6ff`, 12px radii, meters-as-decoration. The suite moved violet -> blue in Aug 2026; the site carries the newest tokens, the two sibling apps still carry the older GitHub-dark ground. latentCreate tracks the site (T-001) — it has no legacy screens to migrate, and the accent is identical either way. The sibling repos' viz code is closed-source; the owner may port pieces they own outright, but default is a clean-room reimplementation (it's ~200 lines against AnalyserNode) so this repo stays unencumbered. Anything ported must be listed in THIRD-PARTY-LICENSES bookkeeping.
 
 ## 10. Setup & configuration flow (first-run wizard, revisitable in Settings)
 

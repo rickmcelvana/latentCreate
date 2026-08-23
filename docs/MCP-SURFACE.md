@@ -83,7 +83,7 @@ Enumeration works: `nodes(action="get", name="LoraLoaderModelOnly")` returns `lo
 
 The turbo template ends in **`SaveAudioMP3`** at quality **V0**, and `SaveAudioMP3`, `SaveAudio` (FLAC) and `SaveAudioOpus` are all marked **DEPRECATED** in this install. The current node is **`SaveAudioAdvanced`**.
 
-For an app whose whole purpose is feeding a mixing/mastering chain, generating lossy MP3 is the wrong default. latentCreate should replace the save node with `SaveAudioAdvanced` writing a lossless format. Caveat found while verifying: `SaveAudioAdvanced.format` is typed `COMFY_DYNAMICCOMBO_V3` with `is_link: true` — a dynamic combo, not a static enum, so setting it is not a plain string write. **Open item for Phase 3:** determine how to set a V3 dynamic combo through `set_workflow_slot`, or whether the save node must be swapped by graph edit.
+For an app whose whole purpose is feeding a mixing/mastering chain, generating lossy MP3 is the wrong default. latentCreate should replace the save node with `SaveAudioAdvanced` writing a lossless format. **Owner-confirmed 2026-08-23:** he swaps this node out of every workflow by habit — so the app doing it automatically removes a manual step that experienced users already know to take, and rescues everyone who does not. Treat lossless output as a correctness requirement, not a preference. Caveat found while verifying: `SaveAudioAdvanced.format` is typed `COMFY_DYNAMICCOMBO_V3` with `is_link: true` — a dynamic combo, not a static enum, so setting it is not a plain string write. **Open item for Phase 3:** determine how to set a V3 dynamic combo through `set_workflow_slot`, or whether the save node must be swapped by graph edit.
 
 ## 6. MiniMax Music 3 — template confirmed, weights absent here
 

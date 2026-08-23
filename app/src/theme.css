@@ -1,22 +1,38 @@
 /* theme.css -- the single source of styling truth (CONVENTIONS.md).
    Every className used in TSX has a rule in this file.
 
-   Palette is deliberately identical to Latent Mixing and Latent Mastering so
-   the three apps read as one suite. Do not fork these values. */
+   Palette follows latentbeats.com (../website/latentbeats.com/css/style.css),
+   which is the umbrella brand and the newest expression of it: the suite moved
+   from violet to blue in Aug 2026. Latent Mixing and Mastering still carry the
+   older GitHub-dark values (#0d1117 ground, #30363d borders); latentCreate
+   tracks the site instead, since it is the current direction and this app has
+   no legacy screens to migrate. Accent values are identical across all three.
+   Do not fork these tokens -- change the site, then follow it. */
 
 :root {
-  --bg: #0d1117;
+  /* Brand tokens -- mirrored from latentbeats.com */
+  --bg: #0a0e1a;
+  --bg-elev: #11161f99;
   --panel: #161b22;
   --panel-hover: #1f242c;
-  --border: #30363d;
-  --text: #c9d1d9;
+  --border: #2a3441;
+  --border-bright: #3a4a5c;
+  --text: #d6deeb;
   --text-muted: #8b949e;
   --accent: #58a6ff;
   --accent-hover: #79b8ff;
+  --accent-dim: #1f6feb;
+  --accent-glow: rgba(88, 166, 255, 0.22);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --transition: 180ms ease;
+
+  /* State colours -- from the sibling apps; the site does not define these. */
   --danger: #f85149;
   --success: #3fb950;
   --warning: #d29922;
-  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Layout scale -- spacious by design; no crowding (owner requirement). */
   --rail-width: 208px;
@@ -25,7 +41,6 @@
   --gap-md: 16px;
   --gap-lg: 24px;
   --gap-xl: 40px;
-  --radius: 8px;
 }
 
 * {
@@ -100,6 +115,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
 }
 
 .muted {
@@ -115,6 +131,7 @@ body {
   border-radius: 999px;
   font-size: 12px;
   color: var(--text-muted);
+  transition: border-color var(--transition), color var(--transition);
 }
 
 .status-pill-ok {

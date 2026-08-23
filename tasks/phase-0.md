@@ -12,7 +12,7 @@ Goal: a repo that compiles, lints, tests, and launches an empty themed Tauri she
 Steps (producer runs, architect drives):
 1. `npm create tauri-app@latest` equivalent layout matching ARCHITECTURE §2: `app/` (Vite + React 19 + TS strict), `src-tauri/`, workspace `Cargo.toml` with member crates `crates/create-core`, `crates/mcp-bridge`, `crates/llm-bridge`, `crates/library` (each `lib.rs` with a doc comment + empty `#[cfg(test)]` module).
 2. Pin versions in line with `../latent-mixing` (Tauri ~2.11, React ~19.2, Vite ~8, TS ~6, zustand, oxlint, vitest). tsconfig: strict + `noUnusedLocals` + `noUnusedParameters` + `verbatimModuleSyntax`.
-3. `theme.css` seeded with the Latent palette variables (verbatim from the siblings: `#0d1117` ground, `#58a6ff` accent) and the nav-rail layout classes.
+3. `theme.css` seeded with the Latent palette variables (from `latentbeats.com`: `#0a0e1a` ground, `#58a6ff` accent, 12px radii) and the nav-rail layout classes.
 4. LICENSE (Apache-2.0), NOTICE, and `.gitignore` already exist from the planning commit — extend `.gitignore` only if the generators add new build dirs. Add the Apache header boilerplate to `src-tauri/tauri.conf.json` metadata (license field) and each `Cargo.toml` (`license = "Apache-2.0"`), plus `"license": "Apache-2.0"` in `app/package.json`.
 5. Commit `T-001: repo scaffold`.
 
@@ -26,7 +26,7 @@ Green: `cargo check --workspace`, `cargo fmt --check`, `cargo clippy --all-targe
 **Deviations from the brief, deliberate:**
 1. **Root `package.json` added.** The Tauri CLI resolves its project by scanning *subfolders* of the cwd, so running it from `app/` cannot find `src-tauri/`. The CLI and the `dev`/`build` entry points now live at the repo root; `app/` keeps its own package.json for the frontend. Run the desktop app with `npm run dev` from the root.
 2. **Crate stub tests assert the crate name** rather than `assert!(true)` — clippy's `assertions_on_constants` rejects the latter under `-D warnings`.
-3. **Accent colour is blue (`#58a6ff`), not violet.** The brief inherited "violet" from a stale comment in the siblings' CONVENTIONS; both sibling `theme.css` files actually use the GitHub-dark palette with a blue accent. Copied verbatim for suite consistency.
+3. **Palette is blue, tracking `latentbeats.com`.** The plan said "violet", which *was* correct — the umbrella site was violet until the owner rebranded it to blue in Aug 2026 (`../website/latentbeats.com/css/style.css`). latentCreate now mirrors the site's tokens (`#0a0e1a` ground, `#58a6ff` accent, 12px radii, card shadow), which are a newer and bluer take than the two sibling apps' GitHub-dark values. Divergence from the siblings is intentional and noted for the owner.
 4. **A placeholder app icon was generated** (dark rounded field, three accent bars) so bundling works. Branding pass is deferred with OQ-5; android/ios icon output was deleted (desktop only).
 5. **`app/src/bridge/shell.ts` + a smoke test exist**, slightly ahead of the brief, so the scaffold proves the Tauri boundary round-trips instead of only compiling.
 
