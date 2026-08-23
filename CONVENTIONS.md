@@ -17,7 +17,7 @@
 - Functional components only. State via Zustand stores in `app/src/state/` — no component-local copies of config/library/job state.
 - Tauri access (`invoke`, `listen`) **only** inside `app/src/bridge/` typed wrappers. Components import bridge functions, never `@tauri-apps/*`.
 - Long-running work: Rust pushes Tauri events; the frontend never polls in a loop.
-- Styling: plain CSS in `theme.css`, dark professional theme, violet accent — match the Latent suite's visual language. No UI framework (no MUI/AntD/Tailwind). Every className used in TSX has a rule in `theme.css`.
+- Styling: plain CSS in `theme.css`, dark professional theme, **blue accent (`--accent: #58a6ff`)** — the suite's shared palette; do not fork the token values. No UI framework (no MUI/AntD/Tailwind). Every className used in TSX has a rule in `theme.css`.
 - `import type` for type-only imports; unused params `_`-prefixed (tsconfig has `noUnusedLocals`/`noUnusedParameters`/`verbatimModuleSyntax`).
 
 ## Product rules (enforced in review, not just UX docs)

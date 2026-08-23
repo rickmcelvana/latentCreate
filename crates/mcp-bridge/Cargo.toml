@@ -1,0 +1,10 @@
+[package]
+name = "mcp-bridge"
+description = "MCP client for a local ComfyUI via `comfy-mcp`."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

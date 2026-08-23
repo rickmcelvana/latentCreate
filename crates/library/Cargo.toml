@@ -1,0 +1,10 @@
+[package]
+name = "library"
+description = "On-disk store: projects, tracks, provenance sidecars, config."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

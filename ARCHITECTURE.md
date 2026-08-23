@@ -37,7 +37,8 @@ The app is an **MCP client acting programmatically** — it calls tools directly
 
 ```
 latentCreate/
-├── app/                      # React frontend (Vite)
+├── package.json              # root: owns the Tauri CLI + `npm run dev|build`
+├── app/                      # React frontend (Vite), its own package.json
 │   ├── src/
 │   │   ├── state/            # Zustand stores (config.ts, lyrics.ts, audio.ts, library.ts, jobs.ts)
 │   │   ├── views/            # Setup, LyricsStudio, AudioStudio, Library, CoverArt
@@ -52,6 +53,8 @@ latentCreate/
 │   ├── llm-bridge/           # LLM providers behind one trait. reqwest + SSE streaming.
 │   └── library/              # on-disk store: projects, tracks, sidecars, config
 ├── src-tauri/                # Tauri shell: commands, events, single place wiring crates
+│   ├── capabilities/         # Tauri permission sets (main window)
+│   └── icons/                # desktop icon set (no android/ios -- desktop only)
 ├── profiles/                 # model capability profiles (JSON, shipped with app) — see §5
 ├── docs/                     # MCP-SURFACE.md (verified), RESEARCH.md, MODELS.md
 └── tasks/                    # ROADMAP.md + phase-N.md briefs
@@ -226,7 +229,7 @@ library/
 ## 9. Player & visualizer
 
 - Playback in the webview: `<audio>`/Web Audio graph → `AnalyserNode` FFT → canvas spectrum + waveform. **Read-only visualizer, zero custom DSP** — `AnalyserNode` provides the data; we only draw. No Rust audio path, no realtime constraints.
-- Visual language matches Latent Mixing/Mastering (dark, violet accent, meters-as-decoration). The sibling repos' viz code is closed-source; the owner may port pieces they own outright, but default is a clean-room reimplementation (it's ~200 lines against AnalyserNode) so this repo stays unencumbered. Anything ported must be listed in THIRD-PARTY-LICENSES bookkeeping.
+- Visual language matches Latent Mixing/Mastering: GitHub-dark ground (`#0d1117`) with a **blue accent (`#58a6ff`)**, meters-as-decoration. Palette tokens are copied verbatim from the siblings' `theme.css` so the three apps read as one suite -- the owner's own design tokens, reused deliberately (T-001). The sibling repos' viz code is closed-source; the owner may port pieces they own outright, but default is a clean-room reimplementation (it's ~200 lines against AnalyserNode) so this repo stays unencumbered. Anything ported must be listed in THIRD-PARTY-LICENSES bookkeeping.
 
 ## 10. Setup & configuration flow (first-run wizard, revisitable in Settings)
 

@@ -1,0 +1,29 @@
+[package]
+name = "app"
+description = "latentCreate desktop shell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.3", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-log = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+
+create-core = { path = "../crates/create-core" }
+library = { path = "../crates/library" }
+mcp-bridge = { path = "../crates/mcp-bridge" }
+llm-bridge = { path = "../crates/llm-bridge" }
