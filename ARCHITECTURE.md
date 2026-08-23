@@ -221,15 +221,19 @@ library/
 │   ├── project.json           # name, created, lyric doc versions, track refs, album lists
 │   ├── lyrics/<v>.md
 │   ├── tracks/<track-id>.flac # (or wav/mp3 as produced)
-│   ├── tracks/<track-id>.json # PROVENANCE SIDECAR: model profile+version, template id,
-│   │                          #   every input value, LoRA stack (file+strength+order),
-│   │                          #   seed, lyric version ref, negative, optimized flags,
-│   │                          #   comfy server info, timestamps, duration
+│   ├── tracks/<track-id>.json # SIDECAR = the whole Track record, incl. Provenance:
+│   │                          #   model profile+licence, template, the GenerationSpec
+│   │                          #   the user chose, the RESOLVED slot values actually
+│   │                          #   submitted, LoRA stack (file+strength+order), seed,
+│   │                          #   lyric version ref, optimized flags, comfy server
+│   │                          #   info, timestamps, duration
 │   └── art/<img-id>.png (+ .json sidecar)
 └── config.json                # non-secret config (secrets → OS keychain)
 ```
 
 - JSON files, no database. Human-readable, git-able, trivially portable. Revisit only if scanning gets slow (thousands of tracks).
+- **One source of truth per track** (T-003b): `project.json` holds an *ordered list of track ids* and the album lists; everything about a track — title, file, duration, provenance — lives only in its sidecar. Duplicating a title into both files would guarantee the two drift apart on the first rename.
+- **Provenance stores both levels**: the `GenerationSpec` the user chose (semantic, e.g. `duration_s = 120`) *and* the resolved slot values actually submitted (e.g. `94.duration = 120`, `98.seconds = 120`). The first powers "re-use these settings"; the second is what makes a track reproducible and is the only record of what the graph really received.
 - Track actions: play, delete (to OS trash, not hard delete), rename, add-to-album-list, export/reveal, **Send to** mixer/mastering.
 - **Send to**: v1 opens `https://app.latentmixer.com` / `https://app.latentmastering.com` in the browser and reveals the file for drag-in. The real handoff protocol is **owned by the mixing/mastering repos** and will exist before this repo's Phase 4; latentCreate adopts it then rather than designing it (PROJECT.md decisions log, 2026-08-23).
 

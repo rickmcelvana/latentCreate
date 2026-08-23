@@ -119,13 +119,31 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-003b: create-core project + provenance types (brief pending)
+# T-003b: create-core project, generation and provenance types
 **Depends:** T-003 | **Crate:** `crates/create-core` | **Executor:** Aider
 
-`Project`, `LyricDoc` (versioned), `Track`, `GenerationSpec` (input values + LoRA stack +
-resolved seed), `Provenance` (records the **resolved slot values actually submitted**, not
-just the UI values, plus the LoRA stack with file/strength/order). Briefed once T-003 lands,
-so the value types can build on the reviewed `InputSpec`.
+Full brief: **[t-003b-brief.md](t-003b-brief.md)**. Paste it into Aider after launching.
+
+`GenerationSpec` (+ `InputValue`, `LoraRef`, seed/batch helpers), `Project`, `LyricDoc`
+(versioned, with the consent-gated `prompt_optimized` flag), `Track` and `Provenance`.
+
+Three decisions were settled in the brief rather than left open, two of them recorded in
+ARCHITECTURE §8:
+- **`InputValue` is adjacently tagged.** Untagged, a JSON `3` could deserialise as `Int`,
+  `Float` *or* `Seed`, and serde takes the first match — a seed silently demoted to an
+  `Int` is an unreproducible track, which is the one thing provenance must prevent.
+- **One source of truth per track.** `project.json` stores track *ids* only; title, file,
+  duration and provenance live solely in the sidecar, so a rename cannot leave two files
+  disagreeing.
+- **Provenance keeps both levels** — the semantic `GenerationSpec` *and* the resolved slot
+  values actually submitted. The first powers "re-use these settings"; the second is the
+  only record of what the graph really received, and makes the duration/seed fan-out
+  testable.
+
+## Aider launch
+```bash
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read crates/create-core/src/profile.rs --file crates/create-core/src/generation.rs --file crates/create-core/src/project.rs --file crates/create-core/src/provenance.rs --file crates/create-core/src/lib.rs
+```
 
 ---
 
