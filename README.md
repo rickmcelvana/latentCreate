@@ -11,6 +11,7 @@ latentCreate is a Tauri desktop app that orchestrates the tools people already u
 - **Guided setup** — detect or configure your local ComfyUI + Comfy MCP, pick an LLM provider, discover and download music models (ACE-Step 1.5, Stable Audio Open, MusicGen, …) straight into ComfyUI.
 - **Lyrics Studio** — structured brief (genre, mood, theme, structure, language) → LLM writes lyrics in the exact format your music model expects (`[verse]`/`[chorus]` tags etc.). Edit, version, approve, send to audio.
 - **Audio Studio** — style tags, lyrics, negative prompt (when the model supports it), and the commonly-tweaked workflow parameters (duration, seed, steps, CFG) surfaced as real controls. Queue jobs, watch progress, hear results.
+- **Your LoRAs, first-class** — stack your custom-trained ACE-Step LoRAs with per-LoRA strength, and bring your own ComfyUI workflow if the built-in profiles don't match how you work. Every track's LoRA stack is saved with it, so results stay reproducible.
 - **Library & Player** — playback with a spectrum visualizer, full provenance (every prompt/seed/model saved per track), delete/keep/album lists, and **Send to** [Latent Mixing](https://app.latentmixer.com) / [Latent Mastering](https://app.latentmastering.com).
 - **Cover Art (optional)** — generate single/album art through the same ComfyUI connection.
 - **Prompt optimization with consent** — the app can tighten your prompts for the target model, but always shows you the diff; you approve, edit, or revert. Your words are never silently rewritten.

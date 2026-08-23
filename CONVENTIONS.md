@@ -22,7 +22,8 @@
 
 ## Product rules (enforced in review, not just UX docs)
 - User text (prompts, lyrics) is never modified without an explicit accept step (ARCHITECTURE §6).
-- Every generated asset gets a provenance sidecar before it appears in the UI (ARCHITECTURE §8).
+- Every generated asset gets a provenance sidecar before it appears in the UI (ARCHITECTURE §8), complete enough to reproduce the result — **including the full LoRA stack** (file identity, strength, order).
+- Per-model license terms are shown wherever a model is chosen or installed. Some models are open-weights-with-conditions (attribution, revenue thresholds), not OSI-open; users ship these tracks commercially and must be able to see the terms without leaving the app.
 - Delete moves to OS trash; no hard deletes anywhere.
 - Degraded services (ComfyUI down, LLM unreachable) degrade the relevant view with a status pill + retry — never a blocking modal, never a crash.
 - All user-facing errors say what to do next ("Start ComfyUI, then Retry"), not just what failed.

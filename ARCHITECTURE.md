@@ -108,6 +108,13 @@ The app is model-agnostic. Everything the UI shows for a music model comes from 
     ],
     "vram_gb_min": 8
   },
+  "loras": {                             // omit entirely for models without LoRA support
+    "supported": true,
+    "loader_node": "ACEStepLoraLoader",  // node class that attaches a LoRA in this model's graph
+    "dirs": ["loras", "Ace-Step1.5/loras"],  // ComfyUI dirs to enumerate (model-specific)
+    "strength": { "min": 0.0, "max": 2.0, "default": 1.0, "step": 0.05 },
+    "max_stack": 4                       // how many can be chained in the UI
+  },
   "inputs": {                            // drives AudioStudio's param panel (see §7)
     "tags":     { "type": "text",   "label": "Style tags", "prefill_key": "tags" },
     "lyrics":   { "type": "lyrics", "structure_tags": ["[verse]","[chorus]","[bridge]","[inst]","[outro]"] },
@@ -130,7 +137,17 @@ The app is model-agnostic. Everything the UI shows for a music model comes from 
 }
 ```
 
-Initial profiles to ship (research: docs/MODELS.md): **ace-step-1.5** (default; Apache-2.0, lyrics+vocals, fast on consumer GPUs), **stable-audio-open** (instrumental/SFX, no lyrics), **musicgen** (instrumental, simple), **yue** (lyrics-to-song, 24 GB+ VRAM, marked "advanced"), **diffrhythm** (fast full songs). Plus one image profile (user's choice of SDXL/Flux template) for cover art.
+Initial profiles to ship (research: docs/MODELS.md): **ace-step-1.5** (default; Apache-2.0, lyrics+vocals, fast on consumer GPUs, LoRA ecosystem), **minimax-music-3** (open-weights, 5-minute songs, strongest vocals as of Aug 2026), **stable-audio-open** (instrumental/SFX, no lyrics), **musicgen** (instrumental, simple), **yue** (lyrics-to-song, 24 GB+ VRAM, marked "advanced"), **diffrhythm** (fast full songs). Plus one image profile (user's choice of SDXL/Flux template) for cover art.
+
+### 5a. LoRAs (first-class, not an afterthought)
+Custom-trained LoRAs are core to how serious users work with ACE-Step (the owner's own workflow is ACE-Step 1.5 turbo + custom LoRAs), so they are a first-class input, not an advanced escape hatch:
+- **Discovery:** enumerate installed LoRAs through MCP for the dirs named in the profile. The reliable mechanism is reading the loader node's input enum from the live node registry (`get_node`/`cql` — ComfyUI's `/object_info` exposes lora filenames as combo values). Exact call is verified during the Phase 1 schema enumeration; treat it as open until then.
+- **UI:** a LoRA stack panel in AudioStudio — up to `max_stack` entries, each a picker + strength slider, reorderable and individually bypassable. Hidden entirely when the profile has no `loras` block.
+- **Provenance:** the stack (file identity + strength + order) is recorded per track (§8). A LoRA-generated track that can't be reproduced from its sidecar is a bug, not a nuance.
+- **Training is out of scope** — ComfyUI custom nodes already train ACE-Step LoRAs. This app consumes LoRAs, it does not train them.
+
+### 5b. Custom workflow import (user profiles)
+Users with a working ComfyUI workflow — including LoRA wiring no shipped profile covers — import it rather than being forced onto our templates. Flow: pick an exported **API-format** workflow JSON → `validate_workflow` against the live node registry → a mapping screen asks which node input receives tags, lyrics, negative, duration, seed, steps, CFG (candidates pre-suggested by node class and input name) → saved as a user profile, indistinguishable from shipped ones thereafter. This is the pressure-release valve that keeps the profile abstraction from becoming a cage.
 
 ## 6. Lyric generation & prompt optimization
 
@@ -142,7 +159,7 @@ Initial profiles to ship (research: docs/MODELS.md): **ace-step-1.5** (default; 
 ## 7. Audio generation pipeline
 
 1. AudioStudio renders controls from the selected profile's `inputs` (§5) — unsupported controls simply don't render (e.g. no negative box for models without it).
-2. On Generate: build `GenerationSpec` (profile id, all input values, lyric doc version ref, seed) → `mcp-bridge.run_template` (or `submit_workflow` when the profile embeds a workflow).
+2. On Generate: build `GenerationSpec` (profile id, all input values, LoRA stack, lyric doc version ref, seed) → `mcp-bridge.run_template` (or `submit_workflow` when the profile embeds/imports a workflow — the path LoRA stacks always take, since attaching a loader node means editing the graph).
 3. Job lifecycle streamed to a **queue panel** (pending/running/progress %/failed with error text). Multiple queued jobs allowed; batch = N seeds of the same spec.
 4. On completion: `get_output` → audio copied into the library (§8) with a **provenance sidecar**.
 
@@ -157,8 +174,9 @@ library/
 │   ├── lyrics/<v>.md
 │   ├── tracks/<track-id>.flac # (or wav/mp3 as produced)
 │   ├── tracks/<track-id>.json # PROVENANCE SIDECAR: model profile+version, template id,
-│   │                          #   every input value, seed, lyric version ref, negative,
-│   │                          #   optimized flags, comfy server info, timestamps, duration
+│   │                          #   every input value, LoRA stack (file+strength+order),
+│   │                          #   seed, lyric version ref, negative, optimized flags,
+│   │                          #   comfy server info, timestamps, duration
 │   └── art/<img-id>.png (+ .json sidecar)
 └── config.json                # non-secret config (secrets → OS keychain)
 ```

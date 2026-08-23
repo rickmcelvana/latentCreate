@@ -53,13 +53,13 @@ aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENT
 **Files:** `crates/create-core/src/{lib.rs,project.rs,generation.rs,profile.rs,provenance.rs}`
 
 ## Goal
-Serde types for the whole domain per ARCHITECTURE §5/§7/§8: `ModelProfile` (+ `InputSpec` enum: Text/Lyrics/Number/Seed with the fields shown in §5), `Project`, `LyricDoc`, `Track`, `GenerationSpec`, `Provenance`. No I/O.
+Serde types for the whole domain per ARCHITECTURE §5/§5a/§7/§8: `ModelProfile` (+ `InputSpec` enum: Text/Lyrics/Number/Seed with the fields shown in §5, plus the optional `loras` block and a `license` field), `LoraRef` (identity + strength + order) and `LoraStack`, `Project`, `LyricDoc`, `Track`, `GenerationSpec` (includes the LoRA stack), `Provenance` (records it). No I/O.
 
 ## Spec
 All types `Serialize + Deserialize + Clone + Debug + PartialEq`. `serde(deny_unknown_fields)` OFF for `ModelProfile` (forward-compat), ON for internal types. Include a `profiles/ace-step-1.5.json` fixture (copy the §5 example, adjusted to compile) and a round-trip test.
 
 ## Acceptance criteria
-- [ ] `cargo test -p create-core` incl. `test_profile_roundtrip_ace_step_fixture`
+- [ ] `cargo test -p create-core` incl. `test_profile_roundtrip_ace_step_fixture` and `test_profile_without_loras_block_deserializes` (LoRA support is optional per model)
 - [ ] clippy/fmt clean; docs on all public items
 - [ ] No changes outside listed files + `profiles/ace-step-1.5.json`
 

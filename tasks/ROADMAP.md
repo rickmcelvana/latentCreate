@@ -8,7 +8,7 @@ Cargo workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library` stubs), Ta
 **Milestone check:** `npm run tauri dev` shows the themed empty shell; CI green.
 
 ## Phase 1 — Connections & setup wizard (T-101 …)
-`mcp-bridge` against real `comfy-mcp` (schema enumeration first — RESEARCH §1 verification item), `ComfyBackend` trait + stdio & cloud transports, mock-transport test rig, job event pump. `llm-bridge` with `openai_compat` + `ollama_native` (+ streaming). Model profile loader (`profiles/` + user dir merge) and the five seed profiles (docs/MODELS.md). Setup wizard UI (ARCHITECTURE §10): detect/install guidance, health pills, curated model install with progress, LLM config + test call.
+`mcp-bridge` against real `comfy-mcp` (schema enumeration first — RESEARCH §1 **and §3a: how to enumerate installed LoRAs** — both verified before any typed wrapper is written), `ComfyBackend` trait + stdio & cloud transports, mock-transport test rig, job event pump. `llm-bridge` with `openai_compat` + `ollama_native` (+ streaming). Model profile loader (`profiles/` + user dir merge) and the seed profiles (docs/MODELS.md). Setup wizard UI (ARCHITECTURE §10): detect/install guidance, health pills, curated model install with progress, per-model license display, LLM config + test call with the recommended-for-lyrics chips.
 **Milestone check (live):** fresh machine → wizard → ACE-Step installed via app → server info visible.
 
 ## Phase 2 — Lyrics Studio (T-201 …)
@@ -16,8 +16,8 @@ Brief form with prefills, system-prompt assembly from profile (ARCHITECTURE §6)
 **Milestone check (live):** brief → lyrics stream in → edit → approve; optimizer diff accept/revert round-trips.
 
 ## Phase 3 — Audio Studio & pipeline (T-301 …)
-Profile-driven param panel, GenerationSpec build, run_template/submit_workflow paths, queue panel with progress/cancel, output ingestion → library + provenance sidecar, batch-by-seeds. Decide OQ-3 (raw-API fallback) here on evidence.
-**Milestone check (live):** tags+lyrics → queued job → track appears in library with complete sidecar; kill ComfyUI mid-job → clean failed state + retry.
+Profile-driven param panel, **LoRA stack panel** (picker + strength + reorder/bypass, ARCHITECTURE §5a), GenerationSpec build, run_template/submit_workflow paths, queue panel with progress/cancel, output ingestion → library + provenance sidecar, batch-by-seeds, **custom workflow import + input mapping** (§5b). Decide OQ-3 (raw-API fallback) here on evidence.
+**Milestone check (live):** tags+lyrics → queued job → track appears in library with complete sidecar; a two-LoRA ACE-Step run reproduces from its sidecar alone; an imported user workflow generates successfully; kill ComfyUI mid-job → clean failed state + retry.
 
 ## Phase 4 — Library & Player (T-401 …)
 Library views (project/track lists, album lists), player with AnalyserNode spectrum+waveform visualizer, track actions (trash-delete, rename, export/reveal), Send-to links (v1: open app.latentmixer.com / app.latentmastering.com + reveal file), provenance inspector panel ("re-use these settings" action).

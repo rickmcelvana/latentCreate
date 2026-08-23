@@ -4,7 +4,8 @@ This file seeds the JSON profiles that will live in `profiles/` (schema: ARCHITE
 
 | id | Role | Lyrics | Negative | VRAM | License | Notes |
 |---|---|---|---|---|---|---|
-| `ace-step-1.5` | **Default.** Full songs w/ vocals | structure-tagged, 50+ langs, `[inst]` | yes | ~8 GB | Apache-2.0 | AIO checkpoint `ace_step_1.5_turbo_aio.safetensors`; turbo = low step count |
+| `ace-step-1.5` | **Default.** Full songs w/ vocals | structure-tagged, 50+ langs, `[inst]` | yes | ~8 GB | Apache-2.0 | AIO checkpoint `ace_step_1.5_turbo_aio.safetensors`; turbo = low step count. **Mature LoRA ecosystem — see below** |
+| `minimax-music-3` | Flagship quality; full songs up to 5 min | lyrics + structured caption | tbd | 8 GB (layer streaming) / 20–24 GB smooth | open weights, **conditional** ⚠ | Released 2026-08-13/14 on HF (MiniMaxAI). Qwen3-8B planner + diffusion transformer + vocoder + flow-matching VAE. Strongest "performed, not synthesized" vocals as of Aug 2026. License allows commercial use **with attribution**; separate agreement required above ~$20M revenue — surface both in UI |
 | `stable-audio-open` | Instrumental / SFX / loops | none | yes | ~6 GB | Stability community | Duration-capped clips; great for beds & samples |
 | `musicgen-stereo` | Simple instrumental, low-spec fallback | none | no | ~4 GB | CC-BY-NC weights ⚠ | Non-commercial weights — surface the warning in UI |
 | `yue-7b` | Suno-like lyrics-to-song, "advanced" | full-song lyrics | no | 24 GB+ | Apache-2.0 (check weights) | Slow; only show when VRAM check passes |
@@ -36,6 +37,18 @@ This file seeds the JSON profiles that will live in `profiles/` (schema: ARCHITE
 [outro]
 ```
 Instrumental: lyrics field = `[inst]`.
+
+## LoRAs (ARCHITECTURE §5a)
+
+The owner's own production workflow is **ACE-Step 1.5 turbo + custom-trained LoRAs**, which makes LoRA support a v1 requirement rather than a nice-to-have. What the profiles need to encode:
+
+- **Where they live:** ACE-Step LoRAs sit in `ComfyUI/models/loras/` *or* `ComfyUI/models/Ace-Step1.5/loras/` (a LoRA is a folder containing `adapter_config.json`, not a single file — the enumeration code must handle directory-style entries, not just `.safetensors`).
+- **How they attach:** an ACE-Step LoRA Loader node whose `lora_info` output feeds the generation node (e.g. TextToMusic); strength defaults to 1.0. Node class names differ between the native path and custom-node packs, so the loader node class is a **per-profile field**, never hardcoded.
+- **Stacking:** multiple LoRAs chain; profile caps it (`max_stack`, default 4) so the UI stays sane.
+- **Training:** out of scope for this app — ComfyUI custom node packs (FL-AceStep-Training, SN_AceStepTrainer) already do dataset building, training, and live loss charts inside the graph. We consume the output.
+- **Reproducibility:** LoRA identity + strength + order goes in every provenance sidecar. Users who train their own LoRAs care more about reproducibility than anyone; getting this wrong makes the library worthless to them.
+
+Because LoRA wiring means editing the graph, LoRA-bearing generations always go through `submit_workflow` with the profile's workflow JSON rather than `run_template`.
 
 ## Lyric-writing LLMs (suggestions, not requirements)
 
