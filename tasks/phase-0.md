@@ -78,31 +78,38 @@ no overflow, click switches heading and moves `aria-current`, fresh-tab console 
 
 ---
 
-# T-003: create-core domain types
-**Depends:** T-001 | **Crate:** `crates/create-core`
-**Files:** `crates/create-core/src/{lib.rs,project.rs,generation.rs,profile.rs,provenance.rs}`
+# T-003: create-core profile schema
+**Depends:** T-001 | **Crate:** `crates/create-core` | **Executor:** Aider
 
-## Goal
-Serde types for the whole domain per ARCHITECTURE §5/§5a/§7/§8: `ModelProfile` (+ `InputSpec` enum: Text/Lyrics/Number/Seed with the fields shown in §5, plus the optional `loras` block and a `license` field), `LoraRef` (identity + strength + order) and `LoraStack`, `Project`, `LyricDoc`, `Track`, `GenerationSpec` (includes the LoRA stack), `Provenance` (records it). No I/O.
+Full brief: **[t-003-brief.md](t-003-brief.md)**. Paste it into Aider after launching.
 
-## Spec
-All types `Serialize + Deserialize + Clone + Debug + PartialEq`. `serde(deny_unknown_fields)` OFF for `ModelProfile` (forward-compat), ON for internal types. Include a `profiles/ace-step-1.5.json` fixture (copy the §5 example, adjusted to compile) and a round-trip test.
+**Split from the original T-003**, which covered every domain type at once. This task is
+the **model profile schema only** (`ModelProfile`, `InputSpec`, `LoraSupport`,
+`SlotAddress`, `ComfySpec`) plus `profiles/ace-step-1.5-turbo.json` built from the verified
+slot data, and round-trip tests. `Project`/`LyricDoc`/`Track`/`GenerationSpec`/`Provenance`
+move to T-003b so each run stays under review size -- T-002 showed that a large executor
+diff is where mistakes hide.
 
-## Acceptance criteria
-- [ ] `cargo test -p create-core` incl. `test_profile_roundtrip_ace_step_fixture` and `test_profile_without_loras_block_deserializes` (LoRA support is optional per model)
-- [ ] clippy/fmt clean; docs on all public items
-- [ ] No changes outside listed files + `profiles/ace-step-1.5.json`
-
-## Out of scope
-Profile *loading* from disk (that's `library`, Phase 1); any validation logic beyond serde.
-
-## If unclear
-Numbered questions, stop.
+Two schema decisions were made in ARCHITECTURE §5 while writing this brief, both forced by
+Rust rather than taste: `int`/`float` are separate input types because ACE-Step's seed
+range reaches `u64::MAX` and `f64` cannot hold it exactly, and unsupported inputs are
+**declared** (`"type": "unsupported"` with a reason) rather than omitted, so verified
+absence is distinguishable from oversight.
 
 ## Aider launch
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/create-core/src/lib.rs --file crates/create-core/src/project.rs --file crates/create-core/src/generation.rs --file crates/create-core/src/profile.rs --file crates/create-core/src/provenance.rs --file profiles/ace-step-1.5.json
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/create-core/Cargo.toml --file crates/create-core/src/lib.rs --file crates/create-core/src/profile.rs --file profiles/ace-step-1.5-turbo.json
 ```
+
+---
+
+# T-003b: create-core project + provenance types (brief pending)
+**Depends:** T-003 | **Crate:** `crates/create-core` | **Executor:** Aider
+
+`Project`, `LyricDoc` (versioned), `Track`, `GenerationSpec` (input values + LoRA stack +
+resolved seed), `Provenance` (records the **resolved slot values actually submitted**, not
+just the UI values, plus the LoRA stack with file/strength/order). Briefed once T-003 lands,
+so the value types can build on the reviewed `InputSpec`.
 
 ---
 

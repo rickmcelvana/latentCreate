@@ -141,17 +141,18 @@ A profile binds **semantic input -> slot address(es)** on a named template. Valu
     "tags":       { "type": "text",   "slots": ["94.tags"],   "label": "Style tags" },
     "lyrics":     { "type": "lyrics", "slots": ["94.lyrics"],
                     "structure_tags": ["[Verse]","[Chorus]","[Bridge]","[Outro]","[inst]"] },
-    "negative":   { "supported": false },                     // verified: no negative input exists
-    "duration_s": { "type": "number", "slots": ["94.duration", "98.seconds"],  // BOTH, kept in sync
+    "negative":   { "type": "unsupported",                    // verified: no negative input exists
+                    "reason": "TextEncodeAceStepAudio1.5 exposes no negative input" },
+    "duration_s": { "type": "float",  "slots": ["94.duration", "98.seconds"],  // BOTH, kept in sync
                     "min": 10, "max": 300, "default": 120 },
     "seed":       { "type": "seed",   "slots": ["94.seed", "3.seed"] },        // planner + sampler
-    "bpm":        { "type": "number", "slots": ["94.bpm"], "min": 10, "max": 300, "default": 120 },
+    "bpm":        { "type": "int",    "slots": ["94.bpm"], "min": 10, "max": 300, "default": 120 },
     "keyscale":   { "type": "enum",   "slots": ["94.keyscale"], "from_node_choices": true },
     "timesig":    { "type": "enum",   "slots": ["94.timesignature"], "from_node_choices": true },
     "language":   { "type": "enum",   "slots": ["94.language"], "from_node_choices": true },
-    "steps":      { "type": "number", "slots": ["3.steps"], "min": 1, "max": 100, "default": 8,
+    "steps":      { "type": "int",    "slots": ["3.steps"], "min": 1, "max": 100, "default": 8,
                     "advanced": true },
-    "shift":      { "type": "number", "slots": ["78.shift"], "default": 3, "advanced": true },
+    "shift":      { "type": "float",  "slots": ["78.shift"], "default": 3, "advanced": true },
     "planner":    { "type": "group",  "advanced": true,      // LM-planner sampling controls
                     "members": { "cfg_scale": ["94.cfg_scale"], "temperature": ["94.temperature"],
                                  "top_p": ["94.top_p"], "top_k": ["94.top_k"], "min_p": ["94.min_p"] } }
@@ -172,6 +173,12 @@ A profile binds **semantic input -> slot address(es)** on a named template. Valu
 **`from_node_choices: true`** means the UI reads the option list from the live node schema (`nodes(action="get")`) rather than duplicating 34 key/scale or 51 language values into the profile — enums stay correct across ComfyUI updates for free.
 
 **Advanced inputs** (`advanced: true`) live behind a disclosure so the default panel stays uncrowded: tags, lyrics, duration, bpm, key, seed.
+
+**Two schema rules that come from Rust, decided in T-003:**
+- **`int` and `float` are separate input types**, not one `number`. Seeds are the reason: ACE-Step's seed range runs to `u64::MAX` (18446744073709551615), which `f64` cannot represent exactly, so a single float-backed numeric type would silently corrupt seeds and break reproducibility. `seed` is its own type carrying `u64`.
+- **Unsupported inputs are declared, not omitted** (`"type": "unsupported"` with a `reason`). Omission cannot distinguish "we checked, this model has no negative prompt" from "nobody thought about it" -- and this project has already been wrong once by assuming a capability existed.
+
+Maps are `BTreeMap`, so serialised profiles and provenance sidecars have stable key order and diff cleanly in git.
 
 Initial profiles to ship (docs/MODELS.md): **ace-step-1.5-turbo** (default; verified runnable, Apache-2.0, lyrics+vocals, LoRA ecosystem), **minimax-music-3** (template verified to exist; profile blocked on a machine where it runs), **stable-audio-open** (instrumental/SFX, no lyrics), **musicgen** (instrumental, simple), **yue** (24 GB+ VRAM, "advanced"), **diffrhythm**. Plus one image profile for cover art. The gallery also carries ACE-Step base/SFT/split variants and **v1 M2M editing + instrumentals** templates — the M2M one is the natural home for the backlog's audio-to-audio flows.
 
