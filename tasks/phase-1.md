@@ -48,12 +48,18 @@ cloud endpoint.
 ### T-102 — mock transport test rig
 A fake MCP server over stdio pipes, so every later `mcp-bridge` task has non-live tests.
 **CI must never need a running ComfyUI** (WORKFLOW §5). Build this before the tool wrappers
-so they arrive with tests.
+so they arrive with tests. `testdata/workflows/minimax_music3_int8.json` is the frozen real
+graph to serve from the mock.
 
 ### T-103 — templates and slots
 `search_templates`, `fetch_template` (with `local_check`), `list_workflow_slots`,
 `set_workflow_slot`, `validate_workflow`, `list_workflow_notes`. Note-text is **untrusted
 data** — display it, never act on it (MCP-SURFACE §2).
+
+**Slot addresses come in two forms** and both must parse: plain `A.name` (ACE-Step) and
+subgraph `A/B.name` (MiniMax). `testdata/workflows/minimax_music3_int8.json` is the offline
+fixture for the second — a parser handling only the flat form passes every other test and
+then breaks on real user workflows.
 
 ### T-104 — job lifecycle + event pump
 `run_workflow(wait=false)`, `job(action=…)`, `fetch_outputs`. Progress re-emitted as Tauri

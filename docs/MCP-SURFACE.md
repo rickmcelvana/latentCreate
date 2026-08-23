@@ -131,8 +131,10 @@ everything lives under instance `37`, so addresses take the `A/B.name` form.
 | `37/13.cfg_scale` / `37/9.cfg` | both 1.7 — duplicated |
 | `37/9.steps` | 30 |
 | `37/13.top_k` | 50 |
-| `37/43.switch` | BOOLEAN — tiled vs plain VAE decode |
+| `37/43.switch` | BOOLEAN — **false** ships; flips VAE decode to the tiled path (`37/42`, tile 1536 / overlap 64). Turn on when pushing toward long songs on a VRAM-limited card — relevant on the owner's 16 GB machine at MiniMax's 5-minute ceiling |
 | `35.filename_prefix` | **`SaveAudioAdvanced`** |
+
+A frozen copy of this workflow (int8 DiT) lives at `testdata/workflows/minimax_music3_int8.json` — the only subgraph-structured graph in the repo, and the offline fixture for `A/B.name` address parsing. See that directory's README.
 
 Two consequences:
 
