@@ -134,20 +134,51 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-005: CI
-**Depends:** T-001 | **Files:** `.github/workflows/ci.yml`
+# T-005: CI — ✅ **DONE 2026-08-23** (architect, not Aider)
+**Depends:** T-001 | **Files:** `.github/workflows/ci.yml`, root + app `package.json`
 
 ## Goal
-GitHub Actions: on push/PR — `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `npx tsc -b`, `npm test`, `npm run build`, on ubuntu + windows + macos (Tauri system deps installed on ubuntu).
+GitHub Actions on push/PR: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+`cargo test --workspace` across ubuntu + windows + macos, plus `tsc -b`, oxlint, vitest
+and `vite build`. Caching for cargo and npm.
 
-## Acceptance criteria
-- [ ] Workflow passes on the repo's actual state
-- [ ] Caching for cargo + npm
+## Outcome (2026-08-23)
+**Reclassified off the Aider lane.** CI config is not the grunt work the executor lane is
+for: it needs facts verified against upstream docs (Tauri's exact Linux packages), an
+empirical answer about build ordering, and it cannot be validated by the executor at all
+since only a real push proves it. Writing it as a brief would have meant writing the file
+anyway. Recorded here so the routing decision is visible rather than implied.
 
-## Aider launch
-```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --file .github/workflows/ci.yml
-```
+**Two things verified rather than assumed:**
+1. **Tauri 2 needs `libwebkit2gtk-4.1-dev`**, not 4.0 — checked against
+   https://v2.tauri.app/start/prerequisites/ , with the full package list taken from there.
+2. **The Rust jobs do NOT need the frontend built first.** `app/dist` is gitignored and so
+   absent on a fresh clone; the concern was that `tauri::generate_context!` would fail
+   without it. Tested by moving `app/dist` away, running `cargo clean -p app`, then
+   `cargo check -p app` — clean compile. Only `tauri build` (which CI does not run) needs
+   the bundled assets. The workflow carries a comment saying so, so nobody re-adds a
+   redundant build step.
+
+**Shape:** two jobs. `frontend` runs once on ubuntu (TypeScript is platform-independent, so
+a 3-OS matrix would triple minutes for no signal); `rust` is a 3-OS matrix with
+`fail-fast: false`, since cross-platform risk lives on the Tauri side. Concurrency cancels
+superseded runs; `permissions: contents: read`.
+
+**Also added: `npm run gate`** — one root command chaining the same checks in the same
+order CI uses (`gate:rust` / `gate:app` for halves). This is the direct answer to T-002's
+red commit: the producer can now prove green in one command before committing.
+
+**Third-party actions used** (pinned by major tag): `actions/checkout@v4`,
+`actions/setup-node@v4`, `dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`. All
+widely used and permissively licensed; `rust-cache` is what keeps Tauri's dependency tree
+from being rebuilt every run. SHA-pinning them is the stricter option if this repo later
+wants it.
+
+**Unverified — needs a push:** the pipeline has never executed. YAML parses, every command
+passes locally via `npm run gate`, and the Linux package list matches the docs, but runner
+images and action behaviour can only be proven by a real run. `origin` is
+`github.com/rickmcelvana/latentCreate`, currently 8 commits behind local. First push will
+be the actual test.
 
 ---
 

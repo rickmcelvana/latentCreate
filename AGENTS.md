@@ -9,7 +9,7 @@
 5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number.
 
 **Hard rules (summary — the linked docs are authoritative):**
-- Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only on green (fmt/clippy/test/tsc/build).
+- Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit.
 - Ship no models. All generation goes through the user's ComfyUI (Comfy MCP) or their API keys.
 - Never modify user prompt/lyric text without an explicit accept step. Every generated asset gets a provenance sidecar. Deletes go to OS trash.
 - Verify third-party API surfaces (rmcp, provider APIs) against live docs/source before writing briefs — not from memory. For comfy-mcp, docs/MCP-SURFACE.md holds the verified names/slots; re-check against the live server rather than trusting the cloud documentation, which names different tools.

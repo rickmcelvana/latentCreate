@@ -29,7 +29,7 @@
 - All user-facing errors say what to do next ("Start ComfyUI, then Retry"), not just what failed.
 
 ## Testing & verification
-- `cargo test --workspace`, `npx tsc -b`, `npm test` green before diff review; `npm run build` when `app/` touched.
+- **`npm run gate`** (repo root) must pass before diff review — it is exactly what CI runs (`.github/workflows/ci.yml`), so a green gate locally means a green pipeline.
 - Network crates test against mock transports/fixtures (WORKFLOW §5); no test may require a live ComfyUI or LLM.
 - Test names: `test_<behavior>_<condition>`.
 

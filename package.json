@@ -11,7 +11,10 @@
     "app:dev": "npm run dev --prefix app",
     "app:build": "npm run build --prefix app",
     "app:test": "npm run test --prefix app",
-    "app:lint": "npm run lint --prefix app"
+    "app:lint": "npm run lint --prefix app",
+    "gate": "npm run gate:rust && npm run gate:app",
+    "gate:rust": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace",
+    "gate:app": "npm run gate --prefix app"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.3"

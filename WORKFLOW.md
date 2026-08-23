@@ -19,7 +19,7 @@ Architect writes brief (tasks/phase-N.md, one T-number) incl. "Aider launch" com
   → PASS → merge; FAIL → fix-up brief (T-0XXb) with its own launch command → repeat
   → UI/integration tasks: producer click-through per the brief's manual-verify list
 ```
-Keep runs ≤ ~400 lines of diff; bigger scope = split the brief. **Green gate:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `npx tsc -b`, `npm test`, and `npm run build` when `app/` changed. Commit only on green.
+Keep runs ≤ ~400 lines of diff; bigger scope = split the brief. **Green gate:** run **`npm run gate`** from the repo root — one command that chains `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `tsc -b`, `oxlint`, `vitest`, and `vite build`, in the same order CI runs them (T-005). `npm run gate:rust` / `gate:app` run half each. Commit only on green.
 
 **Executors do not commit (learned on T-002, 2026-08-23).** Aider's first run in
 this repo auto-committed twice while `tsc -b` was failing with 6 errors, so the

@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "oxlint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gate": "tsc -b && oxlint src --format=github && vitest run && vite build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",

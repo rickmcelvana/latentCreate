@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep CI output readable; a failing build should not be buried in progress bars.
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  frontend:
+    # The frontend is platform-independent (TypeScript, no native modules), so
+    # running it on three OSes would triple the minutes for no extra signal.
+    # Cross-platform risk lives in the Rust/Tauri side, which IS a matrix below.
+    name: frontend (typecheck, lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: app
+        run: npx tsc -b
+
+      - name: Lint
+        working-directory: app
+        run: npx oxlint src --format=github
+
+      - name: Test
+        working-directory: app
+        run: npm test
+
+      - name: Build
+        working-directory: app
+        run: npm run build
+
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        # Per https://v2.tauri.app/start/prerequisites/ -- Tauri 2 uses
+        # webkit2gtk **4.1**, not 4.0. Verified against the docs, not recalled.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Separate caches per OS so a Windows target dir never lands on Linux.
+          key: ${{ matrix.os }}
+
+      # No frontend build step here on purpose: `cargo check/clippy/test` compile
+      # cleanly with `app/dist` absent (verified 2026-08-23 with `cargo clean -p
+      # app` and the directory moved away). Only `tauri build`, which CI does not
+      # run, needs the bundled assets.
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
