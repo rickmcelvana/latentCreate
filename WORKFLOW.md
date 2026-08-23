@@ -82,6 +82,16 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 9. Frontend types: no global `JSX` namespace (React 19 removed it -- use `ReactElement`); DOM boolean attributes are booleans, not `'true'`/`'false'` strings.
 10. Zustand: subscribe with a selector, never the bare store, or the component re-renders on every unrelated state change.
 
+## 4b. CI must exercise the documented path
+T-006 found a fresh clone failing `npm run gate` while CI was green. The cause was not the
+code: CI ran `npm ci` inside `app/`, while the README told contributors to run two separate
+installs, and the root install silently skipped `app/`. **CI proved a setup path nobody
+actually uses.**
+
+Rule: the install and build commands in CI are the ones the README gives a contributor. If
+they diverge, CI is testing a fiction and the first person to clone the repo finds out. When
+setup instructions change, the workflow changes in the same commit.
+
 ## 5. Verification against live services
 Unit tests must not require a running ComfyUI/LLM. Rules:
 - `mcp-bridge` and `llm-bridge` get **mock-transport tests** (fake MCP server speaking the protocol over stdio pipes; canned SSE fixtures for LLMs). These run in CI.

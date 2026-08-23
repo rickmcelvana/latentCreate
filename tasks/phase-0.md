@@ -324,5 +324,27 @@ real run, not just locally.
 
 ---
 
-# T-006: Milestone check (producer, no Aider)
-Fresh clone → install deps → `npm run tauri dev` shows themed shell with nav; CI green on all three OSes; tag `phase0-done`. Paste results into PROJECT.md session log. Then architect opens `tasks/phase-1.md`.
+# T-006: Milestone check (producer, no Aider) — **in progress**
+Fresh clone → `npm install` → `npm run gate` → `npm run dev` shows the themed shell with
+nav; CI green on all three OSes; tag `phase0-done`. Paste results into PROJECT.md session
+log. Then the architect opens `tasks/phase-1.md`.
+
+## Findings so far (2026-08-23)
+
+**❌ Fresh clone failed — fixed in `49a5b80`.** `npm run gate` died with
+`Cannot find type definition file for 'vite/client'` and the same for `node`. Reproduced
+from a real clone of the pushed repo: the root `npm install` never touched `app/`, because
+`app` was not an npm workspace. The README asked for two installs; CI ran `npm ci` *inside*
+`app/`. **So CI was green while the documented path was broken** — CI was proving a setup
+route nobody uses.
+
+Fix: `app` is an npm workspace, one root `npm install` covers everything, a single
+`package-lock.json`, and CI now installs exactly the way the README says to. Verified by
+cloning the pushed repo fresh, running the one documented command, and getting a green gate.
+The general rule is now WORKFLOW §4b.
+
+## Remaining for the producer
+1. Confirm CI is green on all three OSes **with the new workflow** (the install step changed).
+2. `npm run dev` — click through all five views; confirm the rail's active state and that the
+   footer shows the Rust version rather than "browser preview".
+3. Tag `phase0-done` and say so; the architect then opens Phase 1.
