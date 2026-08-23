@@ -2,12 +2,12 @@
 
 Each phase gets a `tasks/phase-N.md` with T-numbered Aider briefs (template: WORKFLOW.md §3) written by the architect *at the start of that phase* — briefs are not pre-written phases ahead, because each phase's interfaces harden in review. Phase 0 briefs exist now.
 
-## Phase 0 — Scaffold (T-001 … T-006) — briefs ready: [phase-0.md](phase-0.md)
+## Phase 0 — Scaffold (T-001 … T-006) — ✅ **COMPLETE**, tagged `phase0-done` — [phase-0.md](phase-0.md)
 Repo skeleton that compiles, lints, tests, and launches an empty themed shell.
 Cargo workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library` stubs), Tauri 2 shell, Vite/React/TS app with nav rail + theme.css, CI (fmt/clippy/test/tsc/build on the three desktop OSes), config store + keychain plumbing, docs/license boilerplate.
 **Milestone check:** `npm run tauri dev` shows the themed empty shell; CI green.
 
-## Phase 1 — Connections & setup wizard (T-101 …)
+## Phase 1 — Connections & setup wizard (T-101 …) — **NEXT**, planned in [phase-1.md](phase-1.md)
 `mcp-bridge` against real `comfy-mcp` — **tool surface and LoRA enumeration already verified 2026-08-23 (docs/MCP-SURFACE.md), so this phase implements against known names instead of discovering them.** `ComfyBackend` trait + **stdio (local) only**; the cloud backend is a separate later task gated on verifying a live cloud endpoint (its tool names differ). Mock-transport test rig, job event pump. `llm-bridge` with `openai_compat` + `ollama_native` (+ streaming). Model profile loader (`profiles/` + user dir merge) and the seed profiles (docs/MODELS.md). Setup wizard UI (ARCHITECTURE §10): detect/install guidance, health pills, curated model install with progress, per-model license display, LLM config + test call with the recommended-for-lyrics chips.
 **Milestone check (live):** fresh machine → wizard → ACE-Step installed via app → server info visible. Second check on the owner's machine: the `ace-step-1.5-turbo` profile's slot addresses still resolve against a freshly fetched template (guards against gallery drift).
 

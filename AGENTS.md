@@ -6,7 +6,7 @@
 3. [WORKFLOW.md](WORKFLOW.md) — how tasks are written, executed (Aider + `ollama_chat/kimi-k2.7-code:cloud`), reviewed, and merged.
 4. [CONVENTIONS.md](CONVENTIONS.md) — code standards. Fed to Aider with `--read` on every run.
 4b. [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — **verified** comfy-mcp tool names, slot addresses, LoRA and template facts. Authoritative over docs/RESEARCH.md and over any model documentation. Read before touching `mcp-bridge` or writing a model profile.
-5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number.
+5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number. **Currently [tasks/phase-1.md](tasks/phase-1.md)**, whose first item is a blocking `rmcp` verification.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit.

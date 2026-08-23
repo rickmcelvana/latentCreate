@@ -324,27 +324,48 @@ real run, not just locally.
 
 ---
 
-# T-006: Milestone check (producer, no Aider) — **in progress**
-Fresh clone → `npm install` → `npm run gate` → `npm run dev` shows the themed shell with
-nav; CI green on all three OSes; tag `phase0-done`. Paste results into PROJECT.md session
-log. Then the architect opens `tasks/phase-1.md`.
+# T-006: Milestone check (producer) — ✅ **DONE 2026-08-23** — `phase0-done`
 
-## Findings so far (2026-08-23)
+**Phase 0 is complete and tagged.** Verified by the producer on a fresh clone:
+- one `npm install`, then `npm run gate` — green
+- CI green on **ubuntu, windows and macos**
+- `npm run dev`: all five views click through, rail active state correct, and the footer
+  shows the **Rust shell version** rather than "browser preview" — the Tauri bridge proven
+  end to end in the real app, not just in tests
 
-**❌ Fresh clone failed — fixed in `49a5b80`.** `npm run gate` died with
-`Cannot find type definition file for 'vite/client'` and the same for `node`. Reproduced
-from a real clone of the pushed repo: the root `npm install` never touched `app/`, because
-`app` was not an npm workspace. The README asked for two installs; CI ran `npm ci` *inside*
-`app/`. **So CI was green while the documented path was broken** — CI was proving a setup
-route nobody uses.
+## The finding this check earned (fix `49a5b80`)
+The first fresh clone **failed**: `npm run gate` died on `Cannot find type definition file
+for 'vite/client'` and the same for `node`. Reproduced from a real clone of the pushed repo.
+The root `npm install` never touched `app/`, because `app` was not an npm workspace — the
+README asked for two installs and CI ran `npm ci` *inside* `app/`. **CI was green through
+five runs while the documented setup path was broken**, because CI was proving a route
+nobody uses.
 
-Fix: `app` is an npm workspace, one root `npm install` covers everything, a single
-`package-lock.json`, and CI now installs exactly the way the README says to. Verified by
-cloning the pushed repo fresh, running the one documented command, and getting a green gate.
-The general rule is now WORKFLOW §4b.
+Fixed by making `app` a workspace: one root install, a single lockfile, and CI installing
+exactly the way the README says to. The general rule is now WORKFLOW §4b — *CI must
+exercise the documented path*.
 
-## Remaining for the producer
-1. Confirm CI is green on all three OSes **with the new workflow** (the install step changed).
-2. `npm run dev` — click through all five views; confirm the rail's active state and that the
-   footer shows the Rust version rather than "browser preview".
-3. Tag `phase0-done` and say so; the architect then opens Phase 1.
+This is the whole argument for a milestone check. Every task in the phase was individually
+green, reviewed and pushed; the failure lived in the space between them, and only a cold
+clone could find it.
+
+---
+
+## Phase 0 summary
+
+| Task | Result |
+|---|---|
+| T-001 scaffold | architect/producer; root `package.json` deviation, palette corrected to the site |
+| T-002 nav rail | **FAIL** — committed red; repaired in T-002b. Prose brief, no reference code |
+| T-003 profile schema | PASS; one vacuous test found in review |
+| T-003b domain types | PASS; `cargo fmt` only |
+| T-004 config + keychain | PASS; `cargo fmt` only |
+| T-004b bridge + store | PASS; one brief defect (JSON literal widening) |
+| T-005 CI | architect; matrix later made event-dependent, then restored when the repo went public |
+| T-006 milestone | found the workspace bug |
+
+**Executor-lane conclusion:** briefs with full reference code produced near-clean runs
+(T-003, T-003b, T-004, T-004b). The one prose-spec brief did not compile. Recorded in
+WORKFLOW §1.
+
+**Next:** [phase-1.md](phase-1.md) — starting with the blocking `rmcp` verification.

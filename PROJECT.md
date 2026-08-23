@@ -3,14 +3,24 @@
 > Load this file at the start of every session (Claude Code, Opencode, any agent). Update it at the end of every session. **Session-start rule: verify this file and ARCHITECTURE.md agree with `git log` since the last session entry; fix drift before new work.**
 
 ## Snapshot
-- **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. Ships no models. Complements closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
-- **Phase:** **0 — in progress.** Planning is complete and externally verified (comfy-mcp exercised live; [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md)). **T-001 (scaffold) is done and green**; see [tasks/phase-0.md](tasks/phase-0.md) for its outcome and deviations.
-- **Next up:** **T-006 — the Phase 0 milestone check** (producer-run: fresh clone, `npm run gate`, CI green on all three OSes, click through the app, tag `phase0-done`). Every Phase 0 build task is done: T-001–T-005 including T-002b, T-003b, T-004b. Then **Phase 1** begins — `mcp-bridge` against the verified tool surface in docs/MCP-SURFACE.md. **Pre-commit check is `npm run gate`**.
-- **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. **Run the desktop app with `npm run dev` from the repo root** (the root package.json owns the Tauri CLI — the CLI cannot find `src-tauri/` when invoked from `app/`).
+- **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
+- **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. It does not talk to ComfyUI yet.
+- **Next up:** **Phase 1** — [tasks/phase-1.md](tasks/phase-1.md). **First action is the blocking `rmcp` verification** described at the top of that file; T-101's brief cannot be written until it is done.
+- **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
+
+## Working commands
+```bash
+npm install     # root + app workspace, one step
+npm run dev     # desktop app (Tauri); run from the repo ROOT, not app/
+npm run gate    # everything CI runs, in CI's order -- the pre-commit check
+cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
+```
 
 ## How work happens
 - WORKFLOW.md defines the Claude(architect)/Aider(executor)/human(producer) loop, adapted from latent-mastering. This repo is almost entirely plumbing/UI → default executor `ollama_chat/kimi-k2.7-code:cloud`. No DSP lane exists here (the visualizer is AnalyserNode + canvas, not custom math).
-- Tasks live in `tasks/phase-N.md` as T-numbered briefs with ready-to-paste Aider launch commands. One brief per Aider run, ≤ ~400-line diffs, commit only on green tests.
+- Tasks live in `tasks/phase-N.md`; anything non-trivial gets its own `tasks/t-NNN-brief.md` with a ready-to-paste Aider launch command. One brief per run, ≤ ~400-line diffs.
+- **The loop, as it actually settled in Phase 0:** architect writes the brief with full reference code → producer runs Aider with `--no-auto-commits` → producer runs `npm run gate` → architect reviews the working tree against the brief → commit `T-NNN: title` → push. Executors never commit.
 
 ## Key decisions log
 - **2026-08-23 — MCP-first Comfy integration.** App embeds an MCP *client* (rmcp, stdio to local `comfy-mcp`; HTTP to Comfy Cloud) rather than ComfyUI's raw HTTP API. Rationale: model search/download, templates, validation, and job tools come free; local/cloud is one trait, two transports (ARCHITECTURE §1, §3). Raw API fallback deliberately deferred (OQ-3). ⚠ *The local/cloud half of this was disproved the same day — see the verification entry below; MCP-first itself stands and was strengthened (slots).*
@@ -51,37 +61,35 @@
 - In-app "what's new in models" surface — periodic `search_models` diff against catalog. Graceful upgrade UX sketched in ARCHITECTURE §10 step 2.
 
 ## Session log
-- **2026-08-23 — T-006 milestone, first finding (fix `49a5b80`).** The producer's fresh clone failed `npm run gate` on missing `vite/client` and `node` types. Reproduced from a real clone: the root `npm install` never installed `app/`, which was not an npm workspace — the README asked for two installs and **CI ran `npm ci` inside `app/`, so CI stayed green while the documented path was broken**. `app` is now a workspace: one root install, one lockfile, and CI installs the way the README says. Verified end to end by re-cloning the pushed repo and running the single documented command to a green gate.
-  **Rule extracted (WORKFLOW §4b):** CI must exercise the *documented* setup path. If they diverge, CI proves a fiction and the first person to clone finds out. This is precisely the class of bug a milestone check exists to catch, and it survived five green CI runs.
-  **T-006 still open:** CI green on the new workflow, a click-through of the five views, then tag `phase0-done`.
-- **2026-08-23 — T-004b config bridge + store (Aider + review).** Typed wrappers over the five commands, Zustand store, and `testdata/wire/loaded-config.json` read by both a Rust and a TypeScript test. 12 frontend tests; commit `cee9353`, pushed. **Phase 0's build tasks are all complete — only T-006 (milestone) remains.**
-  **Brief defect found:** importing the JSON fixture does not type-check against `LoadedConfig`, because **TypeScript widens JSON literals to `string`** — so the import proved nothing about the TS types, and `resolveJsonModule` was a red herring. Fixed by declaring the fixture with literal types and asserting deep-equality with the shared file. Aider flagged the problem instead of guessing, which is the brief footer working.
-  **Drift guard verified, not assumed:** renaming a field in the shared fixture was confirmed to fail both the Rust and TypeScript builds, then restored. A guard nobody has watched fail is just a comment.
-  **Standing lesson** (now twice: T-003's seed test, T-004b's fixture): a brief must name the **invariant**, not the mechanism — "make a rename fail both builds", not "import the fixture".
-- **2026-08-23 — T-004 config + keychain (Aider + review).** `crates/library/{config,secrets}.rs` and five Tauri commands. Atomic config writes, never-failing load that preserves a corrupt file rather than overwriting it, keychain secrets behind a closed whitelist. 10 tests + 1 ignored keychain test; commit `71440c9`, pushed. Only `cargo fmt` needed — fourth clean executor run under the reference-code pattern.
-  **Verified before the brief was written**, not recalled: keyring 4.1.6's API compiled *and executed* against the real Windows Credential Manager, and `write tmp → sync_all → rename` confirmed atomic on Windows. **The find that mattered: keyring's macOS backend is not a default feature**, so the obvious `keyring = "4"` would have compiled everywhere and silently had no store on macOS — invisible to CI, visible only as a user bug report.
-  **Security boundary holds:** no `get_secret` command, whitelist on every secret entry point, `library` free of `tauri`. Both rules are now in WORKFLOW's review checklist.
-  **Noted for Phase 1:** `has_secret` reads the secret to answer (no cheaper existence check exists), which on macOS can raise the keychain prompt — the setup wizard must call it on screen load, never per-render.
-- **2026-08-23 — T-003b domain types (Aider + review).** `generation.rs`, `project.rs`, `provenance.rs` — `GenerationSpec`/`InputValue`/`LoraRef` with seed and batch helpers, `Project`, versioned `LyricDoc` with the consent-gated `prompt_optimized` flag, `Track`, `Provenance`. 19 crate tests, clippy clean. Commit `4ce24f0`, pushed. **create-core is complete; Phase 0 has only T-004 and the T-006 milestone left.**
-  **Aider's cleanest run: only `cargo fmt` needed.** Verified each test bites rather than trusting green — the seed-tagging test fails if adjacent tagging is swapped for untagged, `latest()` is tested with versions stored out of order, and the fan-out test proves one `duration_s` becomes both `94.duration` and `98.seconds`.
-  **Executor-lane pattern, three runs in:** briefs carrying full reference code plus a named invariant per test produce near-clean runs (T-003, T-003b); the prose-spec brief (T-002) did not compile. Write reference code for the executor lane.
-  **CONVENTIONS correction:** its documentation rule was an overclaim. `RUSTFLAGS="-W missing_docs"` shows every public type/enum/function documented and only self-evident fields bare; the rule now says that instead of implying all 49 fields need comments.
-- **2026-08-23 — T-003 profile schema (Aider + review).** `crates/create-core/src/profile.rs` (`ModelProfile`, `InputSpec`, `LoraSupport`, `SlotAddress`, `ComfySpec`) plus `profiles/ace-step-1.5-turbo.json` built from the verified slot data — docs/MCP-SURFACE.md's findings are now checked-in, tested data rather than prose. Commit `f3ea89a`, pushed.
-  **Aider's cleanest run yet:** faithful types, byte-identical fixture, 8 tests green, clippy clean. `--no-auto-commits` did its job — changes came for review instead of as commits.
-  **One real review catch:** the seed test was vacuous (round-tripped a bare `u64`, never touching our types, so it would pass even if `Seed` became a float). **Caused by the brief naming mechanics instead of the invariant** — WORKFLOW §4 now carries that lesson. Rewritten to assert f64 demonstrably loses integers in the seed range, that the fixture's seed is `InputSpec::Seed`, and that `u64::MAX` survives JSON.
-  **Schema decisions** (ARCHITECTURE §5): `int`/`float` split because seeds reach `u64::MAX`; unsupported inputs declared with a reason rather than omitted, so verified absence differs from oversight.
-  **Next:** T-003b (Project/LyricDoc/Track/GenerationSpec/Provenance), then T-004, then T-006 milestone.
-- **2026-08-23 — T-005 CI (Claude Opus).** Added `.github/workflows/ci.yml`: a `frontend` job (ubuntu only — TypeScript is platform-independent) and a `rust` matrix across ubuntu/windows/macos with `fail-fast: false`, cargo + npm caching, concurrency cancellation and least-privilege permissions. **Taken off the Aider lane deliberately** (reasoning in tasks/phase-0.md): it needed upstream facts verified and cannot be validated by an executor. Verified rather than assumed: Tauri 2 wants `libwebkit2gtk-4.1-dev` (per v2.tauri.app prerequisites), and the Rust jobs do **not** need `app/dist` — proven with `cargo clean -p app` and the directory moved away, so no redundant frontend build sits in the Rust matrix.
-  Also added **`npm run gate`** at the repo root — one command running exactly what CI runs, which is the practical answer to T-002's red commit. Docs (WORKFLOW/CONVENTIONS/AGENTS) now point at it as *the* pre-commit check. Fixed the stale `repository` field in Cargo.toml now that `origin` exists.
-  **Pushed 2026-08-23** (`0dfd5c2..3c8ca9b`, 74 files) and the first run came back **green** — confirming the Tauri Linux package list and the "Rust jobs need no frontend build" finding against real runners, not just locally. Briefly made the matrix event-dependent when the repo turned out to be private (Actions bills private minutes at Linux 1x / Windows 2x / **macOS 10x** against 2,000/month); **the owner then made the repo public**, so minutes are free and the full three-OS matrix runs on every event again (T-005c).
-  **Repo is public as of 2026-08-23.** README gained CI/licence badges and a Development section. Checked before publication: no usernames, home directories or credentials in tracked files. `docs/MCP-SURFACE.md` and PROJECT.md do describe the owner's machine (GPU, RAM, ComfyUI path, trained-LoRA names) — innocuous, and the observed detail is exactly what makes that doc trustworthy, but it is now world-readable by choice.
-  **Next:** T-003 (create-core domain types, Aider), then T-004 (depends on T-003), then T-006 milestone.
-- **2026-08-23 — T-002 review + repair (Claude Opus).** Aider produced the right structure (nav store, five views, icons faithful to the brief's SVG coordinates, correct CSS additions) but **committed twice with a broken build**: `tsc -b` had 6 errors, `npm run build` exited 2. Repaired in T-002b rather than round-tripped, since all failures were mechanical: React 19 removed the global `JSX` namespace (`ReactElement` now), and string `'true'`/`'false'` do not satisfy React's `Booleanish` for `aria-hidden`/`focusable`. Also fixed a real behaviour bug — a failed `appVersion()` was rendered as `v<error>`, disguising a dead bridge as a version — plus whole-store Zustand subscriptions and an unscoped `transition: all`.
-  **Two process lessons, both now enforced:** executors run with **`--no-auto-commits`** (the tool bypassed "commit only on green" before any review), and **`.gitattributes` pins `eol=lf`** (Aider rewrote all 11 files as CRLF, making an 11-line CSS addition read as a 336-line rewrite). WORKFLOW §2/§4 updated with both.
-  **Verified in the browser pane** (transitions disabled first — they never advance there, §4a): only the active item carries the accent border/bright text/accent icon, rail is 208px with no overflow, clicking switches heading and moves `aria-current`, console clean in a fresh tab. Gate green: tsc, vitest (4), vite build, oxlint 0/0, clippy, cargo test.
-  **Next:** T-003 (create-core domain types) or T-005 (CI, independent). T-004 depends on T-003.
-- **2026-08-23 — T-001 scaffold (Claude Opus).** Built the repo skeleton: Cargo workspace with four stub crates + Tauri 2.11 shell, React 19/TS6/Vite 8 frontend, `theme.css` seeded with the suite palette, `bridge/shell.ts` proving the Tauri boundary round-trips, placeholder app icon. All gates green (fmt, clippy -D warnings, cargo test, tsc -b, vitest, npm run build, oxlint) and `tauri build --no-bundle` produced a working `app.exe` that launched and served its frontend. Five deliberate deviations from the brief recorded in tasks/phase-0.md — notably a **root package.json** (the Tauri CLI scans subfolders, so it cannot be driven from `app/`) and the **palette now tracking `latentbeats.com`**. Owner also clarified OQ-6: the MiniMax Music 3 testing was on the other PC, and this box is a model-testing machine whose model set churns — so absent weights here say nothing about a model.
-  **Next session:** T-002 (nav rail + views) is the first Aider task; its launch command is in tasks/phase-0.md and the brief now names the classes T-001 already defined so Aider extends rather than restyles. Producer still owes a visual confirmation that `npm run dev` shows a window.
-- **2026-08-23 — Planning session (Claude Fable).** Researched Comfy MCP tool surface (docs.comfy.org/agent-tools/mcp) and 2026 open music-model landscape (docs/RESEARCH.md). Authored README, ARCHITECTURE, CONVENTIONS, WORKFLOW, AGENTS/CLAUDE, docs/RESEARCH.md, docs/MODELS.md, tasks/ROADMAP.md, tasks/phase-0.md. Owner resolved OQ-1 (Apache-2.0 — LICENSE/NOTICE added) and OQ-4 (send-to handled by mixing/mastering first). Committed as the repo's initial commit; no code yet. Follow-up commits closed OQ-2 (Gemma 4 lyric-LLM guidance), parked OQ-5 (naming — umbrella stays `latentbeats.com`, working name stays "latentCreate"), and added LoRA support + custom workflow import + MiniMax Music 3 after the owner noted his own workflow is ACE-Step 1.5 turbo with custom LoRAs. **Both open verification items were closed later the same day — see the next entry.**
-- **2026-08-23 — Live comfy-mcp verification session.** comfy-mcp confirmed working against the owner's install (comfy-cli 1.16.0, ComfyUI v0.33.2, RTX 5060 Ti 16 GB). Inspected the real tool surface, the ACE-Step 1.5 XL Turbo template (33 slots, `runnable: true`), `TextEncodeAceStepAudio1.5` and `LoraLoaderModelOnly` schemas, the 95-entry LoRA list, the audio save nodes, and the MiniMax Music 3 template. Wrote **docs/MCP-SURFACE.md** (new authority for MCP facts) and corrected ARCHITECTURE §1/§3/§5/§5a/§7, MODELS.md, RESEARCH.md (superseded banner), ROADMAP Phases 1/3. Seven prior assumptions checked: three confirmed, four wrong. No code, no generation runs, no model downloads.
-  **Next session:** Phase 0 T-001 (scaffold) is unblocked and is the natural start — the MCP unknowns that would have churned `mcp-bridge` are now resolved. Before writing the `ace-step-1.5-turbo` profile, re-fetch the template and re-read its slots (gallery content is cached with a 24 h TTL and can drift). OQ-6 decides when MiniMax gets a profile.
+
+### 2026-08-23 — planning through Phase 0 (one long session, Claude)
+Repo went from empty to `phase0-done` in a single session. Condensed, because the durable
+decisions live in the log above and the per-task detail in `tasks/phase-0.md`:
+
+1. **Planned** the app from the owner's brief: researched Comfy MCP and the 2026 open
+   music-model landscape, wrote README/ARCHITECTURE/CONVENTIONS/WORKFLOW/AGENTS,
+   docs/RESEARCH.md, docs/MODELS.md, the roadmap and Phase 0 briefs.
+2. **Verified against the live install** rather than the docs, which rewrote parts of the
+   plan: local and cloud comfy-mcp are different tool surfaces, slots are the parameter
+   mechanism, ACE-Step has no negative prompt, the LoRA loader is core
+   `LoraLoaderModelOnly`, and the shipped template writes lossy MP3. See
+   docs/MCP-SURFACE.md — **the authority for anything MCP**.
+3. **Built Phase 0**: scaffold, nav shell, `create-core` (profile schema + domain types),
+   `library` (config + keychain), five Tauri commands, the frontend bridge and store, CI,
+   and a cross-language wire fixture.
+4. **Closed it** with the T-006 milestone, which caught a broken fresh clone that five
+   green CI runs had missed.
+
+**What the next session should carry forward** (each one cost something to learn):
+- Briefs for the executor lane need **full reference code** plus, per test, the **invariant
+  it protects**. The one prose-spec brief (T-002) came back not compiling; every brief with
+  reference code needed only `cargo fmt`.
+- A brief that names a *mechanism* produces a test blind to its purpose. Happened twice —
+  T-003's seed test and T-004b's fixture import. Say what must fail, not what to write.
+- **Verify third-party surfaces by compiling and running them**, in a throwaway crate
+  outside the repo. That method caught keyring's non-default macOS backend and serde's
+  `"open_ai_compat"` string — both invisible to review, both would have shipped.
+- Aider runs with `--no-auto-commits` and never commits; it once pushed two commits past a
+  failing build.
+- CI must exercise the **documented** setup path (WORKFLOW §4b).
+
