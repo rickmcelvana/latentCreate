@@ -162,7 +162,7 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-004: config store, OS-keychain secrets, and Tauri commands
+# T-004: config store, OS-keychain secrets, and Tauri commands — ✅ **DONE 2026-08-23**
 **Depends:** T-003b | **Crates:** `crates/library`, `src-tauri` | **Executor:** Aider
 
 Full brief: **[t-004-brief.md](t-004-brief.md)**. Paste it into Aider after launching.
@@ -187,6 +187,28 @@ against a **closed whitelist** (otherwise a buggy webview could write arbitrary 
 entries), and **there is no `get_secret` command** — secret values never cross into the
 webview; Rust reads them when building an outbound request, and the UI only learns whether
 one exists.
+
+## Outcome (2026-08-23) — commit `71440c9`
+**Aider result: PASS**, only `cargo fmt` needed — the fourth consecutive clean run under
+the reference-code pattern. The security boundary came through intact, which was the point
+of the review: no `get_secret` command exists anywhere, every secret command parses its
+name through the whitelist first, and `library` still has no `tauri` dependency.
+
+Verified beyond the gate:
+- **The ignored keychain test was run manually** (`cargo test -p library -- --ignored`) and
+  passes against the real Windows Credential Manager — set/get/delete works end to end on
+  this platform, not merely compiles.
+- The corrupt-config test asserts the **exact original bytes** survive in
+  `config.json.corrupt-N` and that the unreadable file is gone from its original path.
+
+Added in review: `has_secret` reads the secret to answer, since the backends expose no
+cheaper existence check. On macOS that can raise the keychain-access prompt on first use.
+Documented with the consequence — call it on screen load, **never per-render or in a
+polling loop**; Phase 1's setup wizard is exactly the code that would otherwise get this
+wrong.
+
+**Still unverified:** the commands have never been called from a running app. T-004b wires
+the frontend; the first real exercise is the Phase 1 setup wizard.
 
 ## Aider launch
 ```bash
