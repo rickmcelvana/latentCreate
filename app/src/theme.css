@@ -106,7 +106,12 @@ body {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: var(--transition);
+  /* Name the properties: the bare `var(--transition)` shorthand means `all`,
+     which would animate layout too. */
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
 }
 
 .nav-item:hover {
@@ -136,6 +141,11 @@ body {
 
 .nav-version {
   font-size: 12px;
+}
+
+.nav-version-error {
+  font-size: 12px;
+  color: var(--warning);
 }
 
 .content-pane {

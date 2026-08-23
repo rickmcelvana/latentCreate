@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react'
 import { useNavStore } from './state/nav'
 import { NavRail } from './components/NavRail'
 import { Setup } from './views/Setup'
@@ -6,10 +7,17 @@ import { AudioStudio } from './views/AudioStudio'
 import { Library } from './views/Library'
 import { CoverArt } from './views/CoverArt'
 
+/**
+ * Composition root: the rail plus whichever view is active.
+ *
+ * The switch is deliberately exhaustive with no `default` branch, so adding a
+ * sixth `ViewId` without wiring it up fails the build instead of silently
+ * rendering nothing.
+ */
 export function App() {
-  const { activeView } = useNavStore()
+  const activeView = useNavStore((state) => state.activeView)
 
-  let view: JSX.Element
+  let view: ReactElement
   switch (activeView) {
     case 'setup':
       view = <Setup />

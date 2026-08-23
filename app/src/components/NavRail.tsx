@@ -3,15 +3,22 @@ import { appVersion, isTauri } from '../bridge/shell'
 import { NavIcon } from './NavIcon'
 import { NAV_ITEMS, useNavStore } from '../state/nav'
 
+/**
+ * Left navigation rail: brand, one button per destination, and a footer that
+ * reports the Rust shell version -- the standing proof that the Tauri boundary
+ * round-trips (T-001).
+ */
 export function NavRail() {
-  const { activeView, setView } = useNavStore()
+  const activeView = useNavStore((state) => state.activeView)
+  const setView = useNavStore((state) => state.setView)
   const [version, setVersion] = useState<string | null>(null)
+  const [bridgeError, setBridgeError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isTauri()) return
     appVersion()
       .then(setVersion)
-      .catch((err: unknown) => setVersion(String(err)))
+      .catch((err: unknown) => setBridgeError(String(err)))
   }, [])
 
   return (
@@ -37,12 +44,13 @@ export function NavRail() {
       })}
 
       <div className="nav-rail-footer">
-        {!isTauri() && (
-          <span className="nav-version muted">browser preview</span>
+        {!isTauri() && <span className="nav-version muted">browser preview</span>}
+        {bridgeError !== null && (
+          <span className="nav-version nav-version-error" title={bridgeError}>
+            bridge unavailable
+          </span>
         )}
-        {isTauri() && version !== null && (
-          <span className="nav-version muted">v{version}</span>
-        )}
+        {version !== null && <span className="nav-version muted">v{version}</span>}
       </div>
     </nav>
   )
