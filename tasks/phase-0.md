@@ -32,32 +32,21 @@ Green: `cargo check --workspace`, `cargo fmt --check`, `cargo clippy --all-targe
 
 ---
 
-# T-002: Theme shell + nav rail
-**Depends:** T-001 (done) | **Dir:** `app/`
-**Files:** `app/src/App.tsx`, `app/src/theme.css`, `app/src/views/{Setup,LyricsStudio,AudioStudio,Library,CoverArt}.tsx` (placeholder views), `app/src/state/nav.ts`
+# T-002: Nav rail + five placeholder views
+**Depends:** T-001 (done) | **Dir:** `app/` | **Executor:** Aider
 
-> Starting point: T-001 left `App.tsx` as a one-panel placeholder that calls `bridge/shell.ts` to show the Rust version. Keep that status pill somewhere unobtrusive (or move it into Setup) rather than deleting the only proof the bridge works. `theme.css` already defines the palette, `.app-shell`, `.nav-rail`, `.nav-brand`, `.content-pane`, `.view-title`, `.view-subtitle`, `.panel`, `.muted` and `.status-pill*` — extend it, do not restyle from scratch.
+The full brief lives in **[t-002-brief.md](t-002-brief.md)** -- it is long enough
+(exact SVG primitives, verbatim UX copy, CSS requirements) that keeping it inline
+would bury the rest of the phase. Paste that file into Aider after launching.
 
-## Goal
-Left nav rail switching five placeholder views, styled per the Latent visual language; no routing lib (zustand `nav.ts` holds the active view).
-
-## Spec
-Nav rail: icon+label buttons for Setup, Lyrics, Audio, Library, Cover Art; active state uses the accent colour (`--accent`); views render a titled empty-state panel ("Nothing here yet — finish Setup" style copy). Window min size 1100×700. Every className styled in `theme.css`.
-
-## Acceptance criteria
-- [ ] `npx tsc -b`, `npm run build`, `npm test` green; oxlint clean
-- [ ] vitest: nav store switches views; all five render without crash
-- [ ] No changes outside listed files
-
-## Out of scope
-Any Tauri invoke; any real view content.
-
-## If unclear
-Do not guess. Output numbered questions and stop.
+Summary: nav rail with five buttons driven by a Zustand `useNavStore`, five
+placeholder views with titled empty states, `App.tsx` reduced to a composition
+root with an exhaustive `switch` over `ViewId`, and the T-001 version pill moved
+into the rail footer so the Tauri-bridge proof survives.
 
 ## Aider launch
 ```bash
-aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file app/src/App.tsx --file app/src/theme.css --file app/src/state/nav.ts --file app/src/views/Setup.tsx --file app/src/views/LyricsStudio.tsx --file app/src/views/AudioStudio.tsx --file app/src/views/Library.tsx --file app/src/views/CoverArt.tsx
+aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file app/src/App.tsx --file app/src/theme.css --file app/src/state/nav.ts --file app/src/state/nav.test.ts --file app/src/components/NavRail.tsx --file app/src/components/NavIcon.tsx --file app/src/views/Setup.tsx --file app/src/views/LyricsStudio.tsx --file app/src/views/AudioStudio.tsx --file app/src/views/Library.tsx --file app/src/views/CoverArt.tsx
 ```
 
 ---
