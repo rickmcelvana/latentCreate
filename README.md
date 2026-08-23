@@ -1,5 +1,8 @@
 # latentCreate
 
+[![CI](https://github.com/rickmcelvana/latentCreate/actions/workflows/ci.yml/badge.svg)](https://github.com/rickmcelvana/latentCreate/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 **Open-source desktop app for AI music creation — the front door to the Latent suite.**
 
 latentCreate is a Tauri desktop app that orchestrates the tools people already use to make AI music — ComfyUI (via [Comfy MCP](https://docs.comfy.org/agent-tools/mcp)) for audio/image generation and an LLM of your choice (Ollama, OpenAI-compatible, Anthropic) for lyric writing — behind one clean, professional UI.
@@ -23,6 +26,18 @@ latentCreate is a Tauri desktop app that orchestrates the tools people already u
 | Music generation | Local ComfyUI + `comfy-mcp`, **or** Comfy Cloud MCP (API key) |
 | Lyric writing (optional) | Ollama, any OpenAI-compatible endpoint, OpenAI, Anthropic — or bring your own lyrics. Suggested local models: **Gemma 4 12B**, or 26B/31B if you have the VRAM ([why](docs/MODELS.md)) |
 | Cover art (optional) | Any image model in your ComfyUI |
+
+## Development
+
+```bash
+npm install && npm install --prefix app   # deps (root owns the Tauri CLI)
+npm run dev                               # desktop app (Tauri + Vite)
+npm run gate                              # everything CI runs, in CI's order
+```
+
+Requires Rust stable and Node 20+. `npm run gate` chains `cargo fmt --check`,
+`cargo clippy -D warnings`, `cargo test --workspace`, `tsc -b`, oxlint, vitest and
+`vite build` — a green gate locally means a green pipeline.
 
 ## Status
 

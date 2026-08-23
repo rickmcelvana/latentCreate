@@ -164,16 +164,18 @@ matrix would triple minutes for no signal); `rust` is a matrix with `fail-fast: 
 since cross-platform risk lives on the Tauri side. Concurrency cancels superseded runs;
 `permissions: contents: read`.
 
-**The matrix is event-dependent, because the repo is private.** Discovered right after the
+**Matrix history — was event-dependent, now full again.** Kept here because the reasoning
+recurs whenever a repo's visibility changes: Discovered right after the
 first push: `github.com/rickmcelvana/latentCreate` is private (its Actions page 404s
 publicly), and GitHub bills private-repo minutes with OS multipliers -- **Linux 1x,
 Windows 2x, macOS 10x**, against 2,000 free minutes a month. A three-OS matrix on every
 push charges roughly 60+ minutes per run, exhausting the monthly allowance in about thirty
 pushes. So a tiny `targets` job picks the OS list: everyday pushes to master check Linux
 only; pull requests, tags and `workflow_dispatch` run all three, which is where
-cross-platform breakage actually needs catching. **If the repo goes public** -- it is
-Apache-2.0 and the README is written for publication -- Actions becomes free and unlimited,
-and the `targets` job should be deleted in favour of the plain three-OS list.
+cross-platform breakage actually needs catching. **The owner made the repo public on
+2026-08-23**, so minutes became free and unlimited and the `targets` job was deleted in
+favour of the plain three-OS list on every event (T-005c). Restore the trick only if the
+repo goes private again.
 
 **Also added: `npm run gate`** — one root command chaining the same checks in the same
 order CI uses (`gate:rust` / `gate:app` for halves). This is the direct answer to T-002's
@@ -185,12 +187,10 @@ widely used and permissively licensed; `rust-cache` is what keeps Tauri's depend
 from being rebuilt every run. SHA-pinning them is the stricter option if this repo later
 wants it.
 
-**Push status:** pushed 2026-08-23 (`0dfd5c2..3c8ca9b`, 74 files). The run itself could not
-be observed from here -- the repo is private and `gh` is not installed on this machine, so
-neither the Actions page nor the API is reachable. **Producer check: open the Actions tab
-and confirm the first run is green.** Everything checkable locally is green (`npm run
-gate`), the YAML parses, and the Linux package list matches upstream docs, but runner
-images and action behaviour are only proven by a real run.
+**Push status: pushed and ✅ green.** Pushed 2026-08-23 (`0dfd5c2..3c8ca9b`, 74 files);
+the owner confirmed the first run passed. The Tauri Linux package list and the
+"no frontend build needed for the Rust jobs" finding are therefore both confirmed by a
+real run, not just locally.
 
 ---
 

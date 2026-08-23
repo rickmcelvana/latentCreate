@@ -56,40 +56,20 @@ jobs:
         working-directory: app
         run: npm run build
 
-  # Which OSes the rust job runs on, decided by event.
-  #
-  # This repo is PRIVATE, where GitHub bills included minutes with OS
-  # multipliers: Linux 1x, Windows 2x, macOS 10x, against 2,000 free minutes a
-  # month. A three-OS matrix on every push charges roughly 60+ minutes per run,
-  # which burns the monthly allowance in about thirty pushes. So: everyday
-  # pushes check Linux only, and the full matrix runs where cross-platform
-  # breakage actually needs catching -- pull requests, tags, and on demand.
-  #
-  # If the repo is made public (it is Apache-2.0 and written for publication),
-  # Actions minutes become free and unlimited: delete this job and inline
-  # `os: [ubuntu-latest, windows-latest, macos-latest]` again.
-  targets:
-    name: pick targets
-    runs-on: ubuntu-latest
-    outputs:
-      os: ${{ steps.pick.outputs.os }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" != refs/tags/* ]]; then
-            echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'os=["ubuntu-latest","windows-latest","macos-latest"]' >> "$GITHUB_OUTPUT"
-          fi
-
   rust:
     name: rust (${{ matrix.os }})
-    needs: targets
     runs-on: ${{ matrix.os }}
     strategy:
+      # Report every platform's result: knowing macOS alone is broken is more
+      # useful than one cancelled matrix.
       fail-fast: false
+      # The full matrix runs on every event. This repo is public, so Actions
+      # minutes are free and unlimited -- the private-repo multipliers
+      # (Linux 1x / Windows 2x / macOS 10x against 2,000 monthly minutes) that
+      # once forced an event-dependent matrix no longer apply. Restore that
+      # trick only if the repo ever goes private again.
       matrix:
-        os: ${{ fromJSON(needs.targets.outputs.os) }}
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
