@@ -71,6 +71,15 @@ enumeration. Includes the LoRA list filtering/grouping logic: on the owner's mac
 entries yield ~9 usable ones, `training_state.pt` files are unloadable, and epoch-checkpoint
 series need collapsing (MCP-SURFACE §4).
 
+### T-106b — `minimax-music-3` profile
+**Unblocked 2026-08-23.** Weights are installed and the template validates once
+`37/6.unet_name` is overridden to the int8 DiT (MCP-SURFACE §6). Writing it exercises three
+things the ACE-Step profile does not: **subgraph slot addresses** (`37/...`), a
+**`caption`** input instead of `tags`, and **three seeds plus two duration fields** to fan
+out — the shipped template even has the two durations disagreeing (60 vs 120). Also the
+first profile whose template already uses `SaveAudioAdvanced`, so it proves the save-node
+swap is conditional rather than universal.
+
 ### T-107 — profile loader
 `library` loads shipped `profiles/` plus a user directory, user wins on id collision.
 Validates that a profile's slot addresses exist in its template, and reports which do not.

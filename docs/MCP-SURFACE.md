@@ -85,18 +85,65 @@ The turbo template ends in **`SaveAudioMP3`** at quality **V0**, and `SaveAudioM
 
 For an app whose whole purpose is feeding a mixing/mastering chain, generating lossy MP3 is the wrong default. latentCreate should replace the save node with `SaveAudioAdvanced` writing a lossless format. **Owner-confirmed 2026-08-23:** he swaps this node out of every workflow by habit — so the app doing it automatically removes a manual step that experienced users already know to take, and rescues everyone who does not. Treat lossless output as a correctness requirement, not a preference. Caveat found while verifying: `SaveAudioAdvanced.format` is typed `COMFY_DYNAMICCOMBO_V3` with `is_link: true` — a dynamic combo, not a static enum, so setting it is not a plain string write. **Open item for Phase 3:** determine how to set a V3 dynamic combo through `set_workflow_slot`, or whether the save node must be swapped by graph edit.
 
-## 6. MiniMax Music 3 — template confirmed, weights absent here
+## 6. MiniMax Music 3 — installed, and runnable with one slot change
 
-`audio_minimax_music_3` exists as a **native, non-API (free/local) template**, dated **2026-08-13**, `open_source: true`, 1387 uses — confirming the owner's recollection.
+`audio_minimax_music_3` is a **native, non-API (free/local) template**, dated **2026-08-13**,
+`open_source: true`. Weights were installed on 2026-08-23 (all three files):
 
-It is **not runnable on this machine**: `local_check` reports 3 missing model options —
-- `minimax_music3_dit_fp16.safetensors` (diffusion_models)
-- `minimax_music3_text_encoder_pruned_int8_convrot.safetensors` (text_encoders)
-- `minimax_music3_dav.safetensors` (vae)
+| File | Folder |
+|---|---|
+| `minimax_music3_dit_int8_convrot.safetensors` | `diffusion_models` |
+| `minimax_music3_text_encoder_pruned_int8_convrot.safetensors` | `text_encoders` |
+| `minimax_music3_dav.safetensors` | `vae` |
 
-What *is* installed is MiniMax **H3**, the video model (`minimax_h3_fl2va_*`, `minimax_h3_video_vae_*`, plus an H3 audio VAE and two H3 video LoRAs) — a different model that happens to share the brand. So Music 3 was presumably run on the owner's other PC.
+**The template still fails `local_check` out of the box**, with exactly one error: it
+hardcodes `minimax_music3_dit_fp16.safetensors` in `37/6.unet_name`, and the **int8** DiT
+is what is installed. Fixing it is a one-slot change, verified end to end:
 
-Two caveats before concluding anything: ComfyUI core is **outdated** here (v0.33.2 vs v0.33.3), and `local_check` also emitted `COMFY_MATCHTYPE_V3` type-mismatch warnings, both consistent with a gallery template newer than the install. **Update ComfyUI first, then re-check** before treating the missing pieces as the whole story. Writing the `minimax-music-3` profile needs a machine where it actually runs.
+```
+fetch_template -> set_workflow_slot("37/6.unet_name",
+                    "minimax_music3_dit_int8_convrot.safetensors")
+              -> validate_workflow  =>  valid: true, 0 errors
+```
+
+**This is the profile mechanism earning its keep.** A profile carries the slot override, so
+a user running the int8 weights never sees the mismatch. Generalise it: a profile may pin
+*which* checkpoint variant it targets, and `local_check` failing on a filename is not the
+same as a missing model. (The fp16 DiT can be installed too if a quality comparison is
+wanted; nothing in the design depends on which is present.)
+
+Three residual `COMFY_MATCHTYPE_V3` warnings remain (`ComfySwitchNode`'s wildcard type
+against `AUDIO`). They predate the fix, do not block validation, and appear to be a
+validator limitation around match-any types rather than a real wiring fault. **Not yet
+proven by an actual run** — no generation has been executed.
+
+### 6a. MiniMax slot surface — differs from ACE-Step in ways the profile schema must absorb
+From `list_workflow_slots` (25 slots). First real example of **subgraph addressing**:
+everything lives under instance `37`, so addresses take the `A/B.name` form.
+
+| Slot | Note |
+|---|---|
+| `37/13.caption` | ⚠ **`caption`, not `tags`** — `MiniMaxMusic3TextEncode` |
+| `37/13.lyrics` | lyrics |
+| `37/13.max_duration` | **60** in the shipped template |
+| `37/15.seconds` | **120** — ⚠ the two duration fields **disagree as shipped** |
+| `37/13.seed`, `37/9.seed`, `37/38.seed` | ⚠ **three** independent seeds (text-encode, sampler, `SeedNode`) |
+| `37/13.cfg_scale` / `37/9.cfg` | both 1.7 — duplicated |
+| `37/9.steps` | 30 |
+| `37/13.top_k` | 50 |
+| `37/43.switch` | BOOLEAN — tiled vs plain VAE decode |
+| `35.filename_prefix` | **`SaveAudioAdvanced`** |
+
+Two consequences:
+
+1. **The lossy-MP3 problem is ACE-Step-specific, not universal.** MiniMax's template already
+   ends in `SaveAudioAdvanced`. So the pipeline's save-node swap (ARCHITECTURE §7) must be
+   **conditional on what the template already does**, not applied blindly — profiles say
+   what output they want, and the pipeline only intervenes when the template disagrees.
+2. **Fan-out is worse than ACE-Step, and the shipped defaults are inconsistent.** Three
+   seeds and two duration fields that ship *disagreeing* (60 vs 120) is precisely the
+   confusion the app exists to hide. One duration control and one seed control, fanned out
+   by the profile.
 
 ## 7. Verification status of earlier assumptions
 
@@ -108,5 +155,6 @@ Two caveats before concluding anything: ComfyUI core is **outdated** here (v0.33
 | LoRA enumeration via node registry | ✅ confirmed via `nodes(action="get")` |
 | LoRA loader is a custom ACE-Step node | ❌ wrong — core `LoraLoaderModelOnly` |
 | ACE-Step supports negative prompts | ❌ wrong for 1.5 turbo — no negative input |
-| MiniMax Music 3 has a native ComfyUI template | ✅ confirmed |
+| MiniMax Music 3 has a native ComfyUI template | ✅ confirmed, and **runnable** after one slot override (§6) |
+| The save-node swap is needed for every model | ❌ wrong — MiniMax already uses `SaveAudioAdvanced`; the swap must be conditional (§6a) |
 | ACE-Step turbo runs on consumer hardware here | ✅ `runnable: true` on a 16 GB card |
