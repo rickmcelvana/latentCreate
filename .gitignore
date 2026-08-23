@@ -1,0 +1,25 @@
+# Rust
+/target
+**/target
+
+# Node
+node_modules/
+app/dist/
+app/.vite/
+
+# Tauri build output
+src-tauri/gen/
+src-tauri/target/
+
+# Local env / editor
+.env
+.env.local
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# App runtime data must never be committed (may contain user prompts/keys)
+/local-appdata/
+*.log
