@@ -2,6 +2,8 @@
 
 Snapshot of external facts the architecture depends on. Re-verify anything here before building against it (the MCP surface especially is young and moving).
 
+> ⚠ **Superseded in part.** Section 1 below was written from the *cloud* MCP docs. On 2026-08-23 the **local** comfy-mcp was inspected directly and its tool surface differs materially. For anything about tool names, slots, LoRAs, or the ACE-Step/MiniMax templates, **[MCP-SURFACE.md](MCP-SURFACE.md) is the authority**; this file remains the record of the pre-verification research.
+
 ## 1. Comfy MCP (docs.comfy.org/agent-tools/mcp)
 
 Two deployments, one tool surface:

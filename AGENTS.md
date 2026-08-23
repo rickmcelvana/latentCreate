@@ -5,13 +5,14 @@
 2. [ARCHITECTURE.md](ARCHITECTURE.md) — system design and interface contracts. Never change silently.
 3. [WORKFLOW.md](WORKFLOW.md) — how tasks are written, executed (Aider + `ollama_chat/kimi-k2.7-code:cloud`), reviewed, and merged.
 4. [CONVENTIONS.md](CONVENTIONS.md) — code standards. Fed to Aider with `--read` on every run.
+4b. [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — **verified** comfy-mcp tool names, slot addresses, LoRA and template facts. Authoritative over docs/RESEARCH.md and over any model documentation. Read before touching `mcp-bridge` or writing a model profile.
 5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only on green (fmt/clippy/test/tsc/build).
 - Ship no models. All generation goes through the user's ComfyUI (Comfy MCP) or their API keys.
 - Never modify user prompt/lyric text without an explicit accept step. Every generated asset gets a provenance sidecar. Deletes go to OS trash.
-- Verify third-party API surfaces (rmcp, comfy-mcp tools, provider APIs) against live docs/source before writing briefs — not from memory. comfy-mcp schemas: enumerate via `tools/list` (see docs/RESEARCH.md §1).
+- Verify third-party API surfaces (rmcp, provider APIs) against live docs/source before writing briefs — not from memory. For comfy-mcp, docs/MCP-SURFACE.md holds the verified names/slots; re-check against the live server rather than trusting the cloud documentation, which names different tools.
 - End every session by updating PROJECT.md's session log; doc updates land in the same commit as the behavior change they describe.
 
 **Comfy MCP for agent sessions:** local server registers with Claude Code via `claude mcp add comfy-mcp -- comfy-mcp` (requires `pip install comfy-mcp` and a ComfyUI install). Useful for live verification from Phase 1 on; never required for unit tests (mock transports only — WORKFLOW §5).
