@@ -217,7 +217,7 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-004b: config bridge, Zustand store, and a cross-language wire fixture
+# T-004b: config bridge, Zustand store, and a cross-language wire fixture — ✅ **DONE 2026-08-23**
 **Depends:** T-004 | **Dirs:** `app/`, one test in `crates/library` | **Executor:** Aider
 
 Full brief: **[t-004b-brief.md](t-004b-brief.md)**. Paste it into Aider after launching.
@@ -232,6 +232,30 @@ runtime with a confusing error.
 Rust test and a TypeScript test. Rename a field on either side and a build breaks, so the
 two languages cannot drift apart unnoticed. Generating TS from Rust would be stronger, but
 this costs one file and catches the realistic failure.
+
+## Outcome (2026-08-23) — commit `cee9353`
+**Aider result: PASS with one brief defect found.** The run was faithful, and it stopped
+short of guessing at the single problem it hit, flagging it instead — the "if unclear, do
+not guess" footer working as intended. Its diagnosis was wrong but its instinct was right.
+
+**The brief's flaw:** it assumed importing the JSON fixture would type-check against
+`LoadedConfig`. It does not — TypeScript **widens JSON literals to `string`**, so the
+import can never satisfy the `ComfyMode`/`LlmProvider` unions, and therefore proved nothing
+about the TypeScript types. `resolveJsonModule` (Aider's suggested fix) was irrelevant; the
+import resolved fine and no tsconfig change was needed.
+
+**Fix:** declare the fixture with literal types inside the test, and assert it deep-equals
+the shared JSON file. Compile-time checking is restored and the JSON stays the single
+source of truth, for the price of one assertion.
+
+**The guard was then verified, not assumed.** Renaming a field in the shared fixture was
+confirmed to fail *both* the Rust test (with a message naming the fix) and the TypeScript
+test; the fixture was then restored and the gate re-run green. A drift guard nobody has
+seen fail is just a comment.
+
+**Lesson for briefs:** when a mechanism is meant to *catch* something, the brief should say
+how to prove it catches it. "Import the fixture" was a mechanism; "make a rename fail both
+builds" is the invariant — the same distinction that bit T-003's seed test.
 
 ## Aider launch
 ```bash
