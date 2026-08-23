@@ -217,12 +217,26 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-004b: config bridge + store (brief pending)
-**Depends:** T-004 | **Dir:** `app/` | **Executor:** Aider
+# T-004b: config bridge, Zustand store, and a cross-language wire fixture
+**Depends:** T-004 | **Dirs:** `app/`, one test in `crates/library` | **Executor:** Aider
 
-`app/src/bridge/config.ts` (typed wrappers over the five commands) and
-`app/src/state/config.ts` (Zustand store: config, warnings, load/save). Vitest against a
-mocked bridge — no jsdom. Briefed once T-004's command surface is reviewed.
+Full brief: **[t-004b-brief.md](t-004b-brief.md)**. Paste it into Aider after launching.
+
+The wire format was **dumped from the running Rust types**, not inferred. That caught a
+trap worth knowing about: `LlmProvider::OpenAiCompat` serialises as **`"open_ai_compat"`**
+and `OpenAi` as **`"open_ai"`** — serde splits on every capital, so the natural guesses
+(`openai`, `openaiCompat`) are silently wrong, and a wrong string here fails only at
+runtime with a confusing error.
+
+**The design idea worth keeping:** `testdata/wire/loaded-config.json` is read by *both* a
+Rust test and a TypeScript test. Rename a field on either side and a build breaks, so the
+two languages cannot drift apart unnoticed. Generating TS from Rust would be stronger, but
+this costs one file and catches the realistic failure.
+
+## Aider launch
+```bash
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file testdata/wire/loaded-config.json --file app/src/bridge/config.ts --file app/src/state/config.ts --file app/src/state/config.test.ts --file crates/library/src/config.rs
+```
 
 ---
 
