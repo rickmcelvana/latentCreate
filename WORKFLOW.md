@@ -76,7 +76,7 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 3. No `unwrap()`/`expect()` on I/O or network paths; errors typed per crate.
 4. Third-party API surfaces (rmcp, Tauri, comfy-mcp tool schemas, provider APIs) were verified against real docs/source in the brief — never from model memory.
 5. Frontend: every new `className` has a rule in `theme.css`; `invoke`/`listen` only inside `app/src/bridge/`.
-6. Secrets: nothing key-like written to config.json, logs, or provenance sidecars.
+6. Secrets: nothing key-like written to config.json, logs, or provenance sidecars, **and no Tauri command returns a secret value** — the webview learns only whether a secret exists (T-004). Secret names arriving from the frontend are checked against a closed whitelist before touching the keychain.
 7. Naming/units per CONVENTIONS.md; no TODO comments (backlog goes to PROJECT.md).
 8. **Run the gate yourself before believing the diff.** T-002 arrived structurally correct and did not compile; a plausible-looking diff is not evidence of a green build.
 9. Frontend types: no global `JSX` namespace (React 19 removed it -- use `ReactElement`); DOM boolean attributes are booleans, not `'true'`/`'false'` strings.

@@ -162,31 +162,45 @@ aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW
 
 ---
 
-# T-004: Config store + keychain
-**Depends:** T-003 | **Crate:** `crates/library` (+ `src-tauri` wiring)
-**Files:** `crates/library/src/{lib.rs,config.rs}`, `src-tauri/src/lib.rs`, `app/src/bridge/config.ts`, `app/src/state/config.ts`
+# T-004: config store, OS-keychain secrets, and Tauri commands
+**Depends:** T-003b | **Crates:** `crates/library`, `src-tauri` | **Executor:** Aider
 
-## Goal
-Load/save `config.json` in the app data dir (non-secret settings: comfy mode local/cloud, endpoints, chosen provider, chosen profiles); secrets via `keyring` behind `set_secret(name)/get_secret(name)` — with Tauri commands + typed bridge wrappers + zustand config store.
+Full brief: **[t-004-brief.md](t-004-brief.md)**. Paste it into Aider after launching.
 
-## Spec
-Atomic writes (temp file + rename). Missing/corrupt config → defaults + non-fatal warning event, never a crash. Bridge exposes `loadConfig()`, `saveConfig(patch)`, `setSecret(name, value)`, `hasSecret(name)` — secret *values* never cross to the frontend after being set. Architect pre-derives the keyring + atomic-write reference code in this brief before launch (WORKFLOW §1).
+**Split:** the TypeScript bridge and Zustand store move to **T-004b**, so a Rust review is
+not mixed with a TypeScript one.
 
-## Acceptance criteria
-- [ ] `cargo test -p library`: roundtrip, corrupt-file recovery, atomic write (tempdir tests)
-- [ ] vitest: config store hydrates from mocked bridge
-- [ ] Secrets absent from config.json in tests; clippy/fmt/tsc clean
+Three things were verified on the machine before the brief was written, rather than
+recalled (CONVENTIONS: never write a third-party surface from memory):
+1. **`keyring` 4.1.6 API** — `Entry::new` / `set_password` / `get_password` /
+   `delete_credential`, compiled **and executed** against the real Windows Credential
+   Manager: set/get/delete round-trips.
+2. **The feature-flag trap** — defaults are `v1` + `windows-native-keyring-store` +
+   `zbus-secret-service-keyring-store`; **macOS is not a default**, so without
+   `apple-native-keyring-store` a mac build compiles and then has no store at runtime.
+   This would have failed as a mystery bug on someone else's machine, not in CI.
+3. **Atomic replace on Windows** — `write tmp -> sync_all -> fs::rename` over an existing
+   file replaces contents and consumes the temp.
 
-## Out of scope
-Any UI; any real service validation.
-
-## If unclear
-Numbered questions, stop.
+Two security decisions baked into the brief: secret names from the frontend are checked
+against a **closed whitelist** (otherwise a buggy webview could write arbitrary keychain
+entries), and **there is no `get_secret` command** — secret values never cross into the
+webview; Rust reads them when building an outbound request, and the UI only learns whether
+one exists.
 
 ## Aider launch
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/library/src/lib.rs --file crates/library/src/config.rs --file src-tauri/src/lib.rs --file app/src/bridge/config.ts --file app/src/state/config.ts
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/library/Cargo.toml --file crates/library/src/lib.rs --file crates/library/src/config.rs --file crates/library/src/secrets.rs --file src-tauri/src/lib.rs
 ```
+
+---
+
+# T-004b: config bridge + store (brief pending)
+**Depends:** T-004 | **Dir:** `app/` | **Executor:** Aider
+
+`app/src/bridge/config.ts` (typed wrappers over the five commands) and
+`app/src/state/config.ts` (Zustand store: config, warnings, load/save). Vitest against a
+mocked bridge — no jsdom. Briefed once T-004's command surface is reviewed.
 
 ---
 
