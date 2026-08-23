@@ -13,12 +13,26 @@
 ```
 Architect writes brief (tasks/phase-N.md, one T-number) incl. "Aider launch" command block
   → producer: copy-paste the launch command as-is
-  → paste brief → Aider implements → checks green → commit "T-0XX: <title>"
+  → paste brief → Aider implements (working tree only, --no-auto-commits)
+  → producer runs the green gate → architect reviews → commit "T-0XX: <title>"
   → Architect reviews `git diff` against brief (checklist §4)
   → PASS → merge; FAIL → fix-up brief (T-0XXb) with its own launch command → repeat
   → UI/integration tasks: producer click-through per the brief's manual-verify list
 ```
 Keep runs ≤ ~400 lines of diff; bigger scope = split the brief. **Green gate:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `npx tsc -b`, `npm test`, and `npm run build` when `app/` changed. Commit only on green.
+
+**Executors do not commit (learned on T-002, 2026-08-23).** Aider's first run in
+this repo auto-committed twice while `tsc -b` was failing with 6 errors, so the
+"commit only on green" rule was bypassed by the tool before any human or
+architect saw the diff. Every launch command therefore carries
+**`--no-auto-commits`**: the executor edits the working tree, the producer runs
+the gate, and the commit happens after review with a `T-0XX:` message. A red
+commit costs more to unpick than it saves.
+
+**Executors do not decide line endings either.** That same run rewrote all 11
+files as CRLF, turning an 11-line CSS addition into a 336-line diff and burying
+the actual change. `.gitattributes` now pins `* text=auto eol=lf`. When a diff
+looks impossibly large, check `file -b` before reading it as a rewrite.
 
 ## 3. Task brief template
 ```markdown
@@ -50,7 +64,7 @@ Do not guess. Output a numbered list of questions and stop.
 
 ## Aider launch
 ```bash
-aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file <exact files>
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file <exact files>
 ```
 ```
 
@@ -62,6 +76,9 @@ aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENT
 5. Frontend: every new `className` has a rule in `theme.css`; `invoke`/`listen` only inside `app/src/bridge/`.
 6. Secrets: nothing key-like written to config.json, logs, or provenance sidecars.
 7. Naming/units per CONVENTIONS.md; no TODO comments (backlog goes to PROJECT.md).
+8. **Run the gate yourself before believing the diff.** T-002 arrived structurally correct and did not compile; a plausible-looking diff is not evidence of a green build.
+9. Frontend types: no global `JSX` namespace (React 19 removed it -- use `ReactElement`); DOM boolean attributes are booleans, not `'true'`/`'false'` strings.
+10. Zustand: subscribe with a selector, never the bare store, or the component re-renders on every unrelated state change.
 
 ## 5. Verification against live services
 Unit tests must not require a running ComfyUI/LLM. Rules:

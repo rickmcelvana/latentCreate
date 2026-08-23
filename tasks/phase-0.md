@@ -32,7 +32,7 @@ Green: `cargo check --workspace`, `cargo fmt --check`, `cargo clippy --all-targe
 
 ---
 
-# T-002: Nav rail + five placeholder views
+# T-002: Nav rail + five placeholder views — ✅ **DONE 2026-08-23** (needed T-002b)
 **Depends:** T-001 (done) | **Dir:** `app/` | **Executor:** Aider
 
 The full brief lives in **[t-002-brief.md](t-002-brief.md)** -- it is long enough
@@ -46,8 +46,35 @@ into the rail footer so the Tauri-bridge proof survives.
 
 ## Aider launch
 ```bash
-aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file app/src/App.tsx --file app/src/theme.css --file app/src/state/nav.ts --file app/src/state/nav.test.ts --file app/src/components/NavRail.tsx --file app/src/components/NavIcon.tsx --file app/src/views/Setup.tsx --file app/src/views/LyricsStudio.tsx --file app/src/views/AudioStudio.tsx --file app/src/views/Library.tsx --file app/src/views/CoverArt.tsx
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file app/src/App.tsx --file app/src/theme.css --file app/src/state/nav.ts --file app/src/state/nav.test.ts --file app/src/components/NavRail.tsx --file app/src/components/NavIcon.tsx --file app/src/views/Setup.tsx --file app/src/views/LyricsStudio.tsx --file app/src/views/AudioStudio.tsx --file app/src/views/Library.tsx --file app/src/views/CoverArt.tsx
 ```
+
+## Outcome (2026-08-23)
+**Aider result: FAIL on first pass, repaired in T-002b (commit `6e20244`).**
+
+What Aider got right: the store shape, all five views with verbatim copy, icons
+faithful to the brief's coordinates, correct CSS rules using only custom
+properties, no new dependencies, no files touched outside the list.
+
+What failed:
+1. `App.tsx` used `JSX.Element` — React 19 removed the global `JSX` namespace (TS2503).
+2. `NavIcon`'s shared props typed `aria-hidden`/`focusable` as strings, which do not
+   satisfy React's `Booleanish` (TS2322 × 5).
+3. It **committed twice anyway**, with `npm run build` exiting 2 and messages that
+   ignored the `T-0XX:` convention.
+4. It rewrote all 11 files as CRLF, so an 11-line CSS addition diffed as 336 lines.
+
+Also repaired in T-002b (not Aider's fault — brief-level gaps): a failed
+`appVersion()` rendered as `v<error text>`; both components subscribed to the whole
+Zustand store; `.nav-item`'s `transition: var(--transition)` expanded to `all`.
+
+**Process changes:** all launch commands now pass `--no-auto-commits`;
+`.gitattributes` pins `eol=lf`; WORKFLOW §2/§4 record both plus the React-19 and
+Zustand-selector traps for future reviews.
+
+**Verified** in the browser pane with transitions disabled (they never advance
+there): active item alone has accent border + bright text + accent icon, rail 208px,
+no overflow, click switches heading and moves `aria-current`, fresh-tab console clean.
 
 ---
 
@@ -74,7 +101,7 @@ Numbered questions, stop.
 
 ## Aider launch
 ```bash
-aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/create-core/src/lib.rs --file crates/create-core/src/project.rs --file crates/create-core/src/generation.rs --file crates/create-core/src/profile.rs --file crates/create-core/src/provenance.rs --file profiles/ace-step-1.5.json
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/create-core/src/lib.rs --file crates/create-core/src/project.rs --file crates/create-core/src/generation.rs --file crates/create-core/src/profile.rs --file crates/create-core/src/provenance.rs --file profiles/ace-step-1.5.json
 ```
 
 ---
@@ -102,7 +129,7 @@ Numbered questions, stop.
 
 ## Aider launch
 ```bash
-aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/library/src/lib.rs --file crates/library/src/config.rs --file src-tauri/src/lib.rs --file app/src/bridge/config.ts --file app/src/state/config.ts
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file crates/library/src/lib.rs --file crates/library/src/config.rs --file src-tauri/src/lib.rs --file app/src/bridge/config.ts --file app/src/state/config.ts
 ```
 
 ---
@@ -119,7 +146,7 @@ GitHub Actions: on push/PR — `cargo fmt --check`, `cargo clippy --all-targets 
 
 ## Aider launch
 ```bash
-aider --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --file .github/workflows/ci.yml
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --file .github/workflows/ci.yml
 ```
 
 ---
