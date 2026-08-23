@@ -1,0 +1,157 @@
+{
+  "id": "ace-step-1.5-turbo",
+  "display_name": "ACE-Step 1.5 XL Turbo",
+  "kind": "music",
+  "license": "Apache-2.0",
+  "license_notes": "Weights are Apache-2.0; no attribution requirement for output.",
+  "comfy": {
+    "template": "audio_ace_step1_5_xl_turbo",
+    "workflow": null,
+    "vram_gb_min": 8,
+    "output": { "save_node": "SaveAudioAdvanced", "prefer_lossless": true }
+  },
+  "loras": {
+    "loader_node": "LoraLoaderModelOnly",
+    "attach_after": "104",
+    "folder": "loras",
+    "strength": { "min": 0.0, "max": 2.0, "default": 1.0, "step": 0.05 },
+    "max_stack": 4
+  },
+  "inputs": {
+    "tags": {
+      "type": "text",
+      "slots": ["94.tags"],
+      "label": "Style tags"
+    },
+    "lyrics": {
+      "type": "lyrics",
+      "slots": ["94.lyrics"],
+      "structure_tags": ["[Verse]", "[Chorus]", "[Bridge]", "[Outro]", "[inst]"],
+      "label": "Lyrics"
+    },
+    "negative": {
+      "type": "unsupported",
+      "reason": "TextEncodeAceStepAudio1.5 exposes no negative input, and turbo runs at cfg 1 where one would have no effect."
+    },
+    "duration_s": {
+      "type": "float",
+      "slots": ["94.duration", "98.seconds"],
+      "min": 10.0,
+      "max": 300.0,
+      "default": 120.0,
+      "step": 1.0,
+      "label": "Duration (s)"
+    },
+    "seed": { "type": "seed", "slots": ["94.seed", "3.seed"] },
+    "bpm": {
+      "type": "int",
+      "slots": ["94.bpm"],
+      "min": 10,
+      "max": 300,
+      "default": 120,
+      "label": "BPM"
+    },
+    "keyscale": {
+      "type": "enum",
+      "slots": ["94.keyscale"],
+      "from_node_choices": true,
+      "label": "Key"
+    },
+    "timesignature": {
+      "type": "enum",
+      "slots": ["94.timesignature"],
+      "from_node_choices": true,
+      "label": "Time signature"
+    },
+    "language": {
+      "type": "enum",
+      "slots": ["94.language"],
+      "from_node_choices": true,
+      "label": "Language"
+    },
+    "steps": {
+      "type": "int",
+      "slots": ["3.steps"],
+      "min": 1,
+      "max": 100,
+      "default": 8,
+      "label": "Steps",
+      "advanced": true
+    },
+    "shift": {
+      "type": "float",
+      "slots": ["78.shift"],
+      "min": 0.0,
+      "max": 10.0,
+      "default": 3.0,
+      "step": 0.1,
+      "label": "Shift",
+      "advanced": true
+    },
+    "planner": {
+      "type": "group",
+      "label": "Planner sampling",
+      "advanced": true,
+      "members": {
+        "cfg_scale": {
+          "type": "float",
+          "slots": ["94.cfg_scale"],
+          "min": 0.0,
+          "max": 100.0,
+          "default": 2.0,
+          "step": 0.1
+        },
+        "temperature": {
+          "type": "float",
+          "slots": ["94.temperature"],
+          "min": 0.0,
+          "max": 2.0,
+          "default": 0.85,
+          "step": 0.01
+        },
+        "top_p": {
+          "type": "float",
+          "slots": ["94.top_p"],
+          "min": 0.0,
+          "max": 2000.0,
+          "default": 0.9,
+          "step": 0.01
+        },
+        "top_k": {
+          "type": "int",
+          "slots": ["94.top_k"],
+          "min": 0,
+          "max": 100,
+          "default": 0
+        },
+        "min_p": {
+          "type": "float",
+          "slots": ["94.min_p"],
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "step": 0.001
+        }
+      }
+    }
+  },
+  "lyrics_contract": {
+    "format": "structure-tagged",
+    "languages_from": "94.language",
+    "instrumental_token": "[inst]",
+    "notes": "Short tag combinations beat prose. Vocal-style cues (e.g. 'deep male voice') belong in tags, not lyrics."
+  },
+  "prompt_guide": {
+    "tag_style": "comma-separated short tags",
+    "examples": [
+      {
+        "tags": "synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm",
+        "lyrics": "[Verse]\nNeon on the dashboard, midnight in the rain\n[Chorus]\nDrive until the morning takes the weight away"
+      },
+      {
+        "tags": "melancholic indie folk, acoustic guitar, soft male vocal, intimate, slow tempo",
+        "lyrics": null
+      }
+    ]
+  }
+}

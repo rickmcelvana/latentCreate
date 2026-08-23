@@ -1,7 +1,13 @@
 //! Domain types shared across latentCreate.
 //!
-//! Pure data: `Project`, `Track`, `LyricDoc`, `GenerationSpec`, `ModelProfile`,
-//! `Provenance`. No I/O, no async. Populated by T-003.
+//! Pure data: no I/O, no async, no file loading -- that is `library`'s job.
+//!
+//! [`profile`] holds the model capability schema (T-003), the abstraction the whole
+//! app is built on: supporting a new music model is a JSON file, not code.
+//! `Project`, `LyricDoc`, `Track`, `GenerationSpec` and `Provenance` arrive in T-003b.
+
+pub mod profile;
+pub use profile::*;
 
 #[cfg(test)]
 mod tests {
