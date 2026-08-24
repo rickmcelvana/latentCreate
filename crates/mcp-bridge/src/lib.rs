@@ -6,10 +6,12 @@
 
 mod error;
 mod local;
+mod templates;
 mod types;
 
 pub use error::ComfyError;
 pub use local::{with_timeout, LocalComfy};
+pub use templates::{FetchedTemplate, LocalCheck, TemplateDetail, TemplateInfo, TemplateSearch};
 pub use types::{ServerInfo, SystemStats};
 
 #[cfg(test)]

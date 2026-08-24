@@ -168,3 +168,31 @@ to rename `workflow_path` → `path` fails that test and no other.
 **Carry forward:** mutation-testing the two or three tests a task actually turns on has now
 paid three times — it caught a test that passed for the wrong reason in T-102's own brief,
 and confirmed both `is_error` guards and this one. It costs one edit and one `cargo test`.
+
+### 2026-08-24 — T-103 split and T-103a landed
+
+T-103's six tools were captured live in one pass (**MCP-SURFACE §9**) and the task split in
+two, since six wrappers exceeds the ~400-line rule. T-103a (templates) is in; T-103b (slots,
+writes, validation, notes) is fully researched and briefable without further live work.
+
+**The fmt rule from T-102 held.** The reference code I shipped was `cargo fmt`-clean and the
+run's only formatting failure was in a test body Aider composed itself — a much smaller
+surface than the three prior runs.
+
+Review found two gaps, both mine:
+
+1. **`LocalCheck` did not survive its own round trip.** It reads comfy-mcp's
+   `checked`/`runnable` but serialises a `state` tag for the frontend, so
+   `Some(true)` → serialise → deserialise gave **`None`, silently** — the tri-state
+   misreporting its own output, which is the exact failure it exists to prevent. Latent
+   today, but CONVENTIONS requires boundary types to round-trip their fixtures (the T-004b
+   pattern) and T-110 will mirror this one in TypeScript. `RawLocalCheck` now accepts both
+   shapes, with a test across all three arms.
+2. **`get_template` and `TemplateDetail` shipped untested** — my brief listed eight tests and
+   none touched them. Covered now, including that a `get_template` row has no `api` field and
+   must default rather than fail the decode.
+
+**Carry forward:** when a type deserialises from one shape and serialises to another — which
+`#[serde(from = ...)]` plus `#[serde(tag = ...)]` guarantees — assume it does not round-trip
+until a test says otherwise. And check the brief's own test list against the public surface
+it added: both times now, the untested thing was the one the test list simply forgot.

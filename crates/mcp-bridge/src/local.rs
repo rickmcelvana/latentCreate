@@ -123,20 +123,18 @@ pub async fn with_timeout<T>(
 }
 
 #[cfg(test)]
-mod transport_tests {
-    use serde_json::json;
+pub(crate) mod test_helpers {
     use tokio::io::duplex;
 
     use crate::mock::{spawn_mock, RecordedCalls, Reply};
-    use crate::types::ServerInfo;
     use crate::LocalComfy;
 
-    async fn client_with(replies: Vec<Reply>) -> LocalComfy {
+    pub async fn client_with(replies: Vec<Reply>) -> LocalComfy {
         client_and_log(replies).await.0
     }
 
     /// Same, but keeps the record of what the client sent.
-    async fn client_and_log(replies: Vec<Reply>) -> (LocalComfy, RecordedCalls) {
+    pub async fn client_and_log(replies: Vec<Reply>) -> (LocalComfy, RecordedCalls) {
         let (client_half, peer_half) = duplex(8 * 1024);
         let recorded = spawn_mock(peer_half, replies);
         let client = LocalComfy::from_transport(client_half)
@@ -144,6 +142,15 @@ mod transport_tests {
             .expect("handshake over duplex");
         (client, recorded)
     }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use serde_json::json;
+
+    use crate::local::test_helpers::{client_and_log, client_with};
+    use crate::mock::Reply;
+    use crate::types::ServerInfo;
 
     #[tokio::test]
     async fn test_handshake_completes_over_a_duplex_transport() {
