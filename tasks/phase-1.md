@@ -77,7 +77,7 @@ log. This task delivers the **session log and redaction**: an append-only NDJSON
 and outcome. **Split** from the original T-102b (which also bundled stderr capture) to stay
 under the ~400-line rule. **T-102c** takes stderr capture + free-text redaction.
 
-### T-102c — stderr capture + free-text redaction  — ⚠ **NO BRIEF YET**
+### T-102c — stderr capture + free-text redaction  — 📝 **BRIEFED** ([brief](t-102c-brief.md))
 The second half of the original T-102b: CONVENTIONS requires `comfy-mcp`'s stderr captured to
 the session log. `LocalComfy::connect` currently inherits stderr, so comfy-mcp's diagnostics
 go to the app console and are lost in a packaged build. `TokioChildProcess::new` discards the
@@ -87,7 +87,9 @@ stderr handle and defaults it to `Stdio::inherit()`; capturing it means switchin
 (aborted on `shutdown`). **Mechanism verified against the rmcp 3.1.4 source this session**, so
 this brief can be written without re-verification. Also adds `redact_line` (free-text redaction
 for stderr and non-JSON error messages) and `log_stderr`, and swaps `redact_text_or_json`'s
-raw fallback for `redact_line`.
+raw fallback for `redact_line`. Folds in the **transport-abort mock case** (`Reply::Hangup`)
+noted at the T-102b review — it exercises `call`'s transport-fault branch, which was the one
+untested path in T-102b.
 
 ### T-103 — templates and slots  — **split in two; six tools is over the ~400-line limit**
 All six surfaces were captured live on 2026-08-24 before either brief: **MCP-SURFACE §9**.
