@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 55 offline tests) but nothing is wired to the UI yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-104** (job lifecycle + event pump) — the `ComfyBackend` trait decision is made (deferred again, decisions log 2026-08-24); T-104 is split into T-104a (job wrappers) + T-104b (Tauri pump), both blocked on a "Before T-104a" live capture of the run/job/fetch success shapes (MCP-SURFACE §10).
+- **Next up:** **T-104a** (job lifecycle wrappers — briefed, ready to run) then **T-104b** (Tauri managed state + event pump). The `ComfyBackend` trait is deferred (decisions log 2026-08-24); the run/job/fetch success shapes are captured (MCP-SURFACE §10).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -437,3 +437,28 @@ the two ways to satisfy it named.
 **Carry forward:** "fast-fail capture" presumed the failure happened at execution, where a
 `prompt_id` would still exist. It happened at validation instead — a reminder that the shape of a
 tool's failure is itself part of the surface to verify, not assume.
+
+### 2026-08-24 — success shapes captured; T-104a briefed
+
+Owner green-lit the capture; I ran a real short ACE-Step 1.5 turbo generation (duration set to
+10 s via `set_workflow_slot`) and captured the full run→poll→cancel→fetch path with an actual MP3.
+Recorded in **MCP-SURFACE §10.3–10.6**, and [tasks/t-104a-brief.md](tasks/t-104a-brief.md) written
+with the shapes folded in. Verified the reference code in the throwaway crate (35 tests, 9 new,
+`cargo fmt`/clippy-clean) — and this time copied it verbatim from the post-`cargo fmt` file, so the
+recurring fmt defect should not recur.
+
+Three shapes worth carrying forward, each the kind of thing a model card would get wrong:
+
+1. **Terminal status is `"completed"`, not `"success"`.** Also, the status shape carries **no
+   `progress`/`total` number** on comfy-cli 1.16.0 — T-104b's pump polls `status` + `outputs`, not
+   a percentage.
+2. **`run_workflow`'s result is an envelope**, not a bare id: `{workflow, status:"queued",
+   prompt_id, client_id, outputs, elapsed_seconds, host, port, state_file, watcher_spawned}`.
+   `prompt_id` is the handle; `state_file` is what `fetch_outputs` reads back.
+3. **`job(action="cancel")` is racy** — with the model cached, a second run completed before the
+   cancel landed, so there is no `"cancelled"` status to rely on; the app reads `found`/
+   `queue_delete_ok`/`interrupt_ok`. And the *failure* shape (`error` non-null) was not reproduced
+   — `JobStatus.error` is `Option<Value>` and `is_terminal` marks `"error"`/`"failed"` as inferred.
+
+`mcp-bridge` now spans the whole comfy-mcp surface from health through run/job/fetch; T-104b (the
+Tauri pump) is the last wiring step before generation reaches the UI.

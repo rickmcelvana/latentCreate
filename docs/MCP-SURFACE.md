@@ -403,18 +403,18 @@ The MiniMax template's own two notes carry model download URLs and lines that re
 instructions ("Please update ComfyUI first"). **This is the untrusted-data case in the
 flesh** (§2): render it as quoted prose, never let it drive a fetch, a download, or a run.
 
-## 10. Run / job / fetch — verified 2026-08-24 (error paths; success shapes pending)
+## 10. Run / job / fetch — verified 2026-08-24 (error AND success shapes)
 
-Captured live for T-104, zero-cost (no generation run). **Argument names and error slugs are
-verified; the success shapes are NOT yet captured** and must be before T-104a is briefed — the
-dev box has no image checkpoint (`checkpoints` folder empty), so a runnable workflow here is a
-multi-minute music model.
+Captured live against the running server (comfy-cli 1.16.0, ComfyUI v0.33.3). Success shapes came
+from a real short ACE-Step 1.5 turbo generation (10 s duration) — the full run→poll→fetch path,
+with an actual MP3 produced.
 
 | Tool | Args (verified) | Error slug (verified) |
 |---|---|---|
 | `run_workflow` | `workflow_path`, `wait` | `workflow_not_found`; `workflow_unknown_nodes` |
-| `job(action="status")` | `prompt_id` | `prompt_not_found` |
+| `job(action="status"/"wait")` | `prompt_id` | `prompt_not_found` |
 | `job(action="queue")` | — | *(success)* `{ "host", "port", "where", "scope", "count", "jobs": [] }` |
+| `job(action="cancel")` | `prompt_id` | *(success — see §10.5)* |
 | `fetch_outputs` | `prompt_id`, `out_dir` | `download_job_not_found` |
 
 ### 10.1 ⚠ `run_workflow` pre-validates before submitting
@@ -444,9 +444,78 @@ edits.)
 - `run_workflow`, missing file: `… failed [workflow_not_found]: Specified workflow file not
   found: <path>. hint: check the path; pass the API-format JSON exported from ComfyUI`
 
-### 10.3 To capture before T-104a
+### 10.3 `run_workflow(wait=false)` — success shape
 
-The **success** shapes — `run_workflow(wait=false)`'s return (the `prompt_id` envelope),
-`job(action="status")` on a live job (status/progress/total), and `fetch_outputs` with real
-files — require a genuinely runnable workflow. Options: install a small image checkpoint and run
-a 1-step image, or run a short real ACE-Step generation. Record them here when captured.
+```json
+{
+  "workflow": "<abs path>",
+  "status": "queued",
+  "prompt_id": "196a0dc9-4b7e-437f-a16f-ce3ef61e1849",
+  "client_id": "bf502ccb-1cb7-4fe8-8447-c6c529d85559",
+  "outputs": [],
+  "elapsed_seconds": null,
+  "host": "127.0.0.1",
+  "port": 8188,
+  "state_file": "C:\\Users\\<user>\\AppData\\Local\\comfy-cli\\jobs\\<prompt_id>.json",
+  "watcher_spawned": true
+}
+```
+
+`prompt_id` is the handle everything else keys on. `watcher_spawned: true` — comfy-cli spawns a
+background watcher; that is what lets `job(action="status")`/`wait` reflect progress later, and
+`state_file` is the on-disk record `fetch_outputs` reads (which is why `fetch_outputs` works for a
+job this machine submitted). `status` here is the *queue* state (`"queued"`), not the run state.
+
+### 10.4 `job(action="status"|"wait")` — the job status shape
+
+Running (`action="status"`):
+```json
+{ "prompt_id": "…", "status": "running", "workflow_size": 11, "outputs": [],
+  "outputs_by_node": {}, "outputs_by_item": {}, "text_outputs": {},
+  "host": "127.0.0.1", "port": 8188 }
+```
+
+Completed (`action="wait"` or a later `status`):
+```json
+{ "prompt_id": "…", "status": "completed", "workflow_size": null,
+  "outputs": [ "http://127.0.0.1:8188/view?filename=ACE_Step1.5_xl_turbo_00001.mp3&subfolder=audio&type=output" ],
+  "outputs_by_node": { "107": [ "<same url>" ] },
+  "outputs_by_item": {}, "text_outputs": {},
+  "error": null, "host": "127.0.0.1", "port": 8188 }
+```
+
+⚠ **The terminal status is `"completed"`, not `"success"`.** Observed statuses: `queued` →
+`running` → `completed`. A failure is signalled by a non-null `error` field (not observed here —
+the failed-run capture needs a workflow that passes validation but fails a node, e.g. a missing
+model at execution). There is **no `progress`/`total` numeric field** in this shape on
+comfy-cli 1.16.0 — progress is conveyed by status transitions and outputs filling in, matching the
+MCP instruction note ("no per-step events: expect `progress: null`"). The T-104b pump therefore
+polls on an interval and reads `status` + `outputs`, not a percentage.
+
+`outputs` are full `view?…` URLs; `outputs_by_node` maps node id (107 = the save node) to the same
+URLs. `workflow_size` is node count while running, `null` once terminal.
+
+### 10.5 `job(action="cancel")` — success shape
+
+```json
+{ "prompt_id": "…", "where": "local", "host": "127.0.0.1", "port": 8188,
+  "found": true, "queue_delete_ok": true, "interrupt_ok": true }
+```
+
+`found`/`queue_delete_ok`/`interrupt_ok` are all booleans; a cancel of an already-finished job
+still returns `found: true` rather than erroring. **Cancel is racy against a fast job** — with the
+model already cached, a second run completed before the cancel landed (its `status` read
+`"completed"`), so there is no distinct `"cancelled"` status value to rely on; the app treats the
+cancel call's `ok` booleans, not a status string, as the confirmation.
+
+### 10.6 `fetch_outputs` — success shape
+
+```json
+{ "prompt_id": "…", "out_dir": "C:\\…\\ace_out",
+  "files": [ { "url": "http://127.0.0.1:8188/view?filename=ACE_Step1.5_xl_turbo_00001.mp3&subfolder=audio&type=output",
+               "path": "C:\\…\\ace_out\\196a0dc9_000.mp3", "size": 293906 } ] }
+```
+
+`fetch_outputs` downloads each output into `out_dir` and returns `files: [{url, path, size}]` —
+`path` is the local copy (named `<prompt_prefix>_<n>.<ext>`), `size` bytes. This is what the app
+feeds the library's import step.

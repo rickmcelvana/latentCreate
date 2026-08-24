@@ -138,7 +138,7 @@ subgraph `A/B.name` (MiniMax). `testdata/mcp/list_workflow_slots.minimax.json` i
 live-captured response to serve from the mock — **24 of its 25 addresses are subgraph-form**,
 so a parser handling only the flat form fails almost all of a real workflow.
 
-### T-104 — job lifecycle + event pump  — **split in two; success shapes unverified**
+### T-104 — job lifecycle + event pump  — **split in two; shapes captured**
 `run_workflow(wait=false)`, `job(action=…)`, `fetch_outputs`. Progress re-emitted as Tauri
 events (`job://progress|done|failed`); the UI never polls Rust. Cancellable tokio tasks
 owned by managed state (CONVENTIONS).
@@ -147,19 +147,20 @@ owned by managed state (CONVENTIONS).
 §3): Tauri managed state holds `Arc<LocalComfy>` concretely; the trait is shaped when cloud is
 verified, not now around one impl.
 
-#### Before T-104a: capture the run/job/fetch success shapes  — ⚠ **NOT YET CAPTURED**
-The error paths and argument names were captured live 2026-08-24 (**MCP-SURFACE §10**):
-`run_workflow` **pre-validates** (`[workflow_unknown_nodes]` when models/nodes are missing), and
-the error slugs are `[workflow_not_found]`, `[prompt_not_found]`, `[download_job_not_found]`.
-The **success shapes** — `run_workflow`'s `prompt_id` envelope, `job(status)` running/success,
-`fetch_outputs` with files — need a genuinely runnable workflow, and the dev box has no image
-checkpoint (`checkpoints` empty; only ACE-Step/MiniMax music models). Capture them before writing
-T-104a: install a small image checkpoint and run a 1-step image, or run a short real ACE-Step
-generation. Record the shapes in MCP-SURFACE §10.
+#### Before T-104a: capture the run/job/fetch success shapes  — ✅ **DONE 2026-08-24**
+Captured live via a real short ACE-Step 1.5 turbo generation (10 s duration) — the full
+run→poll→cancel→fetch path with an actual MP3 produced. Recorded in **MCP-SURFACE §10**. Key
+findings: the terminal-success status is **`"completed"`** (not `"success"`), there is **no
+`progress`/`total` numeric** on the status shape (progress = status transitions + `outputs`
+filling in), and `run_workflow` **pre-validates** (`[workflow_unknown_nodes]`) before queueing.
+The failure shape (`error` non-null + a failure status) was **not** reproduced live — encoded as
+inferred in T-104a.
 
-#### T-104a — job wrappers  — ⚠ **blocked on the shapes above**
-`run` / `job_status` / `cancel_job` / `outputs` wrappers + `JobId`/`JobStatus` types in
-`mcp-bridge`, mock-tested (two-stage decode, `is_error` guards, argument names verbatim).
+#### T-104a — job wrappers  — 📝 **BRIEFED** ([brief](t-104a-brief.md))
+`run` / `job_status` / `cancel_job` / `outputs` wrappers + `JobRun`/`JobStatus`/`JobCancel`/
+`OutputFile`/`OutputBatch` types in `mcp-bridge`, mock-tested (two-stage decode, `is_error`
+guards, argument names verbatim). `JobStatus::is_terminal`/`is_success` encode the
+`"completed"`-not-`"success"` finding.
 
 #### T-104b — Tauri managed state + event pump
 `src-tauri` holds `Arc<LocalComfy>` in managed state; a cancellable tokio poll loop re-emits
