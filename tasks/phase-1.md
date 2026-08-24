@@ -156,7 +156,7 @@ filling in), and `run_workflow` **pre-validates** (`[workflow_unknown_nodes]`) b
 The failure shape (`error` non-null + a failure status) was **not** reproduced live — encoded as
 inferred in T-104a.
 
-#### T-104a — job wrappers  — 📝 **BRIEFED** ([brief](t-104a-brief.md))
+#### T-104a — job wrappers  — ✅ **LANDED** ([brief](t-104a-brief.md))
 `run` / `job_status` / `cancel_job` / `outputs` wrappers + `JobRun`/`JobStatus`/`JobCancel`/
 `OutputFile`/`OutputBatch` types in `mcp-bridge`, mock-tested (two-stage decode, `is_error`
 guards, argument names verbatim). `JobStatus::is_terminal`/`is_success` encode the

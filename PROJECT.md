@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 55 offline tests) but nothing is wired to the UI yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-104a** (job lifecycle wrappers — briefed, ready to run) then **T-104b** (Tauri managed state + event pump). The `ComfyBackend` trait is deferred (decisions log 2026-08-24); the run/job/fetch success shapes are captured (MCP-SURFACE §10).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) but nothing is wired to the UI yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), **T-104a (job lifecycle wrappers)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-104b** (Tauri managed state + event pump — the last wiring step before generation reaches the UI). The `ComfyBackend` trait is deferred (decisions log 2026-08-24); run/job/fetch shapes are captured (MCP-SURFACE §10).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -462,3 +462,26 @@ Three shapes worth carrying forward, each the kind of thing a model card would g
 
 `mcp-bridge` now spans the whole comfy-mcp surface from health through run/job/fetch; T-104b (the
 Tauri pump) is the last wiring step before generation reaches the UI.
+
+### 2026-08-24 — T-104a landed
+
+Aider transcribed the brief exactly; the diff touched only the two listed files and the fmt rule
+finally held — the reference code was copied from the post-`cargo fmt` scratch file, so this was
+the first run in four with **no** fmt defect. `mcp-bridge` is now 64 tests, all offline.
+
+The one transcription difference is an improvement, not a defect: the executor dropped the
+non-ASCII `§` from my doc comments (`"ARCHITECTURE §3"` → `"ARCHITECTURE 3"`, `"MCP-SURFACE §10.4"`
+→ `"MCP-SURFACE 10.4"`), which matches the crate's existing comment style and the ASCII-in-comments
+rule better than my reference did.
+
+**Mutation-tested the headline guard:** rewriting `is_success` to key on `"success"` instead of
+`"completed"` fails `test_completed_is_terminal_and_success` on `assertion failed:
+status.is_success()` and nothing else — the `"completed"`-not-`"success"` finding is enforced in
+the landed tree, not just asserted. This matters precisely because the live capture is the only
+place that fact is recorded; a pump written later from memory would key on `"success"`.
+
+**No new "what did the brief fail to ask for" findings.** The two honest gaps are the ones the
+brief already carried and encoded: the failure shape (`error` non-null) is `Option<Value>` with
+`"error"`/`"failed"` inferred, and `job(action="wait"|"watch")` is deliberately unwrapped (T-104b
+decides how the pump blocks). `mcp-bridge` is feature-complete for the whole comfy-mcp surface;
+T-104b wires it to Tauri.

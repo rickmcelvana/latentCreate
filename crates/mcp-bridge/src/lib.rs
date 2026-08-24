@@ -5,6 +5,7 @@
 //! cloud documentation.
 
 mod error;
+mod jobs;
 mod local;
 mod preflight;
 mod session_log;
@@ -13,6 +14,7 @@ mod templates;
 mod types;
 
 pub use error::ComfyError;
+pub use jobs::{JobCancel, JobRun, JobStatus, OutputBatch, OutputFile};
 pub use local::{with_timeout, LocalComfy};
 pub use preflight::{node_id_to_instance, Finding, Note, NoteList, Validation, Verdict};
 pub use session_log::SessionLog;
