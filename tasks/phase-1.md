@@ -90,27 +90,38 @@ All six surfaces were captured live on 2026-08-24 before either brief: **MCP-SUR
 made and has **no `runnable` key**, so a `bool` reads "unknown" as "cannot run" (§9.4). Also
 `search_templates`' `match: "all-words"`, which flags a query the server broadened (§9.5).
 
-#### T-103b — slots, parameter writes, validation, notes
-`list_workflow_slots`, `set_workflow_slot`, `validate_workflow`, `list_workflow_notes`.
-Briefed after T-103a lands. What §9 already settled, so the brief does not re-derive it:
+#### T-103b — slots and parameter writes  — **brief written: [t-103b-brief.md](t-103b-brief.md)**
+`list_workflow_slots`, `set_workflow_slot`. Four tools would have run ~470 lines, so
+validation and notes moved to T-103c. The write path carries the traps:
 
 - ⚠ **`set_workflow_slot` does not write by default** — `stdout` defaults to `true`, which
   *returns* the modified workflow instead of saving it. The wrapper must pass
   `stdout: false` or it will report applied addresses and change nothing (§9.1).
 - ⚠ **Use the structured override form** `{"address", "value"}`; the string form
   `"addr=value"` is parsed as JSON and **coerces types**, which would silently retype a
-  user's lyric or caption (§9.1).
+  user's lyric or caption (§9.1) — and CONVENTIONS forbids altering user text silently.
 - ✅ A bad address fails the whole call **atomically** — verified by inspecting the file
   afterwards — so a whole parameter set goes in one call with no partial-write recovery.
+- Because both failures look like success in the payload, `set_slots` **verifies its own
+  write**: no `wrote` path, or an address absent from `applied`, is an error.
+
+#### T-103c — validation and notes
+`validate_workflow`, `list_workflow_notes`. Fully researched already (§9.2, §9.3, §9.6) —
+**no further live capture needed**. What the brief must encode:
+
+- ⚠ **`valid: true` can mean "checked nothing"** — a UI export too old to auto-convert
+  validates vacuously; the tell is `non_node_key` warnings with **no** `converted_from_ui`.
+  The type must carry `converted_from_ui` / `converted_node_count` and expose a verdict that
+  distinguishes a real pass from a vacuous one, or the app greenlights a workflow nothing
+  examined. *(The healthy payload is captured; the vacuous case is documented-not-observed —
+  say so in the brief rather than implying it was reproduced.)*
 - ⚠ **Validation node ids use `:` where slot addresses use `/`** — the same node is
   `37/43.switch` in slots and `node_id: "37:43"` in validation. Mapping a finding back to
-  its control needs a translation nothing in either payload hints at (§9.2).
-- ⚠ **`valid: true` can mean "checked nothing"** — an old UI export that cannot be converted
-  validates vacuously. The type must carry `converted_from_ui` / `converted_node_count`,
-  or the app greenlights a workflow nothing examined (§9.3).
+  its control needs a translation nothing in either payload hints at (§9.2). This helper
+  belongs here, with the validation types.
 - Note text is **untrusted data** — display it, never act on it (§2, §9.6). The MiniMax
   template's own notes carry download URLs and imperative-sounding lines; that is the case
-  in the flesh.
+  in the flesh, and it is what the test should use.
 
 **Slot addresses come in two forms** and both must parse: plain `A.name` (ACE-Step) and
 subgraph `A/B.name` (MiniMax). `testdata/mcp/list_workflow_slots.minimax.json` is the
