@@ -215,6 +215,10 @@ out — the shipped template even has the two durations disagreeing (60 vs 120).
 first profile whose template already uses `SaveAudioAdvanced`, so it proves the save-node
 swap is conditional rather than universal.
 
+**Briefed 2026-08-24** — [tasks/t-106b-brief.md](t-106b-brief.md). Adds one schema field,
+`ComfySpec.slot_overrides` (`BTreeMap<SlotAddress, InputValue>`), so a profile can pin a
+checkpoint variant the template gets wrong — the generalisation MCP-SURFACE §6 calls for.
+
 ### T-107 — profile loader
 `library` loads shipped `profiles/` plus a user directory, user wins on id collision.
 Validates that a profile's slot addresses exist in its template, and reports which do not.

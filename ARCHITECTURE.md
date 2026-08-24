@@ -183,6 +183,8 @@ A profile binds **semantic input -> slot address(es)** on a named template. Valu
 
 **`from_node_choices: true`** means the UI reads the option list from the live node schema (`nodes(action="get")`) rather than duplicating 34 key/scale or 51 language values into the profile — enums stay correct across ComfyUI updates for free.
 
+**`slot_overrides`** pins slot values the profile applies to the fetched template before the user's inputs — the mechanism for a profile to target a specific checkpoint variant. MiniMax Music 3's template hardcodes the fp16 DiT, so its profile overrides `37/6.unet_name` to the int8 file (MCP-SURFACE §6). Values are typed `InputValue` (a COMBO override is `{"type": "enum", "value": "..."}`), not bare strings.
+
 **Advanced inputs** (`advanced: true`) live behind a disclosure so the default panel stays uncrowded: tags, lyrics, duration, bpm, key, seed.
 
 **Two schema rules that come from Rust, decided in T-003:**
