@@ -173,10 +173,20 @@ invoke/listen wrappers mirroring the Rust event payloads, a `useJobsStore` queue
 `applyJobEvent` fold, and a `JobQueue` component mounted in AudioStudio. The run trigger stays
 empty until the §7 pipeline (T-107) — this is the plumbing, not the pipeline.
 
-### T-105 — models
-`search_models` (query and folder modes return **different shapes** — MCP-SURFACE §1),
-`download_model` + `download(action=…)` progress. Note `download_model` refuses outright
-when a remote target is configured.
+### T-105 — models  — **split in two**
+`search_models` (query and folder modes return **different shapes** — MCP-SURFACE §11) and
+`download_model` + `download(action=…)` progress. Note `download_model` refuses outright when a
+remote target is configured. Split for the ~400-line rule.
+
+#### T-105a — model discovery  — 📝 **BRIEFED** ([brief](t-105a-brief.md))
+`search_models` in its three modes (list-folders / folder / query) as three typed wrappers with
+three distinct result shapes. The trap is the same tool answering three ways — `files` of
+`{name, pathIndex}` vs `rows` of `{name, type, tags}` (MCP-SURFACE §11.1).
+
+#### T-105b — model download  — 📝 **BRIEFED** ([brief](t-105b-brief.md))
+`download_model(wait=false)` → `DownloadSubmit`, and `download(action="status"|"cancel")` →
+`DownloadState` (one shape for all actions). `filename` is effectively required when the URL
+does not end in the file name (`[missing_argument]`).
 
 ### T-106 — node registry
 `nodes(action="get")` for live enum choices (`from_node_choices` in profiles) and for LoRA

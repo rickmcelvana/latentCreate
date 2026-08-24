@@ -519,3 +519,72 @@ cancel call's `ok` booleans, not a status string, as the confirmation.
 `fetch_outputs` downloads each output into `out_dir` and returns `files: [{url, path, size}]` —
 `path` is the local copy (named `<prompt_prefix>_<n>.<ext>`), `size` bytes. This is what the app
 feeds the library's import step.
+
+## 11. Models — verified 2026-08-24
+
+Captured live for T-105 (all read-only; the one download was a bogus URL so nothing was written).
+
+### 11.1 ⚠ `search_models` has THREE response shapes, not one
+
+The same tool answers three ways depending on which of `query` / `folder` is set. A wrapper that
+modells one shape reads empty out of the other two.
+
+1. **List-folders** (`search_models()`, no args):
+```json
+{ "mode": "local", "url": "http://127.0.0.1:8188/models", "count": 27,
+  "folders": [ { "name": "checkpoints", "subfolders": [] }, … ] }
+```
+2. **Folder** (`search_models(folder="checkpoints")`):
+```json
+{ "mode": "local", "url": "http://127.0.0.1:8188/models/checkpoints", "folder": "checkpoints",
+  "total": 0, "shown": 0, "files": [ { "name": "…", "pathIndex": 0 } ] }
+```
+3. **Query** (`search_models(query="acestep")`):
+```json
+{ "mode": "local", "filters": { "text": "acestep", "type": null, "include_public": null },
+  "total": 10, "shown": 10,
+  "rows": [ { "name": "acestep_v1.5_xl_turbo_bf16.safetensors", "type": "diffusion_models",
+              "tags": ["diffusion_models"], "base_model": null, "trained_words": null,
+              "source_url": null, "preview_url": null, "size": null, "is_public": false,
+              "id": null }, … ] }
+```
+
+Key distinctions: folder mode has `files` of `{name, pathIndex}` (**camelCase** `pathIndex`);
+query mode has `rows` of `{name, type, tags, …}`. The query rows' registry fields (`base_model`,
+`trained_words`, `source_url`, `preview_url`, `size`, `id`) are **always null** on the local
+surface and `is_public` always false — they are cloud-registry metadata this install never
+populates, so the wrapper drops them.
+
+### 11.2 `download_model(wait=false)` — submit shape
+
+```json
+{ "download_id": "bb982d2f2b6e", "pid": 26296,
+  "dest": "C:\\Comfy-Installs\\comfyUI\\ComfyUI\\models\\checkpoints\\test-model.safetensors",
+  "total_bytes": null, "status": "starting" }
+```
+
+`download_id` is the handle `download` polls with. ⚠ **`filename` is effectively required** when
+the URL does not end in the file name — comfy-cli rejects with `[missing_argument]` "Could not
+determine a filename to save the model as". `relative_path` must start with `models` (e.g.
+`models/checkpoints`).
+
+### 11.3 `download(action="status"|"wait"|"cancel")` — one shape for all three
+
+```json
+{ "id": "bb982d2f2b6e", "status": "downloading", "completed_bytes": 0, "total_bytes": null,
+  "percent": null, "elapsed_seconds": 7.5,
+  "dest": "C:\\…\\test-model.safetensors", "error": null }
+```
+
+Terminal failure (`wait`):
+```json
+{ "id": "bb982d2f2b6e", "status": "failed", "completed_bytes": 0, "total_bytes": null,
+  "percent": null, "elapsed_seconds": 8.0, "dest": "C:\\…\\test-model.safetensors",
+  "error": "Download failed after 3 attempts: a network error occurred …" }
+```
+
+Status values observed: `starting` → `downloading` → `failed`. `"completed"` is **inferred** (needs
+a real download — not reproduced; the bogus URL failed, and comfy-cli cleaned up its own partial
+file, leaving `checkpoints` empty). `percent` and `total_bytes` are `null` until the server sends a
+content length. `cancel` returns the same shape as `status` (the current state), not a distinct
+confirmation — the same racy-cancel caveat as jobs §10.5.

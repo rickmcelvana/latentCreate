@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), **T-104c (frontend jobs bridge + store + queue panel)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-105** (models: `search_models` + `download_model`). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-105a** then **T-105b** (models: discovery + download — both briefed, ready to run). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -582,3 +582,27 @@ Revisit only if a fast terminal path ever appears.
 bridge/store/queue seam (T-104c) is now the template for every later frontend surface: invoke/listen
 wrapped in `bridge/`, state in a Zustand store with a pure fold, `vi.mock` at the module boundary in
 tests. Next is **T-105** (models) back on the phase order.
+
+### 2026-08-24 — T-105 planned and split; models surface captured
+
+Captured the whole models surface live for T-105 and wrote [t-105a-brief.md](tasks/t-105a-brief.md)
++ [t-105b-brief.md](tasks/t-105b-brief.md) (split for the ~400-line rule, the T-103 pattern).
+Recorded in **MCP-SURFACE §11**.
+
+**The headline finding: `search_models` has THREE shapes, not two.** The same tool returns
+`folders: [{name, subfolders}]` with no args, `files: [{name, pathIndex}]` with `folder=`, and
+`rows: [{name, type, tags, …}]` with `query=`. The folder/query distinction was already flagged in
+the phase file; the third (list-folders) mode and the **camelCase `pathIndex`** are new, and the
+query rows' registry fields (`base_model`, `trained_words`, `source_url`, `preview_url`, `size`,
+`id`) are **always null on the local surface** — so `ModelHit` models only `name`/`type`/`tags`.
+
+**Two download facts worth carrying forward:** `download_model`'s `filename` is *effectively*
+required when the URL does not end in the file name (`[missing_argument]`), and `download` returns
+one shape for `status`/`wait`/`cancel` with terminal `"failed"` verified, `"completed"` inferred
+(the bogus URL failed and comfy-cli cleaned up its own partial — no junk left, but also no
+completed-shape capture). The download progress UI that will stream this is T-111, not here.
+
+**Carry forward:** the "verify the exact shape, not just the tool" discipline caught the
+`pathIndex` camelCase and the third search shape — both invisible to a review that trusts the
+`search_models` name alone. This is the MCP-SURFACE §8.5 "24 of 25 subgraph addresses" lesson again:
+the payload's real shape is the contract, and it is only learned by running the server.
