@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) but nothing is wired to the UI yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), **T-104a (job lifecycle wrappers)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-104b** (Tauri managed state + event pump — the last wiring step before generation reaches the UI). The `ComfyBackend` trait is deferred (decisions log 2026-08-24); run/job/fetch shapes are captured (MCP-SURFACE §10).
+- **Next up:** **T-104b** (Tauri managed state + event pump — briefed, ready to run). The `ComfyBackend` trait is deferred (decisions log 2026-08-24); run/job/fetch shapes are captured (MCP-SURFACE §10).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -485,3 +485,28 @@ brief already carried and encoded: the failure shape (`error` non-null) is `Opti
 `"error"`/`"failed"` inferred, and `job(action="wait"|"watch")` is deliberately unwrapped (T-104b
 decides how the pump blocks). `mcp-bridge` is feature-complete for the whole comfy-mcp surface;
 T-104b wires it to Tauri.
+
+### 2026-08-24 — T-104b briefed (Tauri managed state + event pump)
+
+Wrote [tasks/t-104b-brief.md](tasks/t-104b-brief.md). `src-tauri` gains a `ComfyState` managed
+state (`Arc<LocalComfy>` + a map of active pump abort-handles), `connect_comfy` / `run_workflow` /
+`cancel_job` commands, and a `poll_until_terminal` pump that re-emits `job://progress|done|failed`.
+Frontend bridge + jobs store + queue panel is a follow-up, not this brief.
+
+**Verified the tauri 2.11 surface from source, not memory** (the CONVENTIONS rule, first time it
+applies to tauri rather than rmcp/comfy-mcp): `Emitter::emit<S: Serialize + Clone>`,
+`async_runtime::spawn -> JoinHandle` (with `.inner().abort_handle()` for the stored
+`tokio::task::AbortHandle` and `.abort()`), and `#[tauri::command]`'s injected `AppHandle`/`State`
+params. The reference code compiles against the real `tauri` + `mcp-bridge` in a throwaway crate,
+6 tests pass, `cargo fmt`/clippy-clean.
+
+**Two design points worth carrying forward:**
+
+1. **The pump is a pure function, the Tauri glue is thin.** `poll_until_terminal` takes the
+   status source and the emit sink as closures, so the meaningful logic (loop, terminal-vs-progress
+   split, error propagation) is unit-tested with a canned status sequence — no live ComfyUI, no
+   window. `terminal_outcome` maps the terminal result to done/failed and is pure too. The
+   `monitor_job`/command layer is just `app.emit` + `spawn` + a registry, verified by compilation.
+2. **`poll` takes `String`, not `&str`.** An owned id lets the `async move` closure be `'static`,
+   which `async_runtime::spawn` requires — the borrow version would not compile. This is the kind
+   of thing that reads as a nitpick in a brief and is a hard compile error in the run.
