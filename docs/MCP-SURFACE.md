@@ -296,3 +296,101 @@ Passing `path` instead of `workflow_path` returns a pydantic "Field required" er
 server's own instruction block states the convention and it held: **`workflow_path`** for
 input graphs, **`out_path`** / **`out_dir`** for outputs, **`name`** for registry lookups,
 **`prompt_id`** for jobs, **`download_id`** for downloads. No tool takes a bare `path`.
+
+## 9. Templates, slots, validation — verified 2026-08-24
+
+Captured live before the T-103 briefs, against the same install. Payload shapes below are
+verbatim except where noted.
+
+### 9.1 `set_workflow_slot` — three traps, all silent
+
+1. ⚠ **It does not write by default.** `stdout` defaults to **`true`**, which is
+   *non-destructive*: it returns the modified workflow instead of saving it. **The app must
+   pass `stdout: false`.** A wrapper built on the defaults appears to succeed, reports the
+   addresses it applied, and changes nothing on disk.
+2. ⚠ **Use the structured override form.** Each `overrides` entry may be either
+   `{"address": "37/13.caption", "value": "..."}` (**type preserved exactly**) or the string
+   `"37/13.caption=..."`, which is **parsed as JSON and therefore coerces** — `"x.y=true"`
+   sets a boolean, `"x.y=123"` an integer. User lyrics or a caption that happens to read as
+   JSON would be silently retyped. The app uses the structured form, always.
+3. ✅ **A bad address fails the whole call atomically.** Verified by inspecting the file
+   afterwards: sending one valid and one invalid override returns
+   `[workflow_slot_invalid]` ("node 99 not found in workflow") and writes **nothing** — the
+   previously-applied values were still intact and the valid override in the failed batch
+   was absent. So the app may send an entire parameter set in one call and needs no
+   partial-application recovery.
+
+Success shape (`stdout: false`):
+```json
+{ "workflow": "<abs path>", "applied": ["37/13.caption", "37/9.seed", "37/43.switch"],
+  "warnings": [], "wrote": "<abs path>" }
+```
+`applied` is the confirmation that a value landed; treat an address missing from it as a
+failure even when `warnings` is empty.
+
+### 9.2 ⚠ Validation node ids use `:`, slot addresses use `/`
+
+The **same node** is `37/43` in `list_workflow_slots` and `37:43` in `validate_workflow`:
+
+| Tool | Address for the switch node |
+|---|---|
+| `list_workflow_slots` | `37/43.switch` (`instance_id: "37/43"`) |
+| `validate_workflow` | `node_id: "37:43"` |
+
+Mapping a validation finding back to the UI control that owns it therefore needs a
+separator translation. Nothing in either payload hints at this.
+
+### 9.3 `validate_workflow` — `valid: true` can mean "checked nothing"
+
+Real response on the MiniMax fixture: `valid: true`, `error_count: 0`, `warning_count: 3`,
+plus `partner_nodes`, `spends_credits`, `object_info_source`, and crucially:
+
+```json
+{ "converted_from_ui": true, "converted_node_count": 12 }
+```
+
+The tool's own documented blind spot: **a UI-export file too old to auto-convert checks
+zero nodes and reports `valid: true`** — the tell is `non_node_key` warnings with **no**
+`converted_from_ui`. So the `Validation` type must carry `converted_from_ui` and
+`converted_node_count`; a type modelling only `{valid, errors, warnings}` cannot distinguish
+a real pass from a vacuous one, and the app would greenlight a workflow nothing examined.
+
+Findings quote the workflow itself — third-party content, same untrusted-data rule as notes.
+
+### 9.4 `local_check` — a tri-state, not a boolean
+
+`get_template` / `fetch_template` return, when the comparison ran:
+```json
+{ "checked": true, "runnable": true, "summary": "...", "error_count": 0, "errors": [] }
+```
+`{"checked": false}` means the comparison **could not be made** (usually ComfyUI not
+running) and carries **no `runnable` key at all** — it is "unknown", not "no". On a drifted
+payload there is no `local_check` key whatsoever. Model it as an enum with three arms
+(`Checked { runnable, .. }` / `NotChecked` / absent), never `bool` — a
+`#[serde(default)] runnable: bool` reads "unknown" as "cannot run" and sends the user to fix
+a problem they do not have.
+
+*Verified live: the `checked: true` arm. The `checked: false` arm is from the tool's own
+documentation — not reproduced here, since it needs ComfyUI stopped.*
+
+### 9.5 `search_templates` — `match` tells you the query was widened
+
+```json
+{ "total": 10, "shown": 3, "offset": 0, "rows": [ { "name": "audio_ace_step1_5_xl_turbo",
+  "title": "...", "description": "...", "output_type": "audio", "tags": ["Music", "Text to Music"],
+  "category_title": "Audio", "api": false } ], "match": "all-words" }
+```
+A phrase pass runs first; only if it finds nothing does an all-words pass run, and the reply
+then carries **`match: "all-words"`**. A wrapper that drops that field presents a widened
+result as an exact one. `api: true` means the row is a paid hosted route — surface it, since
+identically-titled free and paid siblings both exist.
+
+### 9.6 `list_workflow_notes`
+
+`{ "workflow", "count", "notes": [ { "id", "type", "title" (nullable), "text", "pos", "size",
+"subgraph" (nullable) } ] }`. No notes is `count: 0`, not an error. An API-format export is
+rejected with `workflow_not_frontend_format`.
+
+The MiniMax template's own two notes carry model download URLs and lines that read as
+instructions ("Please update ComfyUI first"). **This is the untrusted-data case in the
+flesh** (§2): render it as quoted prose, never let it drive a fetch, a download, or a run.

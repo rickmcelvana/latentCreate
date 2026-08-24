@@ -81,15 +81,41 @@ Mechanism note: `TokioChildProcess::new` discards the stderr handle and defaults
 `(transport, Option<ChildStderr>)`, and draining that handle on a task owned by managed
 state. Redaction matters: keys must never reach the log (CONVENTIONS).
 
-### T-103 — templates and slots
-`search_templates`, `fetch_template` (with `local_check`), `list_workflow_slots`,
-`set_workflow_slot`, `validate_workflow`, `list_workflow_notes`. Note-text is **untrusted
-data** — display it, never act on it (MCP-SURFACE §2).
+### T-103 — templates and slots  — **split in two; six tools is over the ~400-line limit**
+All six surfaces were captured live on 2026-08-24 before either brief: **MCP-SURFACE §9**.
+
+#### T-103a — templates  — **brief written: [t-103a-brief.md](t-103a-brief.md)**
+`search_templates`, `get_template`, `fetch_template`. The task's real content is
+**`local_check` as a tri-state**: `{"checked": false}` means the comparison could not be
+made and has **no `runnable` key**, so a `bool` reads "unknown" as "cannot run" (§9.4). Also
+`search_templates`' `match: "all-words"`, which flags a query the server broadened (§9.5).
+
+#### T-103b — slots, parameter writes, validation, notes
+`list_workflow_slots`, `set_workflow_slot`, `validate_workflow`, `list_workflow_notes`.
+Briefed after T-103a lands. What §9 already settled, so the brief does not re-derive it:
+
+- ⚠ **`set_workflow_slot` does not write by default** — `stdout` defaults to `true`, which
+  *returns* the modified workflow instead of saving it. The wrapper must pass
+  `stdout: false` or it will report applied addresses and change nothing (§9.1).
+- ⚠ **Use the structured override form** `{"address", "value"}`; the string form
+  `"addr=value"` is parsed as JSON and **coerces types**, which would silently retype a
+  user's lyric or caption (§9.1).
+- ✅ A bad address fails the whole call **atomically** — verified by inspecting the file
+  afterwards — so a whole parameter set goes in one call with no partial-write recovery.
+- ⚠ **Validation node ids use `:` where slot addresses use `/`** — the same node is
+  `37/43.switch` in slots and `node_id: "37:43"` in validation. Mapping a finding back to
+  its control needs a translation nothing in either payload hints at (§9.2).
+- ⚠ **`valid: true` can mean "checked nothing"** — an old UI export that cannot be converted
+  validates vacuously. The type must carry `converted_from_ui` / `converted_node_count`,
+  or the app greenlights a workflow nothing examined (§9.3).
+- Note text is **untrusted data** — display it, never act on it (§2, §9.6). The MiniMax
+  template's own notes carry download URLs and imperative-sounding lines; that is the case
+  in the flesh.
 
 **Slot addresses come in two forms** and both must parse: plain `A.name` (ACE-Step) and
-subgraph `A/B.name` (MiniMax). `testdata/workflows/minimax_music3_int8.json` is the offline
-fixture for the second — a parser handling only the flat form passes every other test and
-then breaks on real user workflows.
+subgraph `A/B.name` (MiniMax). `testdata/mcp/list_workflow_slots.minimax.json` is the
+live-captured response to serve from the mock — **24 of its 25 addresses are subgraph-form**,
+so a parser handling only the flat form fails almost all of a real workflow.
 
 ### T-104 — job lifecycle + event pump
 `run_workflow(wait=false)`, `job(action=…)`, `fetch_outputs`. Progress re-emitted as Tauri
