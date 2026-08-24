@@ -162,7 +162,7 @@ inferred in T-104a.
 guards, argument names verbatim). `JobStatus::is_terminal`/`is_success` encode the
 `"completed"`-not-`"success"` finding.
 
-#### T-104b — Tauri managed state + event pump  — 📝 **BRIEFED** ([brief](t-104b-brief.md))
+#### T-104b — Tauri managed state + event pump  — ✅ **LANDED** ([brief](t-104b-brief.md))
 `src-tauri` holds `Arc<LocalComfy>` in managed state (`ComfyState`); a cancellable tokio poll
 loop (`poll_until_terminal`) re-emits `job://progress|done|failed`; `connect_comfy`/`run_workflow`/
 `cancel_job` commands. Adds `tokio` as a direct src-tauri dep. Frontend bridge + jobs store +

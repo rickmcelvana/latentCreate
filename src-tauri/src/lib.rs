@@ -7,6 +7,10 @@
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod jobs;
+
+use jobs::ComfyState;
+
 /// Resolved once at startup so every command shares one location.
 struct ConfigDir(PathBuf);
 
@@ -23,6 +27,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_config_dir()?;
             app.manage(ConfigDir(dir));
+            app.manage(ComfyState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -31,7 +36,10 @@ pub fn run() {
             save_config,
             set_secret,
             has_secret,
-            delete_secret
+            delete_secret,
+            jobs::connect_comfy,
+            jobs::run_workflow,
+            jobs::cancel_job
         ])
         .run(tauri::generate_context!())
         .expect("error while running latentCreate");

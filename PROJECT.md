@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) but nothing is wired to the UI yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), **T-104a (job lifecycle wrappers)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-104b** (Tauri managed state + event pump — briefed, ready to run). The `ComfyBackend` trait is deferred (decisions log 2026-08-24); run/job/fetch shapes are captured (MCP-SURFACE §10).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) and `src-tauri` holds the backend in managed state with a job event pump — the frontend has no bridge/jobs store yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), **T-104b (Tauri managed state + job event pump)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-105** (models: `search_models` + `download_model`) per the phase order, and the **unassigned** frontend jobs work (`app/src/bridge/jobs.ts` + a jobs store + queue panel) that consumes T-104b's `job://*` events — needs a T-number. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -510,3 +510,26 @@ params. The reference code compiles against the real `tauri` + `mcp-bridge` in a
 2. **`poll` takes `String`, not `&str`.** An owned id lets the `async move` closure be `'static`,
    which `async_runtime::spawn` requires — the borrow version would not compile. This is the kind
    of thing that reads as a nitpick in a brief and is a hard compile error in the run.
+
+### 2026-08-24 — T-104b landed
+
+Aider transcribed the brief exactly; the diff touched only the three listed files (plus the
+`Cargo.lock` tokio entry). `src-tauri` now has 7 tests (6 new), fmt clean — the fourth consecutive
+run with no fmt defect.
+
+**Mutation-tested the pump guard that matters:** swapping `on_update` ahead of the terminal check
+makes `test_poll_emits_non_terminal_and_returns_terminal` fail — the terminal status is genuinely
+*not* emitted as progress, so a job can't be double-reported (once as `job://progress`, once as
+`job://done`). The `terminal_outcome` mapping (completed→done, error→failed, poll-error→failed) is
+pure and its three tests cover every arm.
+
+**No new "what did the brief fail to ask for" findings.** The one thing the brief scoped out — the
+frontend bridge + jobs store + queue panel that consumes these `job://*` events — is now flagged in
+the snapshot as **unassigned and in need of a T-number** (the T-102b pattern: a requirement no task
+owns). The `outputs` method (T-104a) is also not yet called by anything; the §7 pipeline downloads
+outputs at completion, which is T-107+ territory.
+
+**A process note on my own review:** I used a PowerShell `-replace` with `\n` inside single quotes
+to revert a mutation, which does not interpret `\n`, and briefly dropped the terminal check before
+the `edit` tool fixed it. The tree was re-verified green before commit — but the lesson is to use
+the `edit` tool for reverts, never ad-hoc regex on multi-line Rust.

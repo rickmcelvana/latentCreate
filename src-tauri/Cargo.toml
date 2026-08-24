@@ -22,8 +22,12 @@ tauri-plugin-log = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4"
+tokio = { version = "1.53", features = ["time", "sync"] }
 
 create-core = { path = "../crates/create-core" }
 library = { path = "../crates/library" }
 mcp-bridge = { path = "../crates/mcp-bridge" }
 llm-bridge = { path = "../crates/llm-bridge" }
+
+[dev-dependencies]
+tokio = { version = "1.53", features = ["macros", "rt"] }
