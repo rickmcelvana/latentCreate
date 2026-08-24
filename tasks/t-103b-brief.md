@@ -310,6 +310,11 @@ types in T-103c (MCP-SURFACE §9.2).
 Do not guess. Output a numbered list of questions and stop.
 
 ## Aider launch
+`error.rs` and `local.rs` are `--read` (context, not editable): `slots.rs` **constructs**
+`ComfyError::Tool`/`ComfyError::Payload` and opens an `impl LocalComfy` block calling
+`self.call(...)`, so the executor needs both definitions in view — but must not change
+either file.
+
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read docs/MCP-SURFACE.md --read crates/mcp-bridge/src/mock.rs --read crates/mcp-bridge/src/templates.rs --file crates/mcp-bridge/src/lib.rs --file crates/mcp-bridge/src/slots.rs
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read docs/MCP-SURFACE.md --read crates/mcp-bridge/src/error.rs --read crates/mcp-bridge/src/local.rs --read crates/mcp-bridge/src/mock.rs --read crates/mcp-bridge/src/templates.rs --file crates/mcp-bridge/src/lib.rs --file crates/mcp-bridge/src/slots.rs
 ```

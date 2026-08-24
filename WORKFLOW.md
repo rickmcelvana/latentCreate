@@ -83,9 +83,21 @@ Do not guess. Output a numbered list of questions and stop.
 
 ## Aider launch
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --file <exact files>
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read <files the new code depends on> --file <exact files>
 ```
 ```
+
+**`--read` every module the reference code touches but must not change.** Rule of thumb:
+if the new code **constructs** a type, opens an `impl` block on it, or calls one of its
+methods, the executor needs that definition in view — `--read`, never `--file`. Returning
+or merely mentioning a type does not need it. T-103b was launched without
+`crates/mcp-bridge/src/error.rs` even though its reference code builds two `ComfyError`
+variants, and Aider stopped to ask for it.
+
+**When the executor asks for a file mid-run, do not accept the prompt** — Aider's
+"add to the chat" adds it as **editable**, widening the diff beyond the brief's file list.
+Decline, fix the launch command, and re-run. An executor asking for a file it needs is the
+footer rule working; the fix belongs in the brief.
 
 ## 4. Architect's diff review checklist
 1. Diff touches only listed files; ARCHITECTURE.md interfaces unchanged.
