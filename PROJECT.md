@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 49 offline tests) but nothing is wired to the UI yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), **T-102b (session log + redaction)**, T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
-- **Next up:** **T-102c** (stderr capture + free-text redaction — briefed) then **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). T-104 still needs a brief.
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 55 offline tests) but nothing is wired to the UI yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), **T-102c (stderr capture + free-text redaction)**, T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
+- **Next up:** **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). Needs a brief.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -375,3 +375,30 @@ line in `call` is deleted. 26 tests in the scratch crate, `cargo fmt`- and clipp
 **Carry forward:** the T-102b fmt lesson held — this brief's reference code was copied verbatim
 from the fmt-clean scratch file (the `spawn_stderr_drain` signature is wrapped the way `cargo fmt`
 leaves it), so the recurring "reference code wasn't fmt-clean" defect should not recur here.
+
+### 2026-08-24 — T-102c landed; and I broke my own fmt rule, again
+
+Aider transcribed the brief faithfully — the diff touched exactly the four listed files and its
+hand-written `redact_line`/drain tests were again stronger than my reference (they assert the full
+redacted output, not just the secret's absence). `mcp-bridge` is now 55 tests, all offline.
+
+**The same fmt defect I recorded one task ago came back, and this time it was three places in my
+own reference code, not one.** `cargo fmt --check` rejected the `connect` builder chain, the
+`().serve(...)` chain in `from_transport_with_log`, and the mock's `let reply = …` line — all of
+which I had re-typed multi-line in the brief after running `cargo fmt` on the scratch. The scratch
+was fmt-clean; the *brief* was not. The prior session's lesson ("copy from the fmt-clean scratch
+file verbatim") was written down and I still didn't follow it: I reconstruct reference code from
+my `write`-tool drafts, which are pre-`cargo fmt`. The fix is procedural, not a reminder: after
+`cargo fmt` in the scratch, **re-read the files and paste from that**, never from memory or the
+draft. A fourth fmt defect in the executor's *own* test body (`test_log_stderr…`'s long
+`assert_eq!`) is the smaller, already-seen variant — the executor composing test code.
+
+**Mutation-tested the flagship guard, now in the landed tree:** deleting the
+`log_result(false, …)` line in `call`'s transport-error branch fails
+`test_transport_error_is_logged_as_a_failed_result` on `entries.len() == 2` and nothing else — the
+T-102b gap is genuinely closed, not just covered by a test that happens to pass.
+
+**Two things the brief correctly left untested, both by design:** `connect`'s real child spawn
+(the no-live-process rule; `drain_stderr` itself is exercised via a `duplex`), and `shutdown`'s
+abort of the drain task (needs a real child). Both are live-only; the drain also self-terminates
+via EOF on drop, so the abort is belt-and-suspenders, not the only safety net.

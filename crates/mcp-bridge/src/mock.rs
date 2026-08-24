@@ -31,28 +31,34 @@ pub enum Reply {
     ToolErrorJson(Value),
     /// A success with no content blocks at all.
     Empty,
+    /// Close the connection without answering. The pending `tools/call` gets a
+    /// transport error from the client, not a tool result -- the shape that
+    /// exercises the transport-fault branch of `LocalComfy::call`.
+    Hangup,
 }
 
 impl Reply {
-    fn to_result(&self) -> Value {
+    /// What to answer, or `None` to close the connection without answering.
+    fn to_result(&self) -> Option<Value> {
         match self {
-            Reply::Json(v) => json!({
+            Reply::Json(v) => Some(json!({
                 "content": [{ "type": "text", "text": v.to_string() }],
                 "isError": false
-            }),
-            Reply::RawText(s) => json!({
+            })),
+            Reply::RawText(s) => Some(json!({
                 "content": [{ "type": "text", "text": s }],
                 "isError": false
-            }),
-            Reply::ToolError(msg) => json!({
+            })),
+            Reply::ToolError(msg) => Some(json!({
                 "content": [{ "type": "text", "text": msg }],
                 "isError": true
-            }),
-            Reply::ToolErrorJson(v) => json!({
+            })),
+            Reply::ToolErrorJson(v) => Some(json!({
                 "content": [{ "type": "text", "text": v.to_string() }],
                 "isError": true
-            }),
-            Reply::Empty => json!({ "content": [], "isError": false }),
+            })),
+            Reply::Empty => Some(json!({ "content": [], "isError": false })),
+            Reply::Hangup => None,
         }
     }
 }
@@ -62,7 +68,8 @@ impl Reply {
 /// Answers `initialize`, ignores notifications, and serves `replies` to
 /// successive `tools/call` requests in order. Running out of replies is itself
 /// reported as a tool error rather than a hang, so a test that calls more often
-/// than it prepared for fails with a readable message.
+/// than it prepared for fails with a readable message. A [`Reply::Hangup`]
+/// closes the connection without answering instead.
 ///
 /// Returns the [`RecordedCalls`] log so a test can assert on what was sent.
 pub fn spawn_mock(peer: DuplexStream, replies: Vec<Reply>) -> RecordedCalls {
@@ -92,9 +99,13 @@ pub fn spawn_mock(peer: DuplexStream, replies: Vec<Reply>) -> RecordedCalls {
                     if let Ok(mut log) = sink.lock() {
                         log.push(msg.get("params").cloned().unwrap_or(Value::Null));
                     }
-                    next.next()
-                        .unwrap_or(Reply::ToolError("mock ran out of replies".into()))
-                        .to_result()
+                    let reply = next
+                        .next()
+                        .unwrap_or(Reply::ToolError("mock ran out of replies".into()));
+                    match reply.to_result() {
+                        Some(result) => result,
+                        None => break,
+                    }
                 }
                 _ => json!({}),
             };

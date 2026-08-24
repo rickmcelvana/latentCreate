@@ -1,5 +1,6 @@
 //! Local backend: `comfy-mcp` spawned as a stdio child process.
 
+use std::process::Stdio;
 use std::time::Duration;
 
 use rmcp::{
@@ -10,6 +11,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use tokio::io::AsyncBufReadExt;
 
 use crate::error::{parse_error_code, ComfyError};
 use crate::session_log::SessionLog;
@@ -23,22 +25,27 @@ use crate::types::{ServerInfo, SystemStats};
 pub struct LocalComfy {
     service: RunningService<RoleClient, ()>,
     log: Option<SessionLog>,
+    stderr_task: Option<tokio::task::AbortHandle>,
 }
 
 impl LocalComfy {
-    /// Spawn `comfy-mcp` over stdio and complete the MCP handshake.
+    /// Spawn `comfy-mcp` over stdio, capture its stderr into `log`, and
+    /// complete the MCP handshake.
     ///
     /// `bin` is the configured executable name or path; the default is
-    /// `"comfy-mcp"` on PATH. Tool traffic is recorded to `log`.
+    /// `"comfy-mcp"` on PATH.
     pub async fn connect(bin: &str, log: SessionLog) -> Result<Self, ComfyError> {
-        let transport = TokioChildProcess::new(tokio::process::Command::new(bin).configure(|c| {
-            c.env("PYTHONIOENCODING", "utf-8");
-        }))
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => ComfyError::NotInstalled,
-            _ => ComfyError::Spawn(e),
-        })?;
-        Self::from_transport_with_log(transport, Some(log)).await
+        let (transport, stderr) =
+            TokioChildProcess::builder(tokio::process::Command::new(bin).configure(|c| {
+                c.env("PYTHONIOENCODING", "utf-8");
+            }))
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => ComfyError::NotInstalled,
+                _ => ComfyError::Spawn(e),
+            })?;
+        Self::from_transport_with_log(transport, Some(log), stderr).await
     }
 
     /// Complete the MCP handshake over an already-built transport.
@@ -51,21 +58,31 @@ impl LocalComfy {
         T: IntoTransport<RoleClient, E, A>,
         E: std::error::Error + Send + Sync + 'static,
     {
-        Self::from_transport_with_log(transport, None).await
+        Self::from_transport_with_log(transport, None, None).await
     }
 
-    /// Handshake plus an optional session log. [`LocalComfy::connect`] and
-    /// [`LocalComfy::from_transport`] both funnel through here.
+    /// Handshake, plus the session log and an optional captured stderr handle
+    /// to drain into it. [`LocalComfy::connect`] and [`LocalComfy::from_transport`]
+    /// both funnel through here.
     pub async fn from_transport_with_log<T, E, A>(
         transport: T,
         log: Option<SessionLog>,
+        stderr: Option<tokio::process::ChildStderr>,
     ) -> Result<Self, ComfyError>
     where
         T: IntoTransport<RoleClient, E, A>,
         E: std::error::Error + Send + Sync + 'static,
     {
         let service = ().serve(transport).await.map_err(|e| ComfyError::Transport(e.to_string()))?;
-        Ok(Self { service, log })
+        let stderr_task = match (stderr, log.as_ref()) {
+            (Some(reader), Some(log)) => Some(spawn_stderr_drain(reader, log.clone())),
+            _ => None,
+        };
+        Ok(Self {
+            service,
+            log,
+            stderr_task,
+        })
     }
 
     /// Call a tool and decode its JSON-in-text payload.
@@ -132,6 +149,9 @@ impl LocalComfy {
 
     /// Close the session and wait for the child to exit.
     pub async fn shutdown(self) -> Result<(), ComfyError> {
+        if let Some(task) = self.stderr_task {
+            task.abort();
+        }
         self.service
             .cancel()
             .await
@@ -152,6 +172,24 @@ pub async fn with_timeout<T>(
     tokio::time::timeout(d, fut)
         .await
         .map_err(|_| ComfyError::Transport(format!("timed out after {}s", d.as_secs())))?
+}
+
+/// Drain a child's stderr into the session log, one redacted line at a time.
+/// Ends when the pipe closes (the child exits or is killed).
+async fn drain_stderr(reader: impl tokio::io::AsyncRead + Unpin, log: SessionLog) {
+    let mut lines = tokio::io::BufReader::new(reader).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        log.log_stderr(&line);
+    }
+}
+
+/// Spawn the stderr drain onto the current runtime, returning the handle the
+/// caller keeps so [`LocalComfy::shutdown`] can cancel it.
+fn spawn_stderr_drain(
+    reader: tokio::process::ChildStderr,
+    log: SessionLog,
+) -> tokio::task::AbortHandle {
+    tokio::spawn(drain_stderr(reader, log)).abort_handle()
 }
 
 #[cfg(test)]
@@ -180,7 +218,7 @@ pub(crate) mod test_helpers {
     pub async fn client_with_session_log(replies: Vec<Reply>, log: SessionLog) -> LocalComfy {
         let (client_half, peer_half) = duplex(8 * 1024);
         spawn_mock(peer_half, replies);
-        LocalComfy::from_transport_with_log(client_half, Some(log))
+        LocalComfy::from_transport_with_log(client_half, Some(log), None)
             .await
             .expect("handshake over duplex")
     }
@@ -354,5 +392,59 @@ mod transport_tests {
         assert_eq!(entries[1]["kind"], json!("result"));
         assert_eq!(entries[1]["tool"], json!("list_workflow_slots"));
         assert_eq!(entries[1]["ok"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn test_drain_stderr_writes_redacted_lines_to_the_log() {
+        use tokio::io::AsyncWriteExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("session.log");
+        let log = SessionLog::open(&path).expect("open log");
+
+        let (mut writer, reader) = tokio::io::duplex(256);
+        writer
+            .write_all(b"api_key=secret\nmonkey\n")
+            .await
+            .expect("write");
+        drop(writer);
+
+        crate::local::drain_stderr(reader, log).await;
+
+        let raw = std::fs::read_to_string(&path).expect("read log");
+        let entries: Vec<serde_json::Value> = raw
+            .lines()
+            .map(|l| serde_json::from_str(l).expect("line is JSON"))
+            .collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["kind"], json!("stderr"));
+        assert_eq!(entries[0]["line"], json!("api_key=[REDACTED]"));
+        assert_eq!(entries[1]["line"], json!("monkey"));
+    }
+
+    #[tokio::test]
+    async fn test_transport_error_is_logged_as_a_failed_result() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("session.log");
+        let log = SessionLog::open(&path).expect("open log");
+        let client = client_with_session_log(vec![Reply::Hangup], log).await;
+
+        let err = client
+            .call::<serde_json::Value>("any_tool", serde_json::Map::new())
+            .await
+            .expect_err("hangup should become a transport error");
+
+        assert!(matches!(err, crate::ComfyError::Transport { .. }));
+
+        let raw = std::fs::read_to_string(&path).expect("read log");
+        let entries: Vec<serde_json::Value> = raw
+            .lines()
+            .map(|l| serde_json::from_str(l).expect("line is JSON"))
+            .collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["kind"], json!("call"));
+        assert_eq!(entries[0]["tool"], json!("any_tool"));
+        assert_eq!(entries[1]["kind"], json!("result"));
+        assert_eq!(entries[1]["ok"], json!(false));
     }
 }

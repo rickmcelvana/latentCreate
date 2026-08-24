@@ -77,7 +77,7 @@ log. This task delivers the **session log and redaction**: an append-only NDJSON
 and outcome. **Split** from the original T-102b (which also bundled stderr capture) to stay
 under the ~400-line rule. **T-102c** takes stderr capture + free-text redaction.
 
-### T-102c — stderr capture + free-text redaction  — 📝 **BRIEFED** ([brief](t-102c-brief.md))
+### T-102c — stderr capture + free-text redaction  — ✅ **LANDED** ([brief](t-102c-brief.md))
 The second half of the original T-102b: CONVENTIONS requires `comfy-mcp`'s stderr captured to
 the session log. `LocalComfy::connect` currently inherits stderr, so comfy-mcp's diagnostics
 go to the app console and are lost in a packaged build. `TokioChildProcess::new` discards the

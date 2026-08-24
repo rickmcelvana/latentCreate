@@ -18,8 +18,9 @@ const REDACTED: &str = "[REDACTED]";
 /// Default size at which the log rolls over to a `.1` sibling.
 pub const DEFAULT_MAX_BYTES: u64 = 1 << 20; // 1 MiB
 
-/// Words that mark a value as a secret when they name a JSON key. Matched
-/// case-insensitively on whole words only, so `key` in `monkey` is not a hit.
+/// Words that mark a value as a secret, whether they name a JSON key or head a
+/// `name=value` / `name: value` run in free text. Matched case-insensitively on
+/// whole words only, so `key` in `monkey` is not a hit.
 const SENSITIVE_WORDS: &[&str] = &[
     "apikey",
     "key",
@@ -98,6 +99,16 @@ impl SessionLog {
         self.write_line(entry);
     }
 
+    /// Record one line of `comfy-mcp`'s stderr, redacted.
+    pub fn log_stderr(&self, line: &str) {
+        let entry = json!({
+            "ts": now_secs(),
+            "kind": "stderr",
+            "line": redact_line(line),
+        });
+        self.write_line(entry);
+    }
+
     fn write_line(&self, entry: Value) {
         let mut line = serde_json::to_string(&entry).unwrap_or_default();
         line.push('\n');
@@ -153,15 +164,90 @@ fn redact(value: &Value) -> Value {
     }
 }
 
-/// Redact a JSON document if it parses, else pass the text through as-is.
-///
-/// Free-text redaction (for stderr and non-JSON error messages) arrives with
-/// the stderr-capture task T-102c; until then a non-JSON result is logged raw.
+/// Redact a JSON document if it parses, else treat it as free text.
 fn redact_text_or_json(text: &str) -> String {
     match serde_json::from_str::<Value>(text) {
         Ok(value) => redact(&value).to_string(),
-        Err(_) => text.to_string(),
+        Err(_) => redact_line(text),
     }
+}
+
+/// Scrub secret-shaped assignments out of a free-text line.
+///
+/// Two shapes: `NAME=value` redacts the value token, and `NAME: ...` redacts
+/// the rest of the line (header-style secrets like `Authorization: Bearer xyz`
+/// are conventionally line-final). Nothing else in the line is touched.
+fn redact_line(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0;
+    while i < line.len() {
+        let matched = SENSITIVE_WORDS
+            .iter()
+            .find_map(|w| word_at(&lower, i, w).then_some(w.len()));
+
+        if let Some(wlen) = matched {
+            let start = i;
+            let mut j = start + wlen;
+            while j < line.len() && line.as_bytes()[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < line.len() && line.as_bytes()[j] == b'=' {
+                out.push_str(&line[start..=j]);
+                out.push_str(REDACTED);
+                let mut k = j + 1;
+                while k < line.len() {
+                    let b = line.as_bytes()[k];
+                    if b.is_ascii_whitespace() || matches!(b, b',' | b';') {
+                        break;
+                    }
+                    k += 1;
+                }
+                i = k;
+                continue;
+            }
+            if j < line.len() && line.as_bytes()[j] == b':' {
+                out.push_str(&line[start..=j]);
+                out.push(' ');
+                out.push_str(REDACTED);
+                i = line.len();
+                continue;
+            }
+            out.push_str(&line[start..start + wlen]);
+            i = start + wlen;
+            continue;
+        }
+
+        let ch = line[i..]
+            .chars()
+            .next()
+            .expect("byte offset on a char boundary");
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Whether `w` appears in `lower` at `at` bounded by non-alphanumeric on both
+/// sides, so `key` inside `monkey` is not a match.
+fn word_at(lower: &str, at: usize, w: &str) -> bool {
+    if !lower[at..].starts_with(w) {
+        return false;
+    }
+    let before_ok = at == 0
+        || !lower[..at]
+            .chars()
+            .next_back()
+            .expect("boundary")
+            .is_ascii_alphanumeric();
+    let after = at + w.len();
+    let after_ok = after >= lower.len()
+        || !lower[after..]
+            .chars()
+            .next()
+            .expect("boundary")
+            .is_ascii_alphanumeric();
+    before_ok && after_ok
 }
 
 /// Whether `key` names a secret: equal to a sensitive word once non-alphanumeric
@@ -303,6 +389,41 @@ mod tests {
         assert!(
             current.len() < 20,
             "current file starts over after rotation"
+        );
+    }
+
+    #[test]
+    fn test_redact_line_scrubs_name_equals_value() {
+        let out = redact_line("api_key=secret123, other=stuff");
+        assert_eq!(out, "api_key=[REDACTED], other=stuff");
+    }
+
+    #[test]
+    fn test_redact_line_scrubs_header_style_to_end_of_line() {
+        let out = redact_line("Authorization: Bearer xyz");
+        assert_eq!(out, "Authorization: [REDACTED]");
+    }
+
+    #[test]
+    fn test_redact_line_does_not_scrub_substring_words() {
+        let out = redact_line("monkey ate a key lime pie");
+        assert_eq!(out, "monkey ate a key lime pie");
+    }
+
+    #[test]
+    fn test_log_stderr_records_a_redacted_line() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("session.log");
+        let log = SessionLog::open(&path).expect("open");
+
+        log.log_stderr("api_key=secret-value something else");
+
+        let entries = read_log(&path);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["kind"], json!("stderr"));
+        assert_eq!(
+            entries[0]["line"],
+            json!("api_key=[REDACTED] something else")
         );
     }
 }
