@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 33 offline tests) but nothing is wired to the UI yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
-- **Next up:** **T-102b** (session log + child stderr — ARCHITECTURE §3 requires it, `LocalComfy::connect` still inherits stderr, unowned until the T-101 review) and **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). Both still need briefs.
+- **Next up:** **T-102b** (session log + redaction, now briefed and split from stderr capture) then **T-102c** (stderr capture + free-text redaction), then **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). T-102b is briefed; T-102c and T-104 still need briefs.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -301,3 +301,33 @@ wired to Tauri or the UI yet; that starts at T-104.
   dyn-vs-enum when a backend first enters Tauri managed state, not around a single impl).
   T-102b is smaller and unblocks packaged-build diagnostics: `LocalComfy::connect` still
   inherits stderr, so comfy-mcp's output vanishes in a shipped app.
+
+### 2026-08-24 — T-102b briefed (session log + redaction), split from stderr capture
+
+Wrote [tasks/t-102b-brief.md](tasks/t-102b-brief.md). The original T-102b ("session log +
+child stderr") came to ~565 lines of diff once the full reference code was written, so it is
+split the T-103 way: **T-102b** delivers the `SessionLog` (rotating NDJSON) and structural
+`redact`, wired into `LocalComfy::call`; **T-102c** delivers stderr capture and free-text
+redaction (`redact_line`). `tasks/phase-1.md` records both.
+
+**Verified the way the brief's rule requires, not from memory.** The whole thing was built in a
+throwaway crate outside the repo and compiled against the *actual* rmcp 3.1.4 source: 20 tests
+pass, `cargo fmt`-clean, `clippy -D warnings`-clean. Two facts worth carrying forward:
+
+1. **`TokioChildProcess::builder(cmd).stderr(Stdio::piped()).spawn()` returns
+   `(TokioChildProcess, Option<ChildStderr>)`** — confirmed against `child_process.rs`, not the
+   MCP-SURFACE note alone. The stderr half (T-102c) is now safe to brief without re-verifying.
+2. **Redaction is two layers, and only one ships here.** `redact` is *structural*: it walks JSON
+   and replaces values under secret-*named* keys (`api_key`, `token`, …), matched on whole words
+   so a real control name like `keyscale` is never hit. That is the layer with a crisp,
+   testable invariant ("a secret argument never reaches the file"). Free-text redaction for
+   stderr is T-102c. **Documented residual:** a secret embedded in free text or split across an
+   array (ComfyUI's `system_stats` `argv`) is not caught by structural redaction — surfaced in
+   the brief as a known limitation, mitigation upstream (T-110 launches ComfyUI without secrets
+   on argv).
+
+**Rotation pitfall caught by compiling on Windows, not by reading:** `fs::rename` does not
+overwrite an existing destination on Windows, so a second rollover would silently keep
+appending to the current file while resetting the byte counter. The log removes the previous
+`.1` before renaming — the one previous generation is the whole rotation scheme, documented in
+the brief.

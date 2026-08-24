@@ -68,18 +68,26 @@ could not be covered there — and it is the single finding most likely to cause
 bug (docs/MCP-SURFACE.md §8.3). The mock must be able to serve an `is_error` result, an
 `Ok` result whose text is not JSON (→ `ComfyError::Payload`), and a well-formed payload.
 
-### T-102b — session log + child stderr  — ⚠ **NO BRIEF YET** *(added 2026-08-23 during the T-101 review)*
+### T-102b — session log + redaction  — 📝 **BRIEFED** *(split from the original T-102b)*
 ARCHITECTURE §3 requires every tool-call payload and result to be logged (redacted) to a
-rotating session log for the diagnostics pane, and CONVENTIONS requires `comfy-mcp`'s stderr
-captured to it. **No task in any phase file owned this** — the review of T-101 found the
-requirement unassigned, and `LocalComfy::connect` currently inherits stderr, so comfy-mcp's
-diagnostics go to the app console and are lost in a packaged build.
+rotating session log for the diagnostics pane, and CONVENTIONS forbids keys ever reaching a
+log. This task delivers the **session log and redaction**: an append-only NDJSON `SessionLog`
+(`log_call` / `log_result`, size-based rollover to a `.1` sibling), structural `redact`
+(recursive, sensitive-key-name based, word-matched), and wires `call` to log every invocation
+and outcome. **Split** from the original T-102b (which also bundled stderr capture) to stay
+under the ~400-line rule. **T-102c** takes stderr capture + free-text redaction.
 
-Mechanism note: `TokioChildProcess::new` discards the stderr handle and defaults it to
-`Stdio::inherit()`. Capturing it means switching to
+### T-102c — stderr capture + free-text redaction  — ⚠ **NO BRIEF YET**
+The second half of the original T-102b: CONVENTIONS requires `comfy-mcp`'s stderr captured to
+the session log. `LocalComfy::connect` currently inherits stderr, so comfy-mcp's diagnostics
+go to the app console and are lost in a packaged build. `TokioChildProcess::new` discards the
+stderr handle and defaults it to `Stdio::inherit()`; capturing it means switching to
 `TokioChildProcess::builder(cmd).stderr(Stdio::piped()).spawn()`, which returns
-`(transport, Option<ChildStderr>)`, and draining that handle on a task owned by managed
-state. Redaction matters: keys must never reach the log (CONVENTIONS).
+`(transport, Option<ChildStderr>)`, and draining that handle on a task owned by managed state
+(aborted on `shutdown`). **Mechanism verified against the rmcp 3.1.4 source this session**, so
+this brief can be written without re-verification. Also adds `redact_line` (free-text redaction
+for stderr and non-JSON error messages) and `log_stderr`, and swaps `redact_text_or_json`'s
+raw fallback for `redact_line`.
 
 ### T-103 — templates and slots  — **split in two; six tools is over the ~400-line limit**
 All six surfaces were captured live on 2026-08-24 before either brief: **MCP-SURFACE §9**.

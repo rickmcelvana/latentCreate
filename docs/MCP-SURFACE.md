@@ -218,7 +218,9 @@ let client = ().serve(transport).await?;      // `()` is a no-op ClientHandler
   to the host console and vanish in a packaged build. CONVENTIONS requires that stderr in
   the session log; capturing it means
   `TokioChildProcess::builder(cmd).stderr(Stdio::piped()).spawn()`, which yields
-  `(transport, Option<ChildStderr>)` to drain on an owned task. Tracked as T-102b.
+  `(transport, Option<ChildStderr>)` to drain on an owned task. Tracked as T-102c (the
+  original T-102b "session log + child stderr" was split 2026-08-24: T-102b is the log +
+  redaction, T-102c this stderr capture).
 
 ### 8.3 Calling tools — two traps
 
