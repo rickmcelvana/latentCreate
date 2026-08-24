@@ -190,14 +190,21 @@ does not end in the file name (`[missing_argument]`).
 
 ### T-106 — node registry
 `nodes(action="get")` for live enum choices (`from_node_choices` in profiles) and for LoRA
-enumeration. Includes the LoRA list filtering/grouping logic: on the owner's machine 95
-entries yield ~9 usable ones, `training_state.pt` files are unloadable, and epoch-checkpoint
-series need collapsing (MCP-SURFACE §4).
+enumeration. Delivers the `NodeSchema` type + `node_schema(class)` wrapper + a `choices_for`
+helper that reads a COMBO input's live `choices` — the primitive the param panel (T-107+) and
+the LoRA picker (Phase 3) both build on.
 
-**Before T-106: capture the `nodes(action="get")` shape.** MCP-SURFACE §4 verifies that
-`nodes(action="get", name="LoraLoaderModelOnly")` returns `lora_name` as a COMBO whose `choices`
-are the installed LoRA paths, but the full node-schema response (each input's type + `choices`,
-outputs) is not captured in detail. Capture it live before the brief — the Before-T-101/T-104a way.
+**Before T-106: capture the `nodes(action="get")` shape.** ✅ **DONE 2026-08-24** — recorded in
+**MCP-SURFACE §12**. The full node-schema response (metadata + `inputs[]` with `type`/`is_link`/
+`section`/`choices`/`options` + `outputs[]`) is captured live, including the two traps: `options`
+is polymorphic (`default` is string/bool/number/null) and the `INT` seed's `max` is `u64::MAX`,
+which does not fit `i64`.
+
+**Scope note (2026-08-24):** the LoRA list *filtering/grouping* (drop `training_state.pt` and
+non-adapters, group by directory, collapse epoch series, dedupe case variants) is **Phase 3**, not
+here — ROADMAP Phase 3 and ARCHITECTURE §5a both assign it to the LoRA stack panel, and the rules
+are fuzzy enough (telling a real adapter from a misfiled full model by filename alone) to need
+owner iteration alongside the picker UI. T-106 delivers the **raw** list; the picker shapes it.
 
 ### T-106b — `minimax-music-3` profile
 **Unblocked 2026-08-23.** Weights are installed and the template validates once

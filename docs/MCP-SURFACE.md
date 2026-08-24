@@ -588,3 +588,76 @@ a real download — not reproduced; the bogus URL failed, and comfy-cli cleaned 
 file, leaving `checkpoints` empty). `percent` and `total_bytes` are `null` until the server sends a
 content length. `cancel` returns the same shape as `status` (the current state), not a distinct
 confirmation — the same racy-cancel caveat as jobs §10.5.
+
+## 12. Node registry (`nodes`) — verified 2026-08-24
+
+Captured live for T-106. `nodes(action="get", name=<class>)` returns the full node schema from
+the live `object_info` — the same source `validate_workflow` and `run_workflow`'s pre-validation
+read. This is the authoritative list of what a graph will accept, which is why LoRA enumeration
+reads it rather than `search_models(folder="loras")` (§4).
+
+### 12.1 `nodes(action="get")` — the node schema shape
+
+`nodes(action="get", name="LoraLoaderModelOnly")`:
+
+```json
+{
+  "id": "LoraLoaderModelOnly",
+  "name": "LoraLoaderModelOnly",
+  "display_name": "Load LoRA",
+  "description": "This LoRAs loader is used to modify the diffusion model…",
+  "category": "model/loaders",
+  "output_types": ["MODEL"],
+  "output_node": false,
+  "is_api_node": false,
+  "deprecated": false,
+  "pack": "core",
+  "labels": [],
+  "cloud_disabled": false,
+  "inputs": [
+    { "name": "model", "type": "MODEL", "required": true, "is_link": true,
+      "section": "required", "choices": [],
+      "options": { "min": null, "max": null, "step": null, "default": null } },
+    { "name": "lora_name", "type": "COMBO", "required": true, "is_link": false,
+      "section": "required", "choices": [ "ACE-Step-v1.5-ambient_dream1-LoRA\\adapter_model.safetensors", … ],
+      "options": { "min": null, "max": null, "step": null, "default": null } },
+    { "name": "strength_model", "type": "FLOAT", "required": true, "is_link": false,
+      "section": "required", "choices": [],
+      "options": { "min": -100.0, "max": 100.0, "step": 0.01, "default": 1.0 } }
+  ],
+  "outputs": [ { "name": "MODEL", "type": "MODEL" } ]
+}
+```
+
+Key facts the wrapper must encode:
+
+- **`type` is the ComfyUI input type** (`MODEL`, `COMBO`, `FLOAT`, `INT`, `STRING`, `BOOLEAN`,
+  `CONDITIONING`, `CLIP`, `LATENT`, …). `is_link: true` marks a linkable input (a graph edge);
+  `is_link: false` marks a widget (a value the user sets). `section` is `"required"` or
+  `"optional"`.
+- **`choices` is non-empty only for `COMBO` inputs** — it is the live enum, and the source for
+  `from_node_choices` (keyscale/language/timesignature) and for LoRA enumeration (`lora_name`).
+- ⚠ **`options` is polymorphic and can exceed `i64`.** `default` is a string (`"en"`), a bool
+  (`true`), a number (`0`, `120.0`), or `null`; `min`/`max` are numbers or `null`. The `INT`
+  seed's `max` is `18446744073709551615` = `u64::MAX`, which does not fit in `i64` — so the
+  wrapper models `options` fields as `Option<Value>`, not `f64`/`i64` (the same precision rule
+  that made `Seed` its own profile type).
+- `description` may be empty (`""`); `labels` is `[]` on core nodes.
+- **Unknown class** fails with `[node_not_found]` ("Node class '<name>' not found in the loaded
+  environment") — the usual `Ok(is_error: true)` shape, so the wrapper surfaces it as
+  `ComfyError::Tool` with that code, not a decode error.
+
+### 12.2 LoRA enumeration — the raw list, and why filtering is Phase 3
+
+`nodes(action="get", name="LoraLoaderModelOnly")` → `inputs[].lora_name.choices` is the raw
+installed-LoRA list (53 entries on this install; §4's 95 was an earlier snapshot — this box's
+model set churns). The list is dominated by training noise: `loragoth\checkpoint-epoch-{15..300}\
+adapter\adapter_model.safetensors` (20 epochs) plus a `training_state.pt` per epoch, a `final\`
+directory, five real ACE-Step LoRA directories (9 adapter files), and two misfiled full video
+models (`minimax_h3_fl2v_turbo_*_bf16.safetensors`).
+
+**T-106 delivers the raw list** (`node_schema` + `choices_for`). The filtering/grouping — drop
+`training_state.pt` and non-adapter files, group by directory, collapse epoch series to `final`,
+dedupe case variants — is a UI design task that §4 assigns to **Phase 3** (the LoRA stack panel),
+not here. The rules are fuzzy enough (how to tell a real adapter from a misfiled full model by
+filename alone) that they need owner iteration alongside the picker UI.
