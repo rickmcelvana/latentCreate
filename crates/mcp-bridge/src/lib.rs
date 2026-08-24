@@ -7,6 +7,7 @@
 mod error;
 mod local;
 mod preflight;
+mod session_log;
 mod slots;
 mod templates;
 mod types;
@@ -14,6 +15,7 @@ mod types;
 pub use error::ComfyError;
 pub use local::{with_timeout, LocalComfy};
 pub use preflight::{node_id_to_instance, Finding, Note, NoteList, Validation, Verdict};
+pub use session_log::SessionLog;
 pub use slots::{split_address, Slot, SlotList, SlotOverride, SlotWrite};
 pub use templates::{FetchedTemplate, LocalCheck, TemplateDetail, TemplateInfo, TemplateSearch};
 pub use types::{ServerInfo, SystemStats};

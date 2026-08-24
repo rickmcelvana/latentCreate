@@ -68,7 +68,7 @@ could not be covered there — and it is the single finding most likely to cause
 bug (docs/MCP-SURFACE.md §8.3). The mock must be able to serve an `is_error` result, an
 `Ok` result whose text is not JSON (→ `ComfyError::Payload`), and a well-formed payload.
 
-### T-102b — session log + redaction  — 📝 **BRIEFED** *(split from the original T-102b)*
+### T-102b — session log + redaction  — ✅ **LANDED** ([brief](t-102b-brief.md))
 ARCHITECTURE §3 requires every tool-call payload and result to be logged (redacted) to a
 rotating session log for the diagnostics pane, and CONVENTIONS forbids keys ever reaching a
 log. This task delivers the **session log and redaction**: an append-only NDJSON `SessionLog`

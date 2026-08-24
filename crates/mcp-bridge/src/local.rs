@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::error::{parse_error_code, ComfyError};
+use crate::session_log::SessionLog;
 use crate::types::{ServerInfo, SystemStats};
 
 /// A live `comfy-mcp` session.
@@ -21,14 +22,15 @@ use crate::types::{ServerInfo, SystemStats};
 /// (docs/MCP-SURFACE.md 8.2).
 pub struct LocalComfy {
     service: RunningService<RoleClient, ()>,
+    log: Option<SessionLog>,
 }
 
 impl LocalComfy {
     /// Spawn `comfy-mcp` over stdio and complete the MCP handshake.
     ///
     /// `bin` is the configured executable name or path; the default is
-    /// `"comfy-mcp"` on PATH.
-    pub async fn connect(bin: &str) -> Result<Self, ComfyError> {
+    /// `"comfy-mcp"` on PATH. Tool traffic is recorded to `log`.
+    pub async fn connect(bin: &str, log: SessionLog) -> Result<Self, ComfyError> {
         let transport = TokioChildProcess::new(tokio::process::Command::new(bin).configure(|c| {
             c.env("PYTHONIOENCODING", "utf-8");
         }))
@@ -36,7 +38,7 @@ impl LocalComfy {
             std::io::ErrorKind::NotFound => ComfyError::NotInstalled,
             _ => ComfyError::Spawn(e),
         })?;
-        Self::from_transport(transport).await
+        Self::from_transport_with_log(transport, Some(log)).await
     }
 
     /// Complete the MCP handshake over an already-built transport.
@@ -49,8 +51,21 @@ impl LocalComfy {
         T: IntoTransport<RoleClient, E, A>,
         E: std::error::Error + Send + Sync + 'static,
     {
+        Self::from_transport_with_log(transport, None).await
+    }
+
+    /// Handshake plus an optional session log. [`LocalComfy::connect`] and
+    /// [`LocalComfy::from_transport`] both funnel through here.
+    pub async fn from_transport_with_log<T, E, A>(
+        transport: T,
+        log: Option<SessionLog>,
+    ) -> Result<Self, ComfyError>
+    where
+        T: IntoTransport<RoleClient, E, A>,
+        E: std::error::Error + Send + Sync + 'static,
+    {
         let service = ().serve(transport).await.map_err(|e| ComfyError::Transport(e.to_string()))?;
-        Ok(Self { service })
+        Ok(Self { service, log })
     }
 
     /// Call a tool and decode its JSON-in-text payload.
@@ -62,10 +77,23 @@ impl LocalComfy {
         tool: &'static str,
         arguments: Map<String, Value>,
     ) -> Result<T, ComfyError> {
-        let res: CallToolResult = self
+        if let Some(log) = &self.log {
+            log.log_call(tool, &arguments);
+        }
+
+        let res: CallToolResult = match self
             .service
             .call_tool(CallToolRequestParams::new(tool).with_arguments(arguments))
-            .await?;
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                if let Some(log) = &self.log {
+                    log.log_result(tool, false, &e.to_string());
+                }
+                return Err(e.into());
+            }
+        };
 
         let text = res
             .content
@@ -73,6 +101,10 @@ impl LocalComfy {
             .and_then(|c| c.as_text())
             .map(|t| t.text.as_str())
             .unwrap_or_default();
+
+        if let Some(log) = &self.log {
+            log.log_result(tool, !res.is_error.unwrap_or(false), text);
+        }
 
         if res.is_error.unwrap_or(false) {
             return Err(ComfyError::Tool {
@@ -127,6 +159,7 @@ pub(crate) mod test_helpers {
     use tokio::io::duplex;
 
     use crate::mock::{spawn_mock, RecordedCalls, Reply};
+    use crate::session_log::SessionLog;
     use crate::LocalComfy;
 
     pub async fn client_with(replies: Vec<Reply>) -> LocalComfy {
@@ -142,14 +175,24 @@ pub(crate) mod test_helpers {
             .expect("handshake over duplex");
         (client, recorded)
     }
+
+    /// A client wired to a real session log, for the logging-path tests.
+    pub async fn client_with_session_log(replies: Vec<Reply>, log: SessionLog) -> LocalComfy {
+        let (client_half, peer_half) = duplex(8 * 1024);
+        spawn_mock(peer_half, replies);
+        LocalComfy::from_transport_with_log(client_half, Some(log))
+            .await
+            .expect("handshake over duplex")
+    }
 }
 
 #[cfg(test)]
 mod transport_tests {
     use serde_json::json;
 
-    use crate::local::test_helpers::{client_and_log, client_with};
+    use crate::local::test_helpers::{client_and_log, client_with, client_with_session_log};
     use crate::mock::Reply;
+    use crate::session_log::SessionLog;
     use crate::types::ServerInfo;
 
     #[tokio::test]
@@ -281,5 +324,35 @@ mod transport_tests {
             })
             .count();
         assert_eq!(with_slash, 24);
+    }
+
+    #[tokio::test]
+    async fn test_call_logs_call_and_result_to_the_session_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("session.log");
+        let log = SessionLog::open(&path).expect("open log");
+        let client = client_with_session_log(vec![Reply::Json(json!({ "answer": 42 }))], log).await;
+
+        let mut args = serde_json::Map::new();
+        args.insert("workflow_path".into(), json!("wf.json"));
+        args.insert("api_key".into(), json!("sk-secret"));
+        let _: serde_json::Value = client
+            .call("list_workflow_slots", args)
+            .await
+            .expect("call succeeds");
+
+        let raw = std::fs::read_to_string(&path).expect("read log");
+        assert!(!raw.contains("sk-secret"));
+        let entries: Vec<serde_json::Value> = raw
+            .lines()
+            .map(|l| serde_json::from_str(l).expect("line is JSON"))
+            .collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["kind"], json!("call"));
+        assert_eq!(entries[0]["tool"], json!("list_workflow_slots"));
+        assert_eq!(entries[0]["arguments"]["api_key"], json!("[REDACTED]"));
+        assert_eq!(entries[1]["kind"], json!("result"));
+        assert_eq!(entries[1]["tool"], json!("list_workflow_slots"));
+        assert_eq!(entries[1]["ok"], json!(true));
     }
 }

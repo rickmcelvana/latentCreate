@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 33 offline tests) but nothing is wired to the UI yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
-- **Next up:** **T-102b** (session log + redaction, now briefed and split from stderr capture) then **T-102c** (stderr capture + free-text redaction), then **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). T-102b is briefed; T-102c and T-104 still need briefs.
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 49 offline tests) but nothing is wired to the UI yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), **T-102b (session log + redaction)**, T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
+- **Next up:** **T-102c** (stderr capture + free-text redaction — the other half of the split, mechanism already verified), then **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). Both still need briefs.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -331,3 +331,29 @@ overwrite an existing destination on Windows, so a second rollover would silentl
 appending to the current file while resetting the byte counter. The log removes the previous
 `.1` before renaming — the one previous generation is the whole rotation scheme, documented in
 the brief.
+
+### 2026-08-24 — T-102b landed
+
+Aider transcribed the brief faithfully; the diff touched exactly the four listed files and the
+executor's one hand-written test was *stronger* than my reference (it asserts both the `call`
+and `result` entries plus the `ok` flag, not just the secret's absence). `mcp-bridge` is now 49
+tests, all offline.
+
+**The single gate failure was mine, not the executor's.** `cargo fmt --check` rejected
+`from_transport_with_log`'s `().serve(transport).await.map_err(...)` chain, which I had written
+multi-line in the brief's reference code. The scratch crate was fmt-clean; I re-typed the brief
+from an earlier draft instead of copying the formatted file, so the rule "reference code goes
+through `cargo fmt` before it ships in a brief" was followed for the crate and violated for the
+brief itself. Fixed with a one-line collapse. The rule's real lesson: **copy the reference code
+out of the fmt-clean scratch file verbatim — do not re-type it.**
+
+**Mutation-tested the guard that matters:** deleting `redact(...)` from `log_call` fails
+`test_call_logs_call_and_result_to_the_session_log` on `!raw.contains("sk-secret")` and nothing
+else — the "a secret never reaches the file" invariant is genuinely enforced, not asserted.
+
+**One branch remains untested, noted for later:** `call`'s transport-error path
+(`call_tool` returning `Err`) logs `log_result(tool, false, …)` but no test triggers a transport
+error — the mock always answers. It is a best-effort log line (the error still propagates
+correctly via `Err(e.into())`), so it is low-risk, but it is the only part of the new surface
+without a test. Fold a transport-abort mock case into T-102c if convenient, or leave it — it
+would only lose a diagnostic line, never change behavior.
