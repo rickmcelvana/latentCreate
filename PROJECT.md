@@ -148,3 +148,23 @@ wrong or left unowned**, none of them the executor's doing:
 not just clippy. And the review question that earned its keep here was not "does this match
 the brief" — it did — but *"what did the brief fail to ask for?"* All three findings were
 mine, upstream of the executor.
+
+### 2026-08-24 — T-102 landed; the rig can now see requests
+
+Aider transcribed the brief exactly; `cargo fmt` was again the only gate failure, now the
+third run in a row, so WORKFLOW §1 gained a hard rule rather than another note: **reference
+code goes through `cargo fmt` before it ships in a brief.** Compiling it is not enough — the
+executor copies hand-formatting faithfully.
+
+Review found one gap, again in the brief rather than the run. **The rig could verify
+responses but not requests.** Every test served canned data and checked the decode; nothing
+observed what the bridge *sent*. comfy-mcp rejects a misnamed argument outright — `path`
+where it wants `workflow_path` (docs/MCP-SURFACE.md §8.7, proven live) — so a T-103 wrapper
+misspelling one would pass the entire offline suite and fail only against a real server,
+which is the failure this rig exists to prevent. `spawn_mock` now returns a `RecordedCalls`
+log, with a test asserting the tool name and argument names go out verbatim; mutating `call`
+to rename `workflow_path` → `path` fails that test and no other.
+
+**Carry forward:** mutation-testing the two or three tests a task actually turns on has now
+paid three times — it caught a test that passed for the wrong reason in T-102's own brief,
+and confirmed both `is_error` guards and this one. It costs one edit and one `cargo test`.

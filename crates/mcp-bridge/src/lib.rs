@@ -13,6 +13,9 @@ pub use local::{with_timeout, LocalComfy};
 pub use types::{ServerInfo, SystemStats};
 
 #[cfg(test)]
+mod mock;
+
+#[cfg(test)]
 mod tests {
     /// Gives the crate a test target from the start and pins its published
     /// name, so a rename cannot silently break the Tauri shell's path deps.

@@ -9,6 +9,8 @@
 
 **What makes an executor run succeed (measured over T-002, T-003, T-003b):** briefs that carry **full reference code** plus, for each test, the **invariant it must protect** produced near-clean runs needing only `cargo fmt`. The one brief written as prose spec without reference code (T-002) came back not compiling. Write the code in the brief; let the executor transcribe, wire up and test it.
 
+**Run reference code through `cargo fmt` before it goes in the brief.** T-101 and T-102 each landed a correct diff whose only gate failure was formatting the architect had never checked — the executor transcribes reference code faithfully, hand-formatting included. Compiling and running it is not enough; the brief's own scratch crate must be `cargo fmt`-clean, or every run pays for it.
+
 **Model routing:** everything here is plumbing/UI → kimi lane by default. If a task class racks up repeated failed fix-up rounds (3+ attempts on one T-number), stop and ask the producer to try a different model — record the switch in the decisions log.
 
 ## 2. The loop (per task)
