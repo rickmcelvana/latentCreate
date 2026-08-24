@@ -10,27 +10,27 @@ guide for the local backend. Do not write a wrapper from the docs.
 
 ---
 
-## Before T-101: verify `rmcp`  ⚠ blocking, architect task
+## Before T-101: verify `rmcp`  ✅ DONE 2026-08-23
 
-`mcp-bridge` needs a Rust MCP client. `rmcp` (the official SDK) has **not** been verified
-for this project — no version, API shape, or transport behaviour is known here, and
-CONVENTIONS forbids writing a third-party surface from memory.
+Findings recorded in **[docs/MCP-SURFACE.md §8](../docs/MCP-SURFACE.md)**; T-101's brief
+([tasks/t-101-brief.md](t-101-brief.md)) carries reference code compiled against rmcp 3.1.4
+and run against the live server. Answers to the five questions, in short:
 
-**Use the method that worked four times in Phase 0:** build a throwaway crate outside the
-repo, add the dependency, write the smallest real usage, and compile *and run* it against
-the actual `comfy-mcp` binary. Phase 0 caught keyring's missing macOS backend feature and
-the exact serde wire strings this way — both invisible to code review.
-
-What must come out of it before T-101's brief is written:
-1. `rmcp` version and required feature flags (the keyring lesson: a default feature set can
-   compile and then do nothing at runtime).
-2. How to spawn a stdio child process transport and complete initialisation.
-3. The call/response types for `tools/call`, and how tool results deserialise.
-4. Whether tool arguments/results are plain `serde_json::Value` or typed.
-5. Confirmation that `server_info` round-trips against the real local server.
-
-Record the findings in `docs/MCP-SURFACE.md` under a new "Rust client" section, then brief
-T-101 with reference code that is known to compile.
+1. **`rmcp = "3.1.4", default-features = false, features = ["client", "transport-child-process"]`.**
+   Defaults drag in the whole server half plus macros/schemars/uuid/base64 — all unnecessary.
+   Everything it pulls in is permissively licensed. It raises the workspace MSRV to **1.88**.
+2. **`().serve(TokioChildProcess::new(cmd))`** does the whole handshake; negotiated protocol
+   `2025-11-25`. **The child is already killed on drop** — ARCHITECTURE §3's requirement needs
+   no code of ours. A missing binary is `io::ErrorKind::NotFound`, which is T-110's signal.
+3. **`CallToolRequestParams` (plural) is `#[non_exhaustive]`** — struct literals are a compile
+   error; build with `::new(name).with_arguments(map)`.
+4. **Arguments are `serde_json::Map`; results are JSON *inside a text block*.**
+   `structured_content` is always `None` and no tool publishes an `output_schema`, so every
+   wrapper is a two-stage decode. And ⚠ **a failing tool returns `Ok` with
+   `is_error: true`**, not `Err` — unknown tool names included.
+5. **`server_info` round-trips**, as do `system_stats` and `list_workflow_slots` against the
+   frozen MiniMax fixture — where **24 of 25 slot addresses are subgraph-form**, making
+   T-103's warning measured rather than predicted.
 
 ---
 
@@ -39,11 +39,15 @@ T-101 with reference code that is known to compile.
 Briefs are written one at a time, each after the previous lands (Phase 0's rhythm). Each
 gets its own `tasks/t-1NN-brief.md` when written.
 
-### T-101 — `mcp-bridge` foundation
-`ComfyBackend` trait (ARCHITECTURE §3), stdio transport spawning `comfy-mcp`, child killed
-on drop, typed `server_info` / `system_stats` wrappers, `ComfyError` via `thiserror`.
-Local backend only — the cloud backend is a separate later task, gated on verifying a live
-cloud endpoint.
+### T-101 — `mcp-bridge` foundation  — **brief written: [t-101-brief.md](t-101-brief.md)**
+Stdio transport spawning `comfy-mcp`, typed `server_info` / `system_stats` wrappers,
+`ComfyError` via `thiserror`. Local backend only — the cloud backend is a separate later
+task, gated on verifying a live cloud endpoint.
+
+The `ComfyBackend` trait itself (ARCHITECTURE §3) is **deferred to T-104**: with one impl it
+would be an untested abstraction, and async fns in traits are not object-safe, so the
+dyn-vs-enum choice should be made when a backend first goes into Tauri managed state.
+"Child killed on drop" is already provided by rmcp's transport and needs no code.
 
 ### T-102 — mock transport test rig
 A fake MCP server over stdio pipes, so every later `mcp-bridge` task has non-live tests.

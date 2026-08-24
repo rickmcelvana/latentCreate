@@ -16,7 +16,7 @@
 Architect writes brief (tasks/phase-N.md, one T-number) incl. "Aider launch" command block
   → producer: copy-paste the launch command as-is
   → paste brief → Aider implements (working tree only, --no-auto-commits)
-  → producer runs the green gate → architect reviews → commit "T-0XX: <title>"
+  → producer runs the green gate → architect reviews → **architect commits** "T-0XX: <title>"
   → Architect reviews `git diff` against brief (checklist §4)
   → PASS → merge; FAIL → fix-up brief (T-0XXb) with its own launch command → repeat
   → UI/integration tasks: producer click-through per the brief's manual-verify list
@@ -30,6 +30,13 @@ architect saw the diff. Every launch command therefore carries
 **`--no-auto-commits`**: the executor edits the working tree, the producer runs
 the gate, and the commit happens after review with a `T-0XX:` message. A red
 commit costs more to unpick than it saves.
+
+**Who commits: the architect (Claude), once the gate is green.** A green gate is
+the go-ahead, not a checkpoint to ask at. This holds for architect-authored work
+too — briefs, docs, verification findings — where there is no Aider run at all:
+gate green → commit → push. Stated explicitly because every earlier phrasing in
+this file named only who must *not* commit, and a later session read that silence
+as covering itself (2026-08-23, owner correction).
 
 **Executors do not decide line endings either.** That same run rewrote all 11
 files as CRLF, turning an 11-line CSS addition into a 336-line diff and burying

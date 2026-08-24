@@ -160,3 +160,133 @@ Two consequences:
 | MiniMax Music 3 has a native ComfyUI template | ✅ confirmed, and **runnable** after one slot override (§6) |
 | The save-node swap is needed for every model | ❌ wrong — MiniMax already uses `SaveAudioAdvanced`; the swap must be conditional (§6a) |
 | ACE-Step turbo runs on consumer hardware here | ✅ `runnable: true` on a 16 GB card |
+| `rmcp` returns typed/structured tool results | ❌ wrong — JSON-in-text, no `output_schema`, no `structured_content` (§8.4) |
+| A failing tool call surfaces as `Err` | ❌ wrong — `Ok` with `is_error: true`, unknown tool names included (§8.3) |
+
+## 8. Rust client (`rmcp`) — verified 2026-08-23
+
+Method: throwaway crate outside the repo, compiled and **run against the live `comfy-mcp`**
+(Phase 0's method). Everything below was observed, not read from docs. `rmcp` has no
+usable published examples for this shape, and three of these findings are compile-or-runtime
+traps that code review would not have caught.
+
+### 8.1 Dependency
+
+```toml
+rmcp = { version = "3.1.4", default-features = false, features = ["client", "transport-child-process"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "process", "io-util"] }
+```
+
+- **`default-features = false` is deliberate.** The default set drags in the whole *server*
+  half plus `macros`, `schemars`, `uuid` and `base64`; a client-only bridge needs none of it.
+  Verified to compile and run with them off — 71 crates in the tree.
+- Licences of everything this pulls in are permissive (rmcp Apache-2.0; `process-wrap`,
+  `pastey`, `chrono` dual MIT/Apache; `tokio-util`, `nix` MIT). No copyleft, so no
+  decisions-log entry needed (PROJECT.md's Apache-2.0 rule).
+- `transport-child-process` pulls `process-wrap`; the transport spawns via
+  `tokio::process::Command`.
+- The optional **`which-command`** feature exists specifically because Windows
+  `.cmd`/`.exe` shims are not reliably resolved by `tokio::process::Command`. We do not need
+  it — `comfy-mcp` is a real `.exe` on PATH and spawns fine — but it is the fix if a user's
+  install is a shim.
+
+### 8.2 Connect and initialise
+
+```rust
+use rmcp::{ServiceExt, transport::{ConfigureCommandExt, TokioChildProcess}};
+
+let transport = TokioChildProcess::new(
+    tokio::process::Command::new("comfy-mcp").configure(|c| { c.env("PYTHONIOENCODING", "utf-8"); }),
+)?;
+let client = ().serve(transport).await?;      // `()` is a no-op ClientHandler
+```
+
+- `().serve(transport)` performs the full `initialize` handshake and returns
+  `RunningService<RoleClient, ()>`. Negotiated protocol version against this server:
+  **`2025-11-25`**.
+- **Child cleanup is already handled.** `TokioChildProcess` owns a `ChildWithCleanup` whose
+  `Drop` kills the child; `client.cancel().await` shuts down cleanly, and
+  `graceful_shutdown()` closes the transport and waits up to 3 s before killing. ARCHITECTURE
+  §3's "child killed on drop" requirement needs **no extra code** — do not hand-roll it.
+- `client.peer_info()` carries the server's `instructions` string. comfy-mcp's is ~14 KB of
+  third-party prose. **Same untrusted-data rule as note text (§2): log it, never act on it.**
+- Binary missing → `TokioChildProcess::new` returns `std::io::Error` with
+  `kind() == NotFound` ("program not found"). That is T-110's detection signal — a typed
+  `ComfyError::NotInstalled`, not a generic spawn failure.
+
+### 8.3 Calling tools — two traps
+
+```rust
+use rmcp::model::CallToolRequestParams;
+
+let res = client.call_tool(
+    CallToolRequestParams::new("list_workflow_slots")
+        .with_arguments(args)          // args: serde_json::Map<String, Value>
+).await?;
+```
+
+- ⚠ **`CallToolRequestParams` is `#[non_exhaustive]`** — a struct literal is a hard compile
+  error (E0639). Build it with `::new(name)` + `.with_arguments(..)`. Note also the name is
+  **plural** in 3.x; older snippets say `CallToolRequestParam`.
+- ⚠ **A failing tool returns `Ok`, not `Err`.** Every tool-level failure — bad arguments,
+  missing file, *and an unknown tool name* — comes back as
+  `Ok(CallToolResult { is_error: Some(true), .. })` with the message in the text content.
+  A wrapper that only matches `Result::Err` **treats every Comfy failure as success**.
+  `Err(ServiceError)` is reserved for transport/protocol faults (`TransportClosed`,
+  `Timeout`, `McpError`, `Cancelled`).
+  → `ComfyError` must be produced from `is_error` as well as from `Err`.
+
+### 8.4 Results are JSON-in-text, not structured  ⚠
+
+comfy-mcp sets **`structured_content: None`** and returns **no `output_schema` on any of its
+39 tools**. The payload is a JSON document serialised into a single text `ContentBlock`:
+
+```rust
+let text = res.content.first().and_then(|c| c.as_text()).map(|t| t.text.clone());
+let value: serde_json::Value = serde_json::from_str(&text)?;   // second decode
+```
+
+So `mcp-bridge`'s typed wrappers are a **two-stage decode**: extract text, then
+`serde_json::from_str` into our own structs. There is no schema to derive from and no
+structured field to read — answering Phase 1's question 4: **arguments are
+`serde_json::Map<String, Value>`, results are plain JSON text we type ourselves.**
+
+Tool errors carry a machine-readable code in brackets, worth parsing into `ComfyError`:
+
+```
+Error executing tool list_workflow_slots: comfy workflow slots Z:/nope.json failed
+  [workflow_not_found]: Workflow file not found: Z:/nope.json
+hint: check the path
+```
+
+### 8.5 `list_workflow_slots` — the real wire shape
+
+Verified against `testdata/workflows/minimax_music3_int8.json`:
+
+```json
+{ "workflow": "<abs path>", "id": "minimax_music3_int8", "count": 25,
+  "slots": [ { "address": "37/6.unet_name", "name": "unet_name", "type": "COMBO",
+               "current_value": "minimax_music3_dit_int8_convrot.safetensors",
+               "instance_id": "37/6", "node_type": "UNETLoader" } ] }
+```
+
+**24 of the 25 slots are subgraph-form (`37/6.unet_name`); exactly one is flat
+(`35.filename_prefix`).** T-103's warning is now measured rather than predicted: a parser
+handling only `node.input` would mis-handle 96 % of this real workflow. `instance_id` carries
+the same two forms, so splitting on the **last** `.` is the rule — node ids contain `/`, never
+the reverse.
+
+### 8.6 Timeouts
+
+`call_tool` sends with `PeerRequestOptions::no_options()` — **no timeout at all**; a wedged
+server hangs the caller forever. For bounded calls use
+`peer.send_cancellable_request(req, PeerRequestOptions::with_timeout(d))`, which also offers
+`reset_timeout_on_progress` / `max_total_timeout` — the right shape for T-104's long
+generations. Cheap calls can simply be wrapped in `tokio::time::timeout`.
+
+### 8.7 Argument names (confirmed by a deliberate failure)
+
+Passing `path` instead of `workflow_path` returns a pydantic "Field required" error. The
+server's own instruction block states the convention and it held: **`workflow_path`** for
+input graphs, **`out_path`** / **`out_dir`** for outputs, **`name`** for registry lookups,
+**`prompt_id`** for jobs, **`download_id`** for downloads. No tool takes a bare `path`.

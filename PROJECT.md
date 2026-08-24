@@ -6,7 +6,7 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. It does not talk to ComfyUI yet.
-- **Next up:** **Phase 1** — [tasks/phase-1.md](tasks/phase-1.md). **First action is the blocking `rmcp` verification** described at the top of that file; T-101's brief cannot be written until it is done.
+- **Next up:** **Phase 1** — [tasks/phase-1.md](tasks/phase-1.md). The blocking `rmcp` verification is **done** (docs/MCP-SURFACE.md §8) and **[T-101's brief](tasks/t-101-brief.md) is written and ready to run** — the next action is a producer Aider run against it.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -20,7 +20,7 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 ## How work happens
 - WORKFLOW.md defines the Claude(architect)/Aider(executor)/human(producer) loop, adapted from latent-mastering. This repo is almost entirely plumbing/UI → default executor `ollama_chat/kimi-k2.7-code:cloud`. No DSP lane exists here (the visualizer is AnalyserNode + canvas, not custom math).
 - Tasks live in `tasks/phase-N.md`; anything non-trivial gets its own `tasks/t-NNN-brief.md` with a ready-to-paste Aider launch command. One brief per run, ≤ ~400-line diffs.
-- **The loop, as it actually settled in Phase 0:** architect writes the brief with full reference code → producer runs Aider with `--no-auto-commits` → producer runs `npm run gate` → architect reviews the working tree against the brief → commit `T-NNN: title` → push. Executors never commit.
+- **The loop, as it actually settled in Phase 0:** architect writes the brief with full reference code → producer runs Aider with `--no-auto-commits` → producer runs `npm run gate` → architect reviews the working tree against the brief → **architect commits** `T-NNN: title` → push. Executors never commit; the architect does, on a green gate, without waiting to be asked. Architect-only work (briefs, docs, verification) follows the same rule minus the Aider step.
 
 ## Key decisions log
 - **2026-08-23 — MCP-first Comfy integration.** App embeds an MCP *client* (rmcp, stdio to local `comfy-mcp`; HTTP to Comfy Cloud) rather than ComfyUI's raw HTTP API. Rationale: model search/download, templates, validation, and job tools come free; local/cloud is one trait, two transports (ARCHITECTURE §1, §3). Raw API fallback deliberately deferred (OQ-3). ⚠ *The local/cloud half of this was disproved the same day — see the verification entry below; MCP-first itself stands and was strengthened (slots).*
@@ -43,6 +43,12 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 - **2026-08-23 — MiniMax Music 3 added to the seed profiles.** Released 2026-08-13/14, currently the strongest open-weights option (5-minute songs, vocals that read as performed). ⚠ Its license is open-weights-*with-conditions* (attribution required; separate agreement above ~$20M revenue), unlike ACE-Step's Apache-2.0 — the UI must surface per-model license terms, since users ship these tracks commercially. Does not affect this repo's own Apache-2.0 licensing (we ship no weights). ComfyUI support level **since verified**: a native, free (non-API) template `audio_minimax_music_3` exists, but its weights are not on the dev box — profile blocked, see OQ-6.
 - **2026-08-23 — Branding source of truth is `latentbeats.com`**, not the sibling apps. `../website/latentbeats.com/css/style.css` carries the suite's current tokens; the owner rebranded the umbrella site **violet → blue a few days before 2026-08-23**, so any doc or repo still saying "violet" is behind the brand, not wrong-at-the-time. latentCreate's `theme.css` mirrors the site (`--bg: #0a0e1a`, `--accent: #58a6ff`, `--radius: 12px`, card shadow, 180ms transitions). This means latentCreate is **intentionally bluer/deeper than Latent Mixing and Mastering**, which still run the older GitHub-dark ground (`#0d1117`, `#30363d`); the accent is identical in all three. If the siblings are later brought onto the site palette, latentCreate needs no change. Rule for agents: change the site first, then follow it — never fork token values in an app.
 - **2026-08-23 — Lyric-LLM recommendations** (closes OQ-2). From the owner's hands-on use across many local models: **Gemma 4 12B is the standout at its size** for lyric writing, and **Gemma 4 26B–31B perform well for users with the VRAM to run them**. These become the app's *suggested* models in the setup wizard's LLM step and in docs — suggestions only, never a gate: any OpenAI-compatible endpoint remains first-class (ARCHITECTURE §4). Not benchmarked in-repo; recorded as owner experience so agents don't re-litigate it. Full list with sizing: docs/MODELS.md.
+- **2026-08-23 — `rmcp` verified; three findings reshape every future tool wrapper.** Full evidence: [docs/MCP-SURFACE.md §8](docs/MCP-SURFACE.md). Pinned **rmcp 3.1.4 with `default-features = false`** (client + child-process transport only; the default set pulls rmcp's entire *server* half). Consequences that outlive T-101:
+  - **comfy-mcp returns JSON inside a text block.** `structured_content` is always `None` and not one of its 39 tools publishes an `output_schema`. Every wrapper in T-103–T-106 is a **two-stage decode** — extract text, then `serde_json::from_str` into our own type. There is nothing to derive types from, so each one is hand-written against a payload observed live.
+  - ⚠ **A failing tool call returns `Ok`, not `Err`** — bad arguments, missing files, *and unknown tool names* all arrive as `Ok(is_error: true)`. A wrapper matching only `Result::Err` reports every ComfyUI failure as success. This is the shape of bug that ships.
+  - **`TokioChildProcess` already kills the child on drop**, so ARCHITECTURE §3's "child killed on drop" needs no code of ours — and hand-rolling it would fight the transport.
+  - Smaller: `CallToolRequestParams` is `#[non_exhaustive]` (struct literals do not compile); `call_tool` has **no default timeout**; a missing binary is `io::ErrorKind::NotFound` (T-110's detection signal); rmcp raises the workspace MSRV to **1.88**; everything it pulls in is permissively licensed.
+  - **The `ComfyBackend` trait is deferred from T-101 to T-104.** Async fns in traits are not object-safe, so dyn-vs-enum dispatch should be decided when a backend first enters Tauri managed state — not guessed now around a single impl.
 - **2026-08-23 — Send-to sequencing** (closes OQ-4 for this repo): the real handoff mechanism is being built on the mixing/mastering side **before** latentCreate reaches Phase 4. latentCreate therefore builds only the v1 link-out + reveal-file behavior and adopts whatever protocol those repos define when it exists — this repo does not design the handshake. Re-check the mixing/mastering repos' state at the start of Phase 4.
 
 ## Open questions (owner to decide)
@@ -93,3 +99,28 @@ decisions live in the log above and the per-task detail in `tasks/phase-0.md`:
   failing build.
 - CI must exercise the **documented** setup path (WORKFLOW §4b).
 
+### 2026-08-23 (later) — Phase 1 opened: `rmcp` verification (Claude, architect)
+
+Session ritual first: PROJECT.md and ARCHITECTURE.md checked against `git log` — no drift,
+tree clean. Then the one blocking item at the top of `tasks/phase-1.md`.
+
+1. **Verified `rmcp` the Phase 0 way** — two throwaway crates outside the repo, compiled and
+   run against the owner's live `comfy-mcp`. All five questions answered; findings in
+   docs/MCP-SURFACE.md §8 and summarised in the decisions log above.
+2. **Prototyped `mcp-bridge` itself** rather than stopping at API notes: `ComfyError`,
+   `LocalComfy::connect/call/health/stats/shutdown`, slot-address splitting, error-slug
+   parsing. It passes `clippy -D warnings` under the workspace's edition 2021 and runs
+   clean against the live server, so **T-101's brief carries code that is known to compile**
+   — the Phase 0 lesson that prose-spec briefs come back broken.
+3. **Wrote [tasks/t-101-brief.md](tasks/t-101-brief.md)**, ready to run.
+
+**Carry forward:**
+- The two throwaway crates are gone with the scratchpad; §8 is the durable record. Anything
+  it does not say about rmcp is unverified, including the streamable-HTTP transport a cloud
+  backend would need.
+- `list_workflow_slots` on the frozen MiniMax fixture returns **24 of 25 addresses in
+  subgraph form**. T-103's warning is now a measurement, and the rule is concrete: split a
+  slot address on the **last** `.`, because node ids contain `/` but never `.`.
+- The verification paid for itself twice over. "A failed tool call returns `Ok`" and "results
+  are JSON-in-text" are both invisible in review and both would have produced a bridge that
+  silently reports success — the same class of finding as Phase 0's keyring backend.
