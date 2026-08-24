@@ -6,8 +6,8 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 55 offline tests) but nothing is wired to the UI yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), **T-102c (stderr capture + free-text redaction)**, T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
-- **Next up:** **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). Needs a brief.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-104** (job lifecycle + event pump) — the `ComfyBackend` trait decision is made (deferred again, decisions log 2026-08-24); T-104 is split into T-104a (job wrappers) + T-104b (Tauri pump), both blocked on a "Before T-104a" live capture of the run/job/fetch success shapes (MCP-SURFACE §10).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -51,6 +51,7 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   - Smaller: `CallToolRequestParams` is `#[non_exhaustive]` (struct literals do not compile); `call_tool` has **no default timeout**; a missing binary is `io::ErrorKind::NotFound` (T-110's detection signal); rmcp raises the workspace MSRV to **1.88**; everything it pulls in is permissively licensed.
   - **The `ComfyBackend` trait is deferred from T-101 to T-104.** Async fns in traits are not object-safe, so dyn-vs-enum dispatch should be decided when a backend first enters Tauri managed state — not guessed now around a single impl.
 - **2026-08-23 — Send-to sequencing** (closes OQ-4 for this repo): the real handoff mechanism is being built on the mixing/mastering side **before** latentCreate reaches Phase 4. latentCreate therefore builds only the v1 link-out + reveal-file behavior and adopts whatever protocol those repos define when it exists — this repo does not design the handshake. Re-check the mixing/mastering repos' state at the start of Phase 4.
+- **2026-08-24 — `ComfyBackend` trait re-deferred (from T-104 to "until cloud is verified").** The T-104 planning session confirmed holding `LocalComfy` concretely in Tauri managed state rather than introducing the trait now. Three reasons, concrete rather than speculative: (1) still a single impl; (2) the ARCHITECTURE §3 sketch has drifted from the landed methods (`search_templates(query, limit) -> TemplateSearch`, batch `set_slots`, `list_slots -> SlotList`, missing `get_template`/`notes`); (3) MCP-SURFACE §1 proves local/cloud are different surfaces, so the eventual seam is more likely `enum Backend { Local, Cloud }` than a 17-method trait — shaped when cloud is actually verified, not guessed. ARCHITECTURE §3 now marks the trait a sketch and records this.
 
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
@@ -402,3 +403,37 @@ T-102b gap is genuinely closed, not just covered by a test that happens to pass.
 (the no-live-process rule; `drain_stderr` itself is exercised via a `duplex`), and `shutdown`'s
 abort of the drain task (needs a real child). Both are live-only; the drain also self-terminates
 via EOF on drop, so the abort is belt-and-suspenders, not the only safety net.
+
+### 2026-08-24 — T-104 planned: trait re-deferred, job surface half-captured
+
+Planned T-104 (job lifecycle + event pump) and surfaced the two decisions it hinges on. Owner
+confirmed both: **defer the `ComfyBackend` trait again**, and **capture the run/job/fetch shapes
+via fast-fail** — which turned out to be only half-possible, so the rest is deferred to a
+"Before T-104a" step.
+
+**Trait re-deferred.** Recorded in the decisions log and ARCHITECTURE §3 (now marked a sketch).
+The concrete reasons, in order of weight: still one impl; the ARCHITECTURE sketch has drifted from
+landed methods; MCP-SURFACE §1 proves local/cloud are different surfaces, so the eventual seam is
+more likely `enum Backend { Local, Cloud }` than a 17-method trait. Tauri managed state will hold
+`Arc<LocalComfy>` concretely.
+
+**Live capture, the error half.** Zero-cost against the running server (comfy-cli 1.16.0, ComfyUI
+v0.33.3): argument names (`workflow_path`/`wait`, `prompt_id`, `out_dir`) and error slugs
+(`workflow_not_found`, `workflow_unknown_nodes`, `prompt_not_found`, `download_job_not_found`) plus
+`job(action="queue")`'s `{host,port,where,scope,count,jobs[]}`. Recorded in **MCP-SURFACE §10**.
+
+**The one finding that reshapes T-104a: `run_workflow` pre-validates.** A workflow with a missing
+checkpoint and no output node was rejected with `[workflow_unknown_nodes]` *before* queueing — so
+a fast-fail never yields a `prompt_id`, and the run wrapper's error granularity comes from
+comfy-cli, not `/prompt`. (This also makes ARCHITECTURE §7 step 4's pre-submit `validate_workflow`
+partly redundant for the run path.)
+
+**The success half is genuinely blocked here:** this box has no image checkpoint (`checkpoints`
+empty — only ACE-Step/MiniMax music/video models), so capturing `run_workflow`'s `prompt_id`
+envelope, `job(status)` running/success, and `fetch_outputs` with files needs a real music
+generation or a small image checkpoint install. Deferred to "Before T-104a" in phase-1.md, with
+the two ways to satisfy it named.
+
+**Carry forward:** "fast-fail capture" presumed the failure happened at execution, where a
+`prompt_id` would still exist. It happened at validation instead — a reminder that the shape of a
+tool's failure is itself part of the surface to verify, not assume.

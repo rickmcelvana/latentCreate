@@ -402,3 +402,51 @@ rejected with `workflow_not_frontend_format`.
 The MiniMax template's own two notes carry model download URLs and lines that read as
 instructions ("Please update ComfyUI first"). **This is the untrusted-data case in the
 flesh** (§2): render it as quoted prose, never let it drive a fetch, a download, or a run.
+
+## 10. Run / job / fetch — verified 2026-08-24 (error paths; success shapes pending)
+
+Captured live for T-104, zero-cost (no generation run). **Argument names and error slugs are
+verified; the success shapes are NOT yet captured** and must be before T-104a is briefed — the
+dev box has no image checkpoint (`checkpoints` folder empty), so a runnable workflow here is a
+multi-minute music model.
+
+| Tool | Args (verified) | Error slug (verified) |
+|---|---|---|
+| `run_workflow` | `workflow_path`, `wait` | `workflow_not_found`; `workflow_unknown_nodes` |
+| `job(action="status")` | `prompt_id` | `prompt_not_found` |
+| `job(action="queue")` | — | *(success)* `{ "host", "port", "where", "scope", "count", "jobs": [] }` |
+| `fetch_outputs` | `prompt_id`, `out_dir` | `download_job_not_found` |
+
+### 10.1 ⚠ `run_workflow` pre-validates before submitting
+
+This is the finding that reshapes T-104. A workflow with an unknown checkpoint and no output
+node was **rejected outright**:
+
+```
+comfy run --workflow <path> failed [workflow_unknown_nodes]: Workflow has 2 validation error(s) against server
+hint: node 1: 'definitely-not-a-real-checkpoint.safetensors' is unavailable: the server reports 0 installed options for ckpt_name
+node ?: workflow has no output nodes — the server will reject it (prompt_no_outputs)
+```
+
+So `run_workflow` does a validation pass (against the live `object_info`, mirroring
+`validate_workflow`'s logic) and a "no output nodes" check *before* POSTing to `/prompt`. The
+wrapper's error granularity therefore comes from comfy-cli, not from `/prompt` — and a workflow
+that fails validation never produces a `prompt_id`. (This makes ARCHITECTURE §7 step 4's
+"validate before submit" partly redundant for the run path, though still valuable for graph
+edits.)
+
+### 10.2 Error messages (verbatim shapes, for the wrapper's decode)
+
+- `job(action="status")`, unknown id: `… failed [prompt_not_found]: No prompt with id '<id>' on
+  127.0.0.1:8188. hint: check 'comfy jobs ls'; very old prompts may have been pruned from /history`
+- `fetch_outputs`, unknown id: `… failed [download_job_not_found]: Job <id> not found in state
+  files or API. hint: check the prompt_id and ensure the job has completed`
+- `run_workflow`, missing file: `… failed [workflow_not_found]: Specified workflow file not
+  found: <path>. hint: check the path; pass the API-format JSON exported from ComfyUI`
+
+### 10.3 To capture before T-104a
+
+The **success** shapes — `run_workflow(wait=false)`'s return (the `prompt_id` envelope),
+`job(action="status")` on a live job (status/progress/total), and `fetch_outputs` with real
+files — require a genuinely runnable workflow. Options: install a small image checkpoint and run
+a 1-step image, or run a short real ACE-Step generation. Record them here when captured.

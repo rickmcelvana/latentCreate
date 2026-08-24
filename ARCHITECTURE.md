@@ -63,7 +63,10 @@ latentCreate/
 ## 3. mcp-bridge (Rust)
 
 - MCP client over **stdio** (spawn `comfy-mcp` as child process; `COMFY_BIN` respected). Cloud (streamable HTTP to `https://cloud.comfy.org/mcp` + API key) is a **separate backend impl written later against a verified live endpoint**, not a transport flag — see §1's warning. Use the official Rust MCP SDK (`rmcp`); pin version in the brief that introduces it after verifying current API against docs (CONVENTIONS: never write third-party surfaces from memory).
-- The trait is semantic; **method names are ours, tool names are per-backend** (verified local names in parentheses):
+- The trait below is a **design sketch, not a live contract** — deferred (see the note after it)
+  and already drifted from the landed method set (`search_templates(query, limit) -> TemplateSearch`,
+  batch `set_slots`, `list_slots -> SlotList`, plus `get_template`/`notes` which it omits).
+  **Method names are ours, tool names are per-backend** (verified local names in parentheses):
 
 ```rust
 pub trait ComfyBackend: Send + Sync {
@@ -86,6 +89,14 @@ pub trait ComfyBackend: Send + Sync {
     async fn launch_comfyui(&self) -> Result<(), ComfyError>;   // local only; cloud = typed error
 }
 ```
+
+**⚠ `ComfyBackend` deferred again (2026-08-24).** First deferred from T-101 to T-104; at T-104 it
+is deferred once more, held off until a second backend (cloud) is verified. Three concrete
+reasons: still a single impl (the original reason not to guess), the sketch above has already
+drifted from landed code, and §1 shows local/cloud are different tool surfaces best shaped by
+real divergence — the eventual seam is more likely `enum Backend { Local, Cloud }` than this
+17-method trait. Until then `mcp-bridge` exposes `LocalComfy` concretely and Tauri managed state
+holds `Arc<LocalComfy>`. Recorded in PROJECT.md's decisions log.
 
 ### 3a. Slots: how parameters actually reach the graph
 `list_workflow_slots` returns every tweakable widget as a stable address (`node_id.input_name`, or `A/B.name` inside subgraphs) with its current value; `set_workflow_slot` writes one. **The app never parses or rewrites graph JSON to change a parameter.** Verified surface and gotchas: docs/MCP-SURFACE.md §2–3.
