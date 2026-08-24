@@ -39,7 +39,7 @@ and run against the live server. Answers to the five questions, in short:
 Briefs are written one at a time, each after the previous lands (Phase 0's rhythm). Each
 gets its own `tasks/t-1NN-brief.md` when written.
 
-### T-101 — `mcp-bridge` foundation  — **brief written: [t-101-brief.md](t-101-brief.md)**
+### T-101 — `mcp-bridge` foundation  — ✅ **LANDED** `851bd88` ([brief](t-101-brief.md))
 Stdio transport spawning `comfy-mcp`, typed `server_info` / `system_stats` wrappers,
 `ComfyError` via `thiserror`. Local backend only — the cloud backend is a separate later
 task, gated on verifying a live cloud endpoint.
@@ -49,7 +49,7 @@ would be an untested abstraction, and async fns in traits are not object-safe, s
 dyn-vs-enum choice should be made when a backend first goes into Tauri managed state.
 "Child killed on drop" is already provided by rmcp's transport and needs no code.
 
-### T-102 — mock transport test rig  — **brief written: [t-102-brief.md](t-102-brief.md)**
+### T-102 — mock transport test rig  — ✅ **LANDED** `974642a` ([brief](t-102-brief.md))
 A fake MCP peer over an in-memory pipe, so every later `mcp-bridge` task has non-live tests.
 **CI must never need a running ComfyUI** (WORKFLOW §5). Build this before the tool wrappers
 so they arrive with tests.
@@ -68,7 +68,7 @@ could not be covered there — and it is the single finding most likely to cause
 bug (docs/MCP-SURFACE.md §8.3). The mock must be able to serve an `is_error` result, an
 `Ok` result whose text is not JSON (→ `ComfyError::Payload`), and a well-formed payload.
 
-### T-102b — session log + child stderr  ⚠ *added 2026-08-23 during T-101 review*
+### T-102b — session log + child stderr  — ⚠ **NO BRIEF YET** *(added 2026-08-23 during the T-101 review)*
 ARCHITECTURE §3 requires every tool-call payload and result to be logged (redacted) to a
 rotating session log for the diagnostics pane, and CONVENTIONS requires `comfy-mcp`'s stderr
 captured to it. **No task in any phase file owned this** — the review of T-101 found the
@@ -84,13 +84,13 @@ state. Redaction matters: keys must never reach the log (CONVENTIONS).
 ### T-103 — templates and slots  — **split in two; six tools is over the ~400-line limit**
 All six surfaces were captured live on 2026-08-24 before either brief: **MCP-SURFACE §9**.
 
-#### T-103a — templates  — **brief written: [t-103a-brief.md](t-103a-brief.md)**
+#### T-103a — templates  — ✅ **LANDED** `3c9ea38` ([brief](t-103a-brief.md))
 `search_templates`, `get_template`, `fetch_template`. The task's real content is
 **`local_check` as a tri-state**: `{"checked": false}` means the comparison could not be
 made and has **no `runnable` key**, so a `bool` reads "unknown" as "cannot run" (§9.4). Also
 `search_templates`' `match: "all-words"`, which flags a query the server broadened (§9.5).
 
-#### T-103b — slots and parameter writes  — **brief written: [t-103b-brief.md](t-103b-brief.md)**
+#### T-103b — slots and parameter writes  — ✅ **LANDED** `3a55c63` ([brief](t-103b-brief.md))
 `list_workflow_slots`, `set_workflow_slot`. Four tools would have run ~470 lines, so
 validation and notes moved to T-103c. The write path carries the traps:
 
@@ -105,9 +105,9 @@ validation and notes moved to T-103c. The write path carries the traps:
 - Because both failures look like success in the payload, `set_slots` **verifies its own
   write**: no `wrote` path, or an address absent from `applied`, is an error.
 
-#### T-103c — validation and notes
-`validate_workflow`, `list_workflow_notes`. Fully researched already (§9.2, §9.3, §9.6) —
-**no further live capture needed**. What the brief must encode:
+#### T-103c — validation and notes  — 📋 **BRIEF READY, NOT RUN** — [t-103c-brief.md](t-103c-brief.md)
+`validate_workflow`, `list_workflow_notes`. Completes the template/slot surface. What it
+encodes:
 
 - ⚠ **`valid: true` can mean "checked nothing"** — a UI export too old to auto-convert
   validates vacuously; the tell is `non_node_key` warnings with **no** `converted_from_ui`.

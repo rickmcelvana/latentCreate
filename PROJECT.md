@@ -5,8 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. It does not talk to ComfyUI yet.
-- **Next up:** **Phase 1** — [tasks/phase-1.md](tasks/phase-1.md). The blocking `rmcp` verification is **done** (docs/MCP-SURFACE.md §8) and **[T-101's brief](tasks/t-101-brief.md) is written and ready to run** — the next action is a producer Aider run against it.
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 33 offline tests) but nothing is wired to the UI yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
+- **Next up:** **[T-103c's brief](tasks/t-103c-brief.md) is written and ready to run** (validation + notes; completes the template/slot surface). The next action is a producer Aider run against its launch command. After it lands: **T-102b** (session log + child stderr, unowned until the T-101 review caught it) and **T-104** (job lifecycle + Tauri event pump), both still needing briefs.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -231,3 +232,32 @@ whenever the user edits one field, so most addresses in a real write are no-ops.
 **Carry forward:** never pipe the gate into `head`/`grep` in the same chain as a commit — the
 pipeline's exit status stops being the build's. And `git add -A` is wrong whenever an
 executor run was interrupted; stage the intended paths.
+
+### 2026-08-24 — T-103c briefed; handoff point
+
+[T-103c's brief](tasks/t-103c-brief.md) is written and ready to run. Its reference code
+compiles, is `cargo fmt`- and clippy-clean, and its verdict logic was exercised across all
+four cases first. It closes the T-103 split.
+
+**Where `mcp-bridge` stands.** It can connect to `comfy-mcp` over stdio, call any tool, and
+decode templates and slots into typed results — 33 tests, none needing a live server. Nothing
+is wired to Tauri or the UI yet; that starts at T-104.
+
+**What a new session most needs to know**, beyond the read order in AGENTS.md:
+
+- **docs/MCP-SURFACE.md is the authority for anything comfy-mcp.** §8 is the Rust client
+  (rmcp), §9 the template/slot surface. Both were captured by running the real server. The
+  cloud documentation names different tools and is not a guide. Do not brief against memory
+  or model cards — the standing rule that has now paid off in every single task.
+- **Three traps on this surface are silent**, and each is guarded in code with a test that was
+  mutation-checked: a failing tool call returns `Ok` with `is_error: true` (§8.3);
+  `set_workflow_slot` does not write unless told to (§9.1); `validate_workflow` can report
+  `valid: true` having examined nothing (§9.3). Assume the next tool has one too.
+- **The review question that keeps finding things is not "does this match the brief"** — it
+  has matched every time — but *"what did the brief fail to ask for?"* Four of the five
+  review findings so far were defects in the brief, upstream of the executor. Check the
+  brief's test list against the public surface it added.
+- **Mutation-test the two or three tests a task turns on.** One edit, one `cargo test`. It has
+  caught a vacuous test inside a brief, and confirmed six guards since.
+- **Unbriefed and unowned:** T-102b (session log + child stderr — ARCHITECTURE §3 requires it,
+  no task claimed it until the T-101 review) and everything from T-104 on.
