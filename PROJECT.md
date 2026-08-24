@@ -6,8 +6,8 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 33 offline tests) but nothing is wired to the UI yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
-- **Next up:** **[T-103c's brief](tasks/t-103c-brief.md) is written and ready to run** (validation + notes; completes the template/slot surface). The next action is a producer Aider run against its launch command. After it lands: **T-102b** (session log + child stderr, unowned until the T-101 review caught it) and **T-104** (job lifecycle + Tauri event pump), both still needing briefs.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes). The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §8–9 — that file is the authority, not the tool docs.
+- **Next up:** **T-102b** (session log + child stderr — ARCHITECTURE §3 requires it, `LocalComfy::connect` still inherits stderr, unowned until the T-101 review) and **T-104** (job lifecycle + Tauri event pump — this is where the deferred `ComfyBackend` trait decision comes due, since a backend first enters Tauri managed state there). Both still need briefs.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -261,3 +261,43 @@ is wired to Tauri or the UI yet; that starts at T-104.
   caught a vacuous test inside a brief, and confirmed six guards since.
 - **Unbriefed and unowned:** T-102b (session log + child stderr — ARCHITECTURE §3 requires it,
   no task claimed it until the T-101 review) and everything from T-104 on.
+
+### 2026-08-24 — T-103c landed; the template/slot surface is complete
+
+Aider transcribed the brief faithfully and the diff touched only the two listed files
+(`preflight.rs` new, `lib.rs` +2). The run's single gate failure was **two unused imports**
+(`Value`, `NoteList`) in the test module — the executor imported types the tests never
+reference, since `json!(...)` and `serde_json::from_value` infer them. Fixed directly; this is
+the executor-imports-it-doesn't-use variant of the recurring formatting defect, smaller than
+the prior three runs' single-issue failures.
+
+Review did its own work this round rather than the brief's: **mutation-tested three guards**,
+each failing exactly its own test and nothing else —
+1. `Verdict::Vacuous` requires **both** `converted_from_ui.is_none()` and a `non_node_key`
+   warning. Dropping the second condition fails `test_verdict_is_valid_for_an_api_format_graph`
+   (the false-positive guard), confirming the brief's explicit warning that requiring only the
+   missing field would condemn every API-format workflow — which is the format the app's own
+   pipeline produces.
+2. `node_id_to_instance` translating `:`→`/`. A no-op translation fails
+   `test_node_id_translates_to_a_slot_instance` only.
+3. `Validation::spends_credits` field presence. Removing the field is a **compile error** at
+   the test's assertion site — stronger than a runtime failure: the product rule (T-104 gates
+   running on this) cannot be silently dropped.
+
+The untrusted-note boundary needs no mutation: both wrappers are pure `self.call(...)`, so
+there is no text processing to break; the byte-identical `text == text` assertion guards the
+verbatim-relay contract by construction. 43 tests in `mcp-bridge` now, none needing a live
+server.
+
+**Where `mcp-bridge` stands.** The template/slot surface is complete: connect, call any tool,
+and decode templates, slots, validation verdicts, and notes into typed results. Nothing is
+wired to Tauri or the UI yet; that starts at T-104.
+
+**Carry forward:**
+- The T-103 split paid off — three sub-tasks each landed with a single small, fixable defect
+  rather than one ~1200-line diff. Keep splitting any task over the ~400-line rule.
+- **T-102b and T-104 are the next two briefs to write.** T-104 is where the deferred
+  `ComfyBackend` trait decision comes due (async fns in traits aren't object-safe; decide
+  dyn-vs-enum when a backend first enters Tauri managed state, not around a single impl).
+  T-102b is smaller and unblocks packaged-build diagnostics: `LocalComfy::connect` still
+  inherits stderr, so comfy-mcp's output vanishes in a shipped app.

@@ -105,7 +105,7 @@ validation and notes moved to T-103c. The write path carries the traps:
 - Because both failures look like success in the payload, `set_slots` **verifies its own
   write**: no `wrote` path, or an address absent from `applied`, is an error.
 
-#### T-103c — validation and notes  — 📋 **BRIEF READY, NOT RUN** — [t-103c-brief.md](t-103c-brief.md)
+#### T-103c — validation and notes  — ✅ **LANDED** ([brief](t-103c-brief.md))
 `validate_workflow`, `list_workflow_notes`. Completes the template/slot surface. What it
 encodes:
 
