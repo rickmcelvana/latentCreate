@@ -1,0 +1,56 @@
+{
+  "id": "minimax-music-3",
+  "display_name": "MiniMax Music 3",
+  "kind": "music",
+  "license": "MiniMax-Music3 Community License",
+  "license_notes": "Open weights, not OSI-open. Commercial use requires prominent 'MiniMax-Music3' attribution in the product UI; aggregate yearly revenue above US$20M needs prior written authorization from MiniMax.",
+  "comfy": {
+    "template": "audio_minimax_music_3",
+    "workflow": null,
+    "vram_gb_min": 16,
+    "output": { "save_node": "SaveAudioAdvanced", "prefer_lossless": true },
+    "slot_overrides": {
+      "37/6.unet_name": { "type": "enum", "value": "minimax_music3_dit_int8_convrot.safetensors" }
+    }
+  },
+  "inputs": {
+    "caption": {
+      "type": "text",
+      "slots": ["37/13.caption"],
+      "label": "Caption"
+    },
+    "lyrics": {
+      "type": "lyrics",
+      "slots": ["37/13.lyrics"],
+      "structure_tags": ["[intro]", "[verse]", "[chorus]", "[bridge]", "[outro]"],
+      "label": "Lyrics"
+    },
+    "negative": {
+      "type": "unsupported",
+      "reason": "MiniMaxMusic3TextEncode exposes no negative input."
+    },
+    "duration_s": {
+      "type": "float",
+      "slots": ["37/13.max_duration", "37/15.seconds"],
+      "min": 10.0,
+      "max": 300.0,
+      "default": 120.0,
+      "step": 1.0,
+      "label": "Duration (s)"
+    },
+    "seed": { "type": "seed", "slots": ["37/13.seed", "37/9.seed", "37/38.seed"] }
+  },
+  "lyrics_contract": {
+    "format": "structure-tagged",
+    "notes": "Caption is a structured music description (Global Metadata -> Vocal Details -> Arrangement); lyrics carry [intro]/[verse]/[chorus]/[bridge]/[outro] tags."
+  },
+  "prompt_guide": {
+    "tag_style": "structured caption: Global Metadata -> Vocal Details -> Arrangement",
+    "examples": [
+      {
+        "tags": "Genre: synthwave. Mood: dreamy, nostalgic. Vocals: female, breathy. Arrangement: driving beat, 105 bpm, synth arpeggios",
+        "lyrics": "[intro]\n[verse]\nNeon on the dashboard, midnight in the rain\n[chorus]\nDrive until the morning takes the weight away"
+      }
+    ]
+  }
+}

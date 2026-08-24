@@ -4,6 +4,7 @@
 //! comes from a JSON profile. This module contains the Serde schema and the verified
 //! ACE-Step 1.5 XL Turbo fixture.
 
+use crate::generation::InputValue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -165,6 +166,12 @@ pub struct ComfySpec {
     /// Rough VRAM floor in gibibytes, for warning before a doomed run.
     #[serde(default)]
     pub vram_gb_min: Option<u32>,
+    /// Slot values pinned by the profile, applied to the fetched template before
+    /// the user's inputs. This is how a profile targets a specific checkpoint
+    /// variant: MiniMax Music 3's template hardcodes the fp16 DiT, so the profile
+    /// overrides `37/6.unet_name` to the int8 file (MCP-SURFACE 6).
+    #[serde(default)]
+    pub slot_overrides: BTreeMap<SlotAddress, InputValue>,
     pub output: OutputSpec,
 }
 
@@ -232,10 +239,19 @@ mod tests {
     use super::*;
 
     const ACE_STEP_FIXTURE: &str = include_str!("../../../profiles/ace-step-1.5-turbo.json");
+    const MINIMAX_FIXTURE: &str = include_str!("../../../profiles/minimax-music-3.json");
 
     #[test]
     fn test_profile_roundtrip_ace_step_fixture() {
         let first: ModelProfile = serde_json::from_str(ACE_STEP_FIXTURE).unwrap();
+        let json = serde_json::to_string_pretty(&first).unwrap();
+        let second: ModelProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn test_profile_roundtrip_minimax_fixture() {
+        let first: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
         let json = serde_json::to_string_pretty(&first).unwrap();
         let second: ModelProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(first, second);
@@ -358,5 +374,77 @@ mod tests {
             }
             other => panic!("planner was not Group: {:?}", other),
         }
+    }
+
+    /// Protects: the MiniMax profile's subgraph slot addresses parse and fan out
+    /// correctly -- three seeds, two duration fields, and a `caption` (not `tags`)
+    /// input. This is the first profile exercising `A/B.name` addressing.
+    #[test]
+    fn test_minimax_fixture_uses_subgraph_addresses_and_fan_out() {
+        let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
+
+        let caption = profile.inputs.get("caption").expect("caption input");
+        match caption {
+            InputSpec::Text { slots, .. } => {
+                assert_eq!(slots, &[SlotAddress("37/13.caption".to_string())]);
+            }
+            other => panic!("caption was not Text: {:?}", other),
+        }
+
+        let duration = profile.inputs.get("duration_s").expect("duration_s input");
+        match duration {
+            InputSpec::Float { slots, .. } => {
+                assert_eq!(slots.len(), 2);
+                assert!(slots.contains(&SlotAddress("37/13.max_duration".to_string())));
+                assert!(slots.contains(&SlotAddress("37/15.seconds".to_string())));
+            }
+            other => panic!("duration_s was not Float: {:?}", other),
+        }
+
+        let seed = profile.inputs.get("seed").expect("seed input");
+        match seed {
+            InputSpec::Seed { slots } => {
+                assert_eq!(slots.len(), 3);
+                assert!(slots.contains(&SlotAddress("37/13.seed".to_string())));
+                assert!(slots.contains(&SlotAddress("37/9.seed".to_string())));
+                assert!(slots.contains(&SlotAddress("37/38.seed".to_string())));
+            }
+            other => panic!("seed was not Seed: {:?}", other),
+        }
+    }
+
+    /// Protects: the checkpoint-variant override -- the profile pins the int8 DiT
+    /// over the template's hardcoded fp16 filename (MCP-SURFACE 6).
+    #[test]
+    fn test_minimax_fixture_pins_the_int8_checkpoint() {
+        let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
+        let overrides = &profile.comfy.slot_overrides;
+        assert_eq!(
+            overrides.get(&SlotAddress("37/6.unet_name".to_string())),
+            Some(&InputValue::Enum(
+                "minimax_music3_dit_int8_convrot.safetensors".to_string()
+            ))
+        );
+    }
+
+    /// Protects: the save-node swap is conditional -- MiniMax's template already
+    /// uses `SaveAudioAdvanced`, so the profile declares it (not a deprecated
+    /// node) and the pipeline must not intervene (MCP-SURFACE 6a).
+    #[test]
+    fn test_minimax_fixture_declares_lossless_output() {
+        let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
+        assert_eq!(profile.comfy.output.save_node, "SaveAudioAdvanced");
+        assert!(profile.comfy.output.prefer_lossless);
+    }
+
+    /// Protects: the license is surfaced as open-with-conditions, not OSI-open --
+    /// the UI must show it wherever the model is chosen (CONVENTIONS).
+    #[test]
+    fn test_minimax_fixture_surfaces_the_conditional_license() {
+        let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
+        assert!(profile.license.contains("Community License"));
+        let notes = profile.license_notes.as_ref().expect("license notes");
+        assert!(notes.contains("attribution"));
+        assert!(notes.contains("20"));
     }
 }
