@@ -194,6 +194,11 @@ enumeration. Includes the LoRA list filtering/grouping logic: on the owner's mac
 entries yield ~9 usable ones, `training_state.pt` files are unloadable, and epoch-checkpoint
 series need collapsing (MCP-SURFACE §4).
 
+**Before T-106: capture the `nodes(action="get")` shape.** MCP-SURFACE §4 verifies that
+`nodes(action="get", name="LoraLoaderModelOnly")` returns `lora_name` as a COMBO whose `choices`
+are the installed LoRA paths, but the full node-schema response (each input's type + `choices`,
+outputs) is not captured in detail. Capture it live before the brief — the Before-T-101/T-104a way.
+
 ### T-106b — `minimax-music-3` profile
 **Unblocked 2026-08-23.** Weights are installed and the template validates once
 `37/6.unet_name` is overridden to the int8 DiT (MCP-SURFACE §6). Writing it exercises three

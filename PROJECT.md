@@ -644,3 +644,22 @@ convention the brief should pin precisely, not hand-wave at.
 constructs `DownloadState` literals directly (no transport), so `"failed"` → terminal-but-not-
 success and `"completed"` → terminal-and-success are asserted exactly; a regression in either arm
 fails the test. `mcp-bridge` now covers the full comfy-mcp surface except `nodes` (T-106).
+
+### 2026-08-24 — session closed; handoff to the next one
+
+**State:** Phase 1 is a little over half done. Landed: T-101, T-102, T-102b, T-102c, T-103a/b/c,
+T-104a/b/c, T-105a/b. `mcp-bridge` wraps the entire comfy-mcp surface **except `nodes`** (74
+offline tests); the backend + job pump + frontend queue are wired end to end, but nothing connects
+to a *model pipeline* yet (that is T-107's profile loader feeding T-110's wizard). Tree is clean,
+pushed, `npm run gate` green.
+
+**Next session, first action:** pick up **T-106** (node registry) per [tasks/phase-1.md](tasks/phase-1.md).
+It has a **"Before T-106" step**: capture the `nodes(action="get")` full response shape live —
+MCP-SURFACE §4 verifies the LoRA-enumeration fact (`LoraLoaderModelOnly` → `lora_name` COMBO whose
+`choices` are the installed LoRA paths) but not the full node schema. Then T-106b (MiniMax profile),
+T-107 (profile loader), T-108/T-109 (`llm-bridge`), T-110–T-112 (wizard), T-113 (milestone).
+
+**The one process rule that has cost the most:** reference code goes into a brief only after
+`cargo fmt` in the scratch crate, and **every touched file — including `lib.rs` re-exports — is
+copied from the post-fmt state, never re-typed.** Six occurrences and counting; it is the single
+most common gate failure in this project.
