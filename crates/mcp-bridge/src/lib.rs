@@ -6,11 +6,13 @@
 
 mod error;
 mod local;
+mod slots;
 mod templates;
 mod types;
 
 pub use error::ComfyError;
 pub use local::{with_timeout, LocalComfy};
+pub use slots::{split_address, Slot, SlotList, SlotOverride, SlotWrite};
 pub use templates::{FetchedTemplate, LocalCheck, TemplateDetail, TemplateInfo, TemplateSearch};
 pub use types::{ServerInfo, SystemStats};
 

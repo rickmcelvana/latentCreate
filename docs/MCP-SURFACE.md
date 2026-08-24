@@ -328,6 +328,12 @@ Success shape (`stdout: false`):
 `applied` is the confirmation that a value landed; treat an address missing from it as a
 failure even when `warnings` is empty.
 
+✅ **A no-op write is still reported in `applied`.** Verified by re-sending two addresses at
+the values they already held: both came back in `applied`, and `wrote` was present. This is
+what makes treating a missing address as a failure safe — the app sends the whole parameter
+set whenever the user changes one field, so most addresses in a typical write are no-ops. If
+`applied` listed only *changed* values, that strictness would reject ordinary edits.
+
 ### 9.2 ⚠ Validation node ids use `:`, slot addresses use `/`
 
 The **same node** is `37/43` in `list_workflow_slots` and `37:43` in `validate_workflow`:

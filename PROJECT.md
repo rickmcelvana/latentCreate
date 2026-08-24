@@ -196,3 +196,38 @@ Review found two gaps, both mine:
 `#[serde(from = ...)]` plus `#[serde(tag = ...)]` guarantees — assume it does not round-trip
 until a test says otherwise. And check the brief's own test list against the public surface
 it added: both times now, the untested thing was the one the test list simply forgot.
+
+### 2026-08-24 — T-103b landed; two process failures of mine, both fixed
+
+T-103 split again — T-103b is slots and writes, T-103c is validation and notes, still
+unbriefed but fully researched (§9.2, §9.3, §9.6 need no more live capture).
+
+`set_slots` sends `stdout: false` and structured overrides, and **verifies its own write**,
+because both ways it can fail look like success in the payload. All three guards were
+mutation-tested: flipping `stdout` to `true`, dropping the verification, and swapping in the
+coercing string override form each fail exactly their own test and nothing else. Coverage
+was complete first time — the test-list-versus-public-surface check from T-103a worked.
+
+One design decision got checked against reality rather than assumed: `set_slots` errors when
+an address is missing from `applied`, which would be wrong if comfy-mcp reported only
+*changed* values. It does not — re-sending two addresses at the values they already held
+returned both in `applied` (§9.1). That matters because the app sends the whole parameter set
+whenever the user edits one field, so most addresses in a real write are no-ops.
+
+**Two mistakes of mine this round, both worth not repeating:**
+
+1. **The T-103b launch command omitted `--read` for `error.rs` and `local.rs`**, though the
+   reference code constructs `ComfyError` variants and `impl`s on `LocalComfy`. Aider stopped
+   and asked for one — the footer rule working. Accepting that prompt would have added the
+   file as **editable**, widening the diff past the brief; the fix belonged in the launch
+   command. Now a rule in WORKFLOW §3.
+2. **I committed the aborted run's partial `slots.rs`**, non-compiling, under a docs message —
+   `git add -A` swept it in. Worse, the commit was chained as
+   `npm run gate | head -4 && git add -A && git commit`, and `head` exits 0 whatever the gate
+   did, so the `&&` was gating on `head` rather than on the build. Undone with a soft reset
+   (it was unpushed). **Gate runs now capture the exit code explicitly**
+   (`npm run gate > log 2>&1; echo $?`) instead of being piped into anything.
+
+**Carry forward:** never pipe the gate into `head`/`grep` in the same chain as a commit — the
+pipeline's exit status stops being the build's. And `git add -A` is wrong whenever an
+executor run was interrupted; stage the intended paths.
