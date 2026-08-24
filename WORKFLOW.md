@@ -18,9 +18,17 @@ Architect writes brief (tasks/phase-N.md, one T-number) incl. "Aider launch" com
   → paste brief → Aider implements (working tree only, --no-auto-commits)
   → producer runs the green gate → architect reviews → **architect commits** "T-0XX: <title>"
   → Architect reviews `git diff` against brief (checklist §4)
-  → PASS → merge; FAIL → fix-up brief (T-0XXb) with its own launch command → repeat
+  → PASS → merge; FAIL → architect fixes small defects directly, or writes a
+    fix-up brief (T-0XXb) with its own launch command when the scope warrants
   → UI/integration tasks: producer click-through per the brief's manual-verify list
 ```
+
+**Small review defects: the architect fixes them directly — do not re-run Aider**
+(owner, 2026-08-23). A one-line correctness fix plus its test is not worth a
+round trip, especially when the defect came from the brief's own reference code
+rather than the executor. Reserve a `T-0XXb` fix-up brief for genuine executor
+failures or scope big enough to need one. Say plainly in the commit what was
+changed after the run and why.
 Keep runs ≤ ~400 lines of diff; bigger scope = split the brief. **Green gate:** run **`npm run gate`** from the repo root — one command that chains `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `tsc -b`, `oxlint`, `vitest`, and `vite build`, in the same order CI runs them (T-005). `npm run gate:rust` / `gate:app` run half each. Commit only on green.
 
 **Executors do not commit (learned on T-002, 2026-08-23).** Aider's first run in

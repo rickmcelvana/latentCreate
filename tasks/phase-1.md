@@ -49,11 +49,18 @@ would be an untested abstraction, and async fns in traits are not object-safe, s
 dyn-vs-enum choice should be made when a backend first goes into Tauri managed state.
 "Child killed on drop" is already provided by rmcp's transport and needs no code.
 
-### T-102 — mock transport test rig
-A fake MCP server over stdio pipes, so every later `mcp-bridge` task has non-live tests.
+### T-102 — mock transport test rig  — **brief written: [t-102-brief.md](t-102-brief.md)**
+A fake MCP peer over an in-memory pipe, so every later `mcp-bridge` task has non-live tests.
 **CI must never need a running ComfyUI** (WORKFLOW §5). Build this before the tool wrappers
-so they arrive with tests. `testdata/workflows/minimax_music3_int8.json` is the frozen real
-graph to serve from the mock.
+so they arrive with tests.
+
+Mechanism verified 2026-08-23 before the brief: `tokio::io::duplex` is a valid rmcp
+transport (rmcp implements `IntoTransport` for any `AsyncRead + AsyncWrite`), needing **no
+extra rmcp feature** — so the fake peer is hand-written newline-delimited JSON-RPC, not
+rmcp's server half. `testdata/mcp/list_workflow_slots.minimax.json` is the **live-captured**
+`list_workflow_slots` response to serve from the mock (24 of its 25 addresses are
+subgraph-form); `testdata/workflows/minimax_music3_int8.json` remains the frozen graph
+itself, for T-103's own use.
 
 **First test it owes us:** `LocalComfy::call` must turn `Ok(is_error: true)` into
 `ComfyError::Tool`. T-101 landed that branch **untested** — it needs a transport, so it

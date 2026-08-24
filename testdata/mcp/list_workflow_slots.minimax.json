@@ -1,0 +1,207 @@
+{
+  "workflow": "testdata/workflows/minimax_music3_int8.json",
+  "id": "minimax_music3_int8",
+  "count": 25,
+  "slots": [
+    {
+      "address": "35.filename_prefix",
+      "name": "filename_prefix",
+      "type": "STRING",
+      "current_value": "audio/audio_minimax_music3",
+      "instance_id": "35",
+      "node_type": "SaveAudioAdvanced"
+    },
+    {
+      "address": "37/6.unet_name",
+      "name": "unet_name",
+      "type": "COMBO",
+      "current_value": "minimax_music3_dit_int8_convrot.safetensors",
+      "instance_id": "37/6",
+      "node_type": "UNETLoader"
+    },
+    {
+      "address": "37/6.weight_dtype",
+      "name": "weight_dtype",
+      "type": "COMBO",
+      "current_value": "default",
+      "instance_id": "37/6",
+      "node_type": "UNETLoader"
+    },
+    {
+      "address": "37/13.caption",
+      "name": "caption",
+      "type": "STRING",
+      "current_value": "",
+      "instance_id": "37/13",
+      "node_type": "MiniMaxMusic3TextEncode"
+    },
+    {
+      "address": "37/13.lyrics",
+      "name": "lyrics",
+      "type": "STRING",
+      "current_value": "",
+      "instance_id": "37/13",
+      "node_type": "MiniMaxMusic3TextEncode"
+    },
+    {
+      "address": "37/13.seed",
+      "name": "seed",
+      "type": "INT",
+      "current_value": 222,
+      "instance_id": "37/13",
+      "node_type": "MiniMaxMusic3TextEncode"
+    },
+    {
+      "address": "37/13.max_duration",
+      "name": "max_duration",
+      "type": "FLOAT",
+      "current_value": 60,
+      "instance_id": "37/13",
+      "node_type": "MiniMaxMusic3TextEncode"
+    },
+    {
+      "address": "37/13.cfg_scale",
+      "name": "cfg_scale",
+      "type": "FLOAT",
+      "current_value": 1.7,
+      "instance_id": "37/13",
+      "node_type": "MiniMaxMusic3TextEncode"
+    },
+    {
+      "address": "37/13.top_k",
+      "name": "top_k",
+      "type": "INT",
+      "current_value": 50,
+      "instance_id": "37/13",
+      "node_type": "MiniMaxMusic3TextEncode"
+    },
+    {
+      "address": "37/3.clip_name",
+      "name": "clip_name",
+      "type": "COMBO",
+      "current_value": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+      "instance_id": "37/3",
+      "node_type": "CLIPLoader"
+    },
+    {
+      "address": "37/3.type",
+      "name": "type",
+      "type": "COMBO",
+      "current_value": "minimax",
+      "instance_id": "37/3",
+      "node_type": "CLIPLoader"
+    },
+    {
+      "address": "37/3.device",
+      "name": "device",
+      "type": "COMBO",
+      "current_value": "default",
+      "instance_id": "37/3",
+      "node_type": "CLIPLoader"
+    },
+    {
+      "address": "37/7.vae_name",
+      "name": "vae_name",
+      "type": "COMBO",
+      "current_value": "minimax_music3_dav.safetensors",
+      "instance_id": "37/7",
+      "node_type": "VAELoader"
+    },
+    {
+      "address": "37/15.seconds",
+      "name": "seconds",
+      "type": "FLOAT",
+      "current_value": 120,
+      "instance_id": "37/15",
+      "node_type": "EmptyMiniMaxMusic3LatentAudio"
+    },
+    {
+      "address": "37/15.batch_size",
+      "name": "batch_size",
+      "type": "INT",
+      "current_value": 1,
+      "instance_id": "37/15",
+      "node_type": "EmptyMiniMaxMusic3LatentAudio"
+    },
+    {
+      "address": "37/9.seed",
+      "name": "seed",
+      "type": "INT",
+      "current_value": 1111111112,
+      "instance_id": "37/9",
+      "node_type": "KSampler"
+    },
+    {
+      "address": "37/9.steps",
+      "name": "steps",
+      "type": "INT",
+      "current_value": 30,
+      "instance_id": "37/9",
+      "node_type": "KSampler"
+    },
+    {
+      "address": "37/9.cfg",
+      "name": "cfg",
+      "type": "FLOAT",
+      "current_value": 1.7,
+      "instance_id": "37/9",
+      "node_type": "KSampler"
+    },
+    {
+      "address": "37/9.sampler_name",
+      "name": "sampler_name",
+      "type": "COMBO",
+      "current_value": "euler",
+      "instance_id": "37/9",
+      "node_type": "KSampler"
+    },
+    {
+      "address": "37/9.scheduler",
+      "name": "scheduler",
+      "type": "COMBO",
+      "current_value": "simple",
+      "instance_id": "37/9",
+      "node_type": "KSampler"
+    },
+    {
+      "address": "37/9.denoise",
+      "name": "denoise",
+      "type": "FLOAT",
+      "current_value": 1,
+      "instance_id": "37/9",
+      "node_type": "KSampler"
+    },
+    {
+      "address": "37/38.seed",
+      "name": "seed",
+      "type": "INT",
+      "current_value": 0,
+      "instance_id": "37/38",
+      "node_type": "SeedNode"
+    },
+    {
+      "address": "37/42.tile_size",
+      "name": "tile_size",
+      "type": "INT",
+      "current_value": 1536,
+      "instance_id": "37/42",
+      "node_type": "VAEDecodeAudioTiled"
+    },
+    {
+      "address": "37/42.overlap",
+      "name": "overlap",
+      "type": "INT",
+      "current_value": 64,
+      "instance_id": "37/42",
+      "node_type": "VAEDecodeAudioTiled"
+    },
+    {
+      "address": "37/43.switch",
+      "name": "switch",
+      "type": "BOOLEAN",
+      "current_value": false,
+      "instance_id": "37/43",
+      "node_type": "ComfySwitchNode"
+    }
+  ]
+}
