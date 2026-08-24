@@ -2,7 +2,15 @@
 //!
 //! Implements the `ComfyBackend` seam (ARCHITECTURE.md §3) over stdio.
 //! Tool names are the verified LOCAL ones -- see docs/MCP-SURFACE.md, never the
-//! cloud documentation. Populated in Phase 1.
+//! cloud documentation.
+
+mod error;
+mod local;
+mod types;
+
+pub use error::ComfyError;
+pub use local::{with_timeout, LocalComfy};
+pub use types::{ServerInfo, SystemStats};
 
 #[cfg(test)]
 mod tests {

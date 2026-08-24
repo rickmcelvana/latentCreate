@@ -124,3 +124,27 @@ tree clean. Then the one blocking item at the top of `tasks/phase-1.md`.
 - The verification paid for itself twice over. "A failed tool call returns `Ok`" and "results
   are JSON-in-text" are both invisible in review and both would have produced a bridge that
   silently reports success — the same class of finding as Phase 0's keyring backend.
+
+### 2026-08-23 (later still) — T-101 landed
+
+Aider transcribed the brief faithfully: the diff touched only the listed files, and the one
+gate failure was `cargo fmt` on my hand-formatted reference code — the same outcome Phase 0
+recorded for every reference-code brief. Review then found **three things the brief got
+wrong or left unowned**, none of them the executor's doing:
+
+1. **`parse_error_code` scanned for the first `[`, but comfy-mcp puts the workflow path
+   ahead of the slug.** A file under `my [demo] songs/` parsed as the code `demo`;
+   `My [Demo] Songs/` swallowed the slug entirely. Fixed post-Aider by anchoring on the
+   literal ` failed [`, with a test carrying that path. Nothing branches on `code` yet, but
+   T-110 will map it to a remedy, so a wrong slug would have sent users to the wrong fix.
+2. **T-101's flagship invariant shipped untested.** `call()`'s `Ok(is_error: true)` branch
+   needs a transport to exercise, so it could not be covered in T-101 — it is now the first
+   thing T-102's mock rig owes, written into that task.
+3. **Nothing in any phase file owned the session log.** ARCHITECTURE §3 requires redacted
+   tool-call logging and CONVENTIONS requires the child's stderr in it, but no T-number
+   claimed either, and `TokioChildProcess::new` silently discards stderr. Now **T-102b**.
+
+**Carry forward:** reference code in a brief must be run through `cargo fmt` before it ships,
+not just clippy. And the review question that earned its keep here was not "does this match
+the brief" — it did — but *"what did the brief fail to ask for?"* All three findings were
+mine, upstream of the executor.

@@ -213,6 +213,12 @@ let client = ().serve(transport).await?;      // `()` is a no-op ClientHandler
 - Binary missing → `TokioChildProcess::new` returns `std::io::Error` with
   `kind() == NotFound` ("program not found"). That is T-110's detection signal — a typed
   `ComfyError::NotInstalled`, not a generic spawn failure.
+- ⚠ **`TokioChildProcess::new` throws the child's stderr away.** It defaults stderr to
+  `Stdio::inherit()` and drops the handle its builder returns, so comfy-mcp's diagnostics go
+  to the host console and vanish in a packaged build. CONVENTIONS requires that stderr in
+  the session log; capturing it means
+  `TokioChildProcess::builder(cmd).stderr(Stdio::piped()).spawn()`, which yields
+  `(transport, Option<ChildStderr>)` to drain on an owned task. Tracked as T-102b.
 
 ### 8.3 Calling tools — two traps
 

@@ -55,6 +55,25 @@ A fake MCP server over stdio pipes, so every later `mcp-bridge` task has non-liv
 so they arrive with tests. `testdata/workflows/minimax_music3_int8.json` is the frozen real
 graph to serve from the mock.
 
+**First test it owes us:** `LocalComfy::call` must turn `Ok(is_error: true)` into
+`ComfyError::Tool`. T-101 landed that branch **untested** — it needs a transport, so it
+could not be covered there — and it is the single finding most likely to cause a silent
+bug (docs/MCP-SURFACE.md §8.3). The mock must be able to serve an `is_error` result, an
+`Ok` result whose text is not JSON (→ `ComfyError::Payload`), and a well-formed payload.
+
+### T-102b — session log + child stderr  ⚠ *added 2026-08-23 during T-101 review*
+ARCHITECTURE §3 requires every tool-call payload and result to be logged (redacted) to a
+rotating session log for the diagnostics pane, and CONVENTIONS requires `comfy-mcp`'s stderr
+captured to it. **No task in any phase file owned this** — the review of T-101 found the
+requirement unassigned, and `LocalComfy::connect` currently inherits stderr, so comfy-mcp's
+diagnostics go to the app console and are lost in a packaged build.
+
+Mechanism note: `TokioChildProcess::new` discards the stderr handle and defaults it to
+`Stdio::inherit()`. Capturing it means switching to
+`TokioChildProcess::builder(cmd).stderr(Stdio::piped()).spawn()`, which returns
+`(transport, Option<ChildStderr>)`, and draining that handle on a task owned by managed
+state. Redaction matters: keys must never reach the log (CONVENTIONS).
+
 ### T-103 — templates and slots
 `search_templates`, `fetch_template` (with `local_check`), `list_workflow_slots`,
 `set_workflow_slot`, `validate_workflow`, `list_workflow_notes`. Note-text is **untrusted
