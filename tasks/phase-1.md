@@ -167,7 +167,7 @@ guards, argument names verbatim). `JobStatus::is_terminal`/`is_success` encode t
 loop (`poll_until_terminal`) re-emits `job://progress|done|failed`; `connect_comfy`/`run_workflow`/
 `cancel_job` commands. Adds `tokio` as a direct src-tauri dep.
 
-#### T-104c — frontend jobs bridge + store + queue panel  — 📝 **BRIEFED** ([brief](t-104c-brief.md))
+#### T-104c — frontend jobs bridge + store + queue panel  — ✅ **LANDED** ([brief](t-104c-brief.md))
 The frontend half of the job path, closed out of the T-104b split. `app/src/bridge/jobs.ts` typed
 invoke/listen wrappers mirroring the Rust event payloads, a `useJobsStore` queue with a pure
 `applyJobEvent` fold, and a `JobQueue` component mounted in AudioStudio. The run trigger stays

@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) and `src-tauri` holds the backend in managed state with a job event pump — the frontend has no bridge/jobs store yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), **T-104b (Tauri managed state + job event pump)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-104c** (frontend jobs bridge + store + queue panel — briefed, ready to run), then **T-105** (models: `search_models` + `download_model`). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), **T-104c (frontend jobs bridge + store + queue panel)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-105** (models: `search_models` + `download_model`). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -558,3 +558,27 @@ worth recording:
 **The one risk the brief can't remove:** the event-name spelling is the only place the frontend and
 Rust must agree by string, and it is only pinned by a mock, not a shared fixture (events are
 one-way; there is no round-trip). A producer live smoke check at T-113 will confirm end to end.
+
+### 2026-08-24 — T-104c landed
+
+Aider transcribed the brief exactly — all seven files match the reference, `tsc`/`oxlint` clean,
+21 vitest tests (9 new), `vite build` green. The generation path is now wired end to end at the
+plumbing level: connect → run → poll → events → store → queue panel. What is still unwired is the
+*pipeline* that produces a workflow to run.
+
+**One finding, from asking "what did the brief fail to ask for":** a submission/event race. `run`
+adds the job to the store as `"queued"` only after `run_workflow` resolves, but the backend spawns
+its monitor before returning and the monitor's first poll is immediate — so a `job://done`/`failed`
+could in principle arrive before the store has the id, be dropped by `applyJobEvent`'s ignore-unknown
+rule, and leave the job stuck at `"queued"` forever. **Practically benign:** the window is the ~ms
+IPC round-trip, and a real music job cannot go terminal in it (model load alone is seconds;
+`run_workflow` pre-validation already rejects the common instant failures before any monitor is
+spawned). The `"ignores unknown id"` rule itself is the right call — a stray event must not fabricate
+a phantom job. Recorded rather than fixed because the robust fix (upsert on terminal events + a
+non-regressing `run` set) changes a deliberate semantic, and the app never submits sub-10 ms jobs.
+Revisit only if a fast terminal path ever appears.
+
+**Carry forward:** this closes the "unassigned frontend jobs" gap T-104b flagged. The
+bridge/store/queue seam (T-104c) is now the template for every later frontend surface: invoke/listen
+wrapped in `bridge/`, state in a Zustand store with a pure fold, `vi.mock` at the module boundary in
+tests. Next is **T-105** (models) back on the phase order.
