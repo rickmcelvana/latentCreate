@@ -183,7 +183,7 @@ remote target is configured. Split for the ~400-line rule.
 three distinct result shapes. The trap is the same tool answering three ways — `files` of
 `{name, pathIndex}` vs `rows` of `{name, type, tags}` (MCP-SURFACE §11.1).
 
-#### T-105b — model download  — 📝 **BRIEFED** ([brief](t-105b-brief.md))
+#### T-105b — model download  — ✅ **LANDED** ([brief](t-105b-brief.md))
 `download_model(wait=false)` → `DownloadSubmit`, and `download(action="status"|"cancel")` →
 `DownloadState` (one shape for all actions). `filename` is effectively required when the URL
 does not end in the file name (`[missing_argument]`).

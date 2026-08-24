@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 70 offline tests) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), **T-105a (model discovery)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-105b** (model download — briefed, ready to run). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 74 offline tests) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), **T-105b (model download)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-106** (node registry: `nodes(action="get")` for enum choices + LoRA enumeration). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -626,3 +626,21 @@ post-fmt state as the single source, not my write-tool drafts.
 feeds the real `"pathIndex": 2` JSON, so a wrong `#[serde(rename)]` makes `path_index` default to
 `0` and fails the `== 2` assertion; `test_search_decodes_rows_with_type` does the same for the
 `type` → `ty` rename. Neither could pass for the wrong reason.
+
+### 2026-08-24 — T-105b landed; the fmt rule finally held for a full run
+
+Aider transcribed the brief exactly; `download.rs` is byte-identical to the reference and
+`mcp-bridge` is now 74 tests. **The first run in six with no fmt defect** — my T-105b `lib.rs`
+reference had the re-export on one line, so the tightened rule (copy every touched file from the
+post-`cargo fmt` scratch) worked when actually followed.
+
+The one fix-up was cosmetic, and mine in origin: I wrote "alphabetical, between `error` and `jobs`"
+in the brief, but `download` sorts *before* `error`, so the executor's `mod download;` landed
+correctly at the top while `pub use download` landed after `pub use error`. Moved it for
+alphabetical consistency. Zero functional impact — a reminder that `mod`/`pub use` ordering is a
+convention the brief should pin precisely, not hand-wave at.
+
+**The terminal-semantics guard is genuine:** `test_download_state_is_terminal_and_success`
+constructs `DownloadState` literals directly (no transport), so `"failed"` → terminal-but-not-
+success and `"completed"` → terminal-and-success are asserted exactly; a regression in either arm
+fails the test. `mcp-bridge` now covers the full comfy-mcp surface except `nodes` (T-106).

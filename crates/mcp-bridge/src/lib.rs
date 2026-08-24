@@ -4,6 +4,7 @@
 //! Tool names are the verified LOCAL ones -- see docs/MCP-SURFACE.md, never the
 //! cloud documentation.
 
+mod download;
 mod error;
 mod jobs;
 mod local;
@@ -14,6 +15,7 @@ mod slots;
 mod templates;
 mod types;
 
+pub use download::{DownloadState, DownloadSubmit};
 pub use error::ComfyError;
 pub use jobs::{JobCancel, JobRun, JobStatus, OutputBatch, OutputFile};
 pub use local::{with_timeout, LocalComfy};
