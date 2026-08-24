@@ -178,7 +178,7 @@ empty until the §7 pipeline (T-107) — this is the plumbing, not the pipeline.
 `download_model` + `download(action=…)` progress. Note `download_model` refuses outright when a
 remote target is configured. Split for the ~400-line rule.
 
-#### T-105a — model discovery  — 📝 **BRIEFED** ([brief](t-105a-brief.md))
+#### T-105a — model discovery  — ✅ **LANDED** ([brief](t-105a-brief.md))
 `search_models` in its three modes (list-folders / folder / query) as three typed wrappers with
 three distinct result shapes. The trap is the same tool answering three ways — `files` of
 `{name, pathIndex}` vs `rows` of `{name, type, tags}` (MCP-SURFACE §11.1).
