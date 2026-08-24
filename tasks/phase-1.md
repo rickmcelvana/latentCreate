@@ -165,8 +165,13 @@ guards, argument names verbatim). `JobStatus::is_terminal`/`is_success` encode t
 #### T-104b — Tauri managed state + event pump  — ✅ **LANDED** ([brief](t-104b-brief.md))
 `src-tauri` holds `Arc<LocalComfy>` in managed state (`ComfyState`); a cancellable tokio poll
 loop (`poll_until_terminal`) re-emits `job://progress|done|failed`; `connect_comfy`/`run_workflow`/
-`cancel_job` commands. Adds `tokio` as a direct src-tauri dep. Frontend bridge + jobs store +
-queue panel is a later task.
+`cancel_job` commands. Adds `tokio` as a direct src-tauri dep.
+
+#### T-104c — frontend jobs bridge + store + queue panel  — 📝 **BRIEFED** ([brief](t-104c-brief.md))
+The frontend half of the job path, closed out of the T-104b split. `app/src/bridge/jobs.ts` typed
+invoke/listen wrappers mirroring the Rust event payloads, a `useJobsStore` queue with a pure
+`applyJobEvent` fold, and a `JobQueue` component mounted in AudioStudio. The run trigger stays
+empty until the §7 pipeline (T-107) — this is the plumbing, not the pipeline.
 
 ### T-105 — models
 `search_models` (query and folder modes return **different shapes** — MCP-SURFACE §1),

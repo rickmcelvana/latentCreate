@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 64 offline tests) and `src-tauri` holds the backend in managed state with a job event pump — the frontend has no bridge/jobs store yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), **T-104b (Tauri managed state + job event pump)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-105** (models: `search_models` + `download_model`) per the phase order, and the **unassigned** frontend jobs work (`app/src/bridge/jobs.ts` + a jobs store + queue panel) that consumes T-104b's `job://*` events — needs a T-number. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-104c** (frontend jobs bridge + store + queue panel — briefed, ready to run), then **T-105** (models: `search_models` + `download_model`). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -533,3 +533,28 @@ outputs at completion, which is T-107+ territory.
 to revert a mutation, which does not interpret `\n`, and briefly dropped the terminal check before
 the `edit` tool fixed it. The tree was re-verified green before commit — but the lesson is to use
 the `edit` tool for reverts, never ad-hoc regex on multi-line Rust.
+
+### 2026-08-24 — T-104c briefed (frontend jobs bridge + store + queue panel)
+
+Closed the gap T-104b left, as [tasks/t-104c-brief.md](tasks/t-104c-brief.md): the typed
+`bridge/jobs.ts` wrappers (invoke + `listen`), a `useJobsStore` queue with a pure `applyJobEvent`
+fold, and a `JobQueue` component in AudioStudio.
+
+**Verified the frontend the same way the Rust has been — by running it, not recalling it.** The
+`@tauri-apps/api` v2 `listen<T>`/`UnlistenFn` signatures were read from `node_modules` (not memory),
+and the reference code was written into the repo, gated (`tsc -b` clean, `oxlint` 0 warnings, 21
+vitest tests / 9 new, `vite build`), then reverted so the brief is the only artifact. Two facts
+worth recording:
+
+1. **The `job://` event name is legal on both sides.** Tauri validates event names to
+   `alphanumeric + - / : _` — the same charset in the Rust `is_event_name_valid` and the frontend
+   `listen` docs. This was worth checking explicitly: had `://` been rejected, T-104b's `emit`
+   calls would have silently no-op'd and every later job would have streamed into the void.
+2. **The frontend test seam is `vi.mock` at the module boundary** — the store test mocks
+   `../bridge/jobs` (its own module), the bridge test mocks `@tauri-apps/api/event` to pin the
+   three event-name strings. The `mock`-prefixed hoisted-variable convention is the one
+   `state/config.test.ts` already uses, so the mock factory can see its variables.
+
+**The one risk the brief can't remove:** the event-name spelling is the only place the frontend and
+Rust must agree by string, and it is only pinned by a mock, not a shared fixture (events are
+one-way; there is no round-trip). A producer live smoke check at T-113 will confirm end to end.
