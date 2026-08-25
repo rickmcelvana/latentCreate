@@ -268,7 +268,7 @@ the committed live capture through the decoder as one test.
 knowingly a little over the guide: splitting one stream state machine would cost more than
 it saves. Carries an `#[ignore]` live test for the T-113 checklist.
 
-### T-109 — `llm-bridge`: `ollama_native`  — **split in two; briefed 2026-08-24**
+### T-109 — `llm-bridge`: `ollama_native`  — ✅ **LANDED** as T-109a/b (one commit, `a15e377`)
 Nicer model listing and pull status. `list_models` feeds the wizard's recommendation chips.
 
 **Surface verified live** against Ollama 0.32.15 (LLM-SURFACE 8-9), including a real 46 MB
@@ -283,13 +283,13 @@ it into the trait would mean a `stream_chat` that returns an error. The trait st
 deferred — `anthropic` is what will settle it, because it genuinely chats with a different
 wire format (ARCHITECTURE 4).
 
-#### T-109a — model listing  — **briefed** ([brief](t-109a-brief.md))
+#### T-109a — model listing  — ✅ **LANDED** `a15e377` ([brief](t-109a-brief.md))
 `/api/tags`: `capabilities` tells the app which models can chat at all (an embedding model
 is indistinguishable on `/v1/models`), which emit reasoning, and which run on someone
 else's hardware. Traps: `families: null`, unnormalised `parameter_size`, stub `size` on
 cloud entries.
 
-#### T-109b — pull with progress  — **briefed** ([brief](t-109b-brief.md))
+#### T-109b — pull with progress  — ✅ **LANDED** `a15e377` ([brief](t-109b-brief.md))
 `/api/pull`: NDJSON framing, and **a failed pull answers HTTP 200** with the error in the
 body — comfy-mcp's `Ok(is_error: true)` in a second protocol. `completed` is absent, not
 zero, on a layer's first frame.

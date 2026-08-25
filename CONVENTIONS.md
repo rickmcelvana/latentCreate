@@ -36,5 +36,5 @@
 ## General
 - No new dependencies unless the brief lists them, with license noted (permissive only — this repo is open source; copyleft deps need an explicit decisions-log entry).
 - No TODO comments — unfinished work goes to PROJECT.md backlog.
-- ASCII in code/comments (UI strings may use Unicode).
+- ASCII in code/comments (UI strings may use Unicode). **This means all of it** — no §, no —, no ⚠, no ellipsis character. Write `section 4`, `--`, and spell warnings out. Verified 2026-08-24: executors strip non-ASCII from doc comments on every run, correctly, and the repo's 9 remaining violations were purged rather than argued with.
 - If a brief conflicts with this file, stop and ask.
