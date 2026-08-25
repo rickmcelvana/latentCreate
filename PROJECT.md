@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), **T-107b (profile slot addresses)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-108** (`llm-bridge`: `openai_compat` + streaming, SSE parsed from canned fixtures) then T-109. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-108a/b/c** — all three briefed and ready for producer Aider runs ([a](tasks/t-108a-brief.md) errors+SSE, [b](tasks/t-108b-brief.md) wire format, [c](tasks/t-108c-brief.md) the client) — then T-109. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -53,6 +53,10 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 - **2026-08-23 — Send-to sequencing** (closes OQ-4 for this repo): the real handoff mechanism is being built on the mixing/mastering side **before** latentCreate reaches Phase 4. latentCreate therefore builds only the v1 link-out + reveal-file behavior and adopts whatever protocol those repos define when it exists — this repo does not design the handshake. Re-check the mixing/mastering repos' state at the start of Phase 4.
 - **2026-08-24 — `ComfyBackend` trait re-deferred (from T-104 to "until cloud is verified").** The T-104 planning session confirmed holding `LocalComfy` concretely in Tauri managed state rather than introducing the trait now. Three reasons, concrete rather than speculative: (1) still a single impl; (2) the ARCHITECTURE §3 sketch has drifted from the landed methods (`search_templates(query, limit) -> TemplateSearch`, batch `set_slots`, `list_slots -> SlotList`, missing `get_template`/`notes`); (3) MCP-SURFACE §1 proves local/cloud are different surfaces, so the eventual seam is more likely `enum Backend { Local, Cloud }` than a 17-method trait — shaped when cloud is actually verified, not guessed. ARCHITECTURE §3 now marks the trait a sketch and records this.
 - **2026-08-24 — The profile/template check is split across the crates that already own each half.** `ModelProfile::slot_addresses()` (create-core, pure) collects every address a profile names; `SlotList::missing` (mcp-bridge, landed T-103b) does the comparison against a fetched template; they meet in `src-tauri`. Rejected: putting the comparison in `library` (it would need a `mcp-bridge` dependency, against ARCHITECTURE §2's role for the on-disk store) and adding a second comparison function to `create-core` (two answers to one question). Consequence: nothing in the check needs a live ComfyUI to test, and the wiring is one call at the T-110 seam.
+- **2026-08-24 — Streamed LLM text is typed, not concatenated.** `ChatDelta` is an enum (`Content` / `Reasoning` / `Refusal` / `Finished` / `Usage`) and **only `Content` may reach the user's document**. Forced by a live capture: `gemma4:12b-it-qat`, the model recommended for lyrics, answered a one-word prompt with 163 characters of `delta.reasoning` and 5 of `delta.content`. Two spellings exist (`reasoning`, Ollama/OpenRouter/current vLLM; `reasoning_content`, DeepSeek/older vLLM) and both are read, because clients that know one have shipped the bug of dropping the other. Full evidence: [docs/LLM-SURFACE.md](docs/LLM-SURFACE.md).
+- **2026-08-24 — `LlmProvider` deferred to T-109**, the same rule already applied twice to `ComfyBackend`: a trait with one implementation is a guess about where the seam goes. T-108 ships `OpenAiCompat` concretely; T-109's `ollama_native` is what will show which methods actually differ.
+- **2026-08-24 — TLS is `rustls` with the OS trust store**, via reqwest 0.13's `rustls` feature (which pulls `rustls-native-certs`). No OpenSSL enters the tree, so Linux CI needs no `libssl-dev`. Every added crate is permissive (MIT/Apache-2.0/ISC/BSD-3-Clause), verified with `cargo metadata` rather than assumed — LLM-SURFACE 7. Note reqwest 0.13 **renamed these features**: the 0.12 names `rustls-tls` and `rustls-tls-native-roots` do not exist and fail to resolve.
+
 
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
@@ -776,3 +780,49 @@ not a guard.
 **What this unblocks:** the wizard now has a model list to show (T-111) and a way to tell a
 user *why* a model is missing. The slot check still needs its one call at the `src-tauri`
 seam, which belongs to T-110's wiring, not to either of these tasks.
+### 2026-08-24 (later) — T-108 verified live and briefed in three
+
+Ollama was running on this box, so the OpenAI-compatible surface was captured live rather
+than recalled: model list, streaming frames, three error shapes, the usage frame. Recorded
+in **[docs/LLM-SURFACE.md](docs/LLM-SURFACE.md)** with the raw capture committed to
+`testdata/llm/`, and referenced from AGENTS.md beside MCP-SURFACE. Then the whole
+implementation was written, compiled, `cargo fmt`-ed, gate-run **and run against the live
+endpoint** before any of it entered a brief. 1093 lines — three briefs.
+
+**The finding that shaped the design.** Prompted "Reply with exactly: tulip",
+`gemma4:12b-it-qat` — the model docs/MODELS.md recommends for lyric writing — produced
+**163 characters of `delta.reasoning` and 5 of `delta.content`**. Not a reasoning-branded
+model; an ordinary instruct model, on the app's own recommended path. Three ways to get
+this wrong, all of which look reasonable while writing the code:
+
+1. concatenate every text field — 163 characters of the model's deliberation land in the
+   user's song;
+2. read only `content` — the UI sits frozen through 40 frames of a healthy stream;
+3. treat presence as text — `"content":""` ships on nearly every frame, so
+   `is_some()` is true throughout a stream carrying no content at all.
+
+`ChatDelta` is therefore an enum, and only `Content` may reach the document. The ecosystem
+also spells the field two ways (`reasoning` vs `reasoning_content`) and real clients have
+shipped the bug of handling one; both are read.
+
+**Second trap, same class as MCP-SURFACE's:** the usage frame carries `"choices":[]`, so
+`chunk.choices[0]` — the obvious line to write — fails on the last frame of every metered
+stream. And an error body is not necessarily JSON: a base URL missing `/v1` answers
+`404 page not found` in plain text, so the error path decodes the envelope and falls back
+to the raw body.
+
+**Verifying by compiling paid for itself immediately.** reqwest 0.13 renamed its TLS
+features; `rustls-tls-native-roots` does not exist and the build failed outright. Written
+from memory into a brief, that would have cost an executor round trip. The working feature
+is plain `rustls`, which pulls `rustls-native-certs` and uses the OS trust store — no
+OpenSSL, so Linux CI needs nothing extra. All added crates permissive, checked with
+`cargo metadata`.
+
+**A live test is kept, not thrown away.** `test_live_stream_returns_content_separated_from_reasoning`
+is `#[ignore]`d like `library`'s keychain test and passed against Ollama in 5.75 s. It is
+what proves reqwest streams incrementally instead of buffering the response, which no
+offline test can show, and it is now on the T-113 checklist.
+
+**One brief is knowingly over the limit.** T-108c is ~435 lines against the ~400 guide;
+splitting one stream state machine across two runs would cost more than it saves. Said in
+the brief rather than quietly ignored.

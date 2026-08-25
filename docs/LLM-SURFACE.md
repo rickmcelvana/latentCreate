@@ -1,0 +1,183 @@
+# LLM-SURFACE.md — verified OpenAI-compatible wire format
+
+**Status: verified live 2026-08-24** against Ollama on `127.0.0.1:11434`, cross-checked
+against the OpenAI Python SDK's own chunk type. Authoritative over model documentation and
+over docs/RESEARCH.md, exactly as [MCP-SURFACE.md](MCP-SURFACE.md) is for comfy-mcp. Read
+before touching `llm-bridge`.
+
+Raw captures live in [testdata/llm/](../testdata/llm/) and are replayed in the crate's
+tests, so nothing in CI needs a running model.
+
+**How this was verified.** `curl` against a live endpoint for every shape below;
+`cargo metadata` for licences; the OpenAI SDK source for the canonical field set. The
+streaming client was then written, compiled, and run against the live endpoint before any
+of it entered a brief — `test_live_stream_returns_content_separated_from_reasoning`
+(`cargo test -p llm-bridge -- --ignored`) is that check, kept as a permanent live smoke
+test rather than thrown away.
+
+---
+
+## 1. `GET /v1/models` — the model list
+
+```json
+{"object":"list","data":[
+  {"id":"kimi-k3:cloud","object":"model","created":1787613495,"owned_by":"library"},
+  {"id":"gemma4:12b-32k","object":"model","created":1784893439,"owned_by":"library"}]}
+```
+
+Only `id` is worth reading. `created` is a **file mtime on local servers**, not a release
+date, so it must not be presented as one. `owned_by` is `"library"` for every local model.
+
+The wizard's model picker (T-112) reads this list; wire order is Ollama's recency order,
+which is a more useful default than alphabetical.
+
+---
+
+## 2. ⚠ `delta.reasoning` — the finding that shapes the whole crate
+
+**A model this app recommends for lyrics spends most of its output on chain-of-thought,
+in a field OpenAI does not document.**
+
+Prompt: `Reply with exactly: tulip`. Model: `gemma4:12b-it-qat`. Result:
+
+| | characters |
+|---|---|
+| `delta.reasoning` | **163** |
+| `delta.content` | **5** (`tulip`) |
+
+Frames look like this — note `"content":""` sitting *beside* a non-empty `reasoning`:
+
+```json
+{"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"The"},"finish_reason":null}]}
+{"choices":[{"index":0,"delta":{"content":"","reasoning":" user"},"finish_reason":null}]}
+...
+{"choices":[{"index":0,"delta":{"content":"tul"},"finish_reason":null}]}
+{"choices":[{"index":0,"delta":{"content":"ip"},"finish_reason":null}]}
+{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+```
+
+Three consequences, all of them correctness rather than polish:
+
+1. **Reasoning must never be appended to lyrics.** A client that concatenates every text
+   field puts 163 characters of the model's deliberation into the user's song.
+2. **Reasoning must not be discarded either.** For the 40 frames before content starts,
+   a client that only watches `content` shows a frozen UI on a working stream. It is
+   status text — "thinking…" — not output.
+3. **Presence is not text.** `"content":""` is sent on nearly every frame, so
+   `delta.content.is_some()` is true throughout a stream carrying no content at all.
+
+This is not limited to models that advertise reasoning: `gemma4:12b-it-qat`, an ordinary
+instruct model, does it, and it is the model docs/MODELS.md recommends for lyric writing.
+
+---
+
+## 3. ⚠ Two spellings: `reasoning` and `reasoning_content`
+
+The ecosystem is split, and a client that knows only one silently drops the thinking
+stream on half of it:
+
+| Field | Used by |
+|---|---|
+| `reasoning` | Ollama, OpenRouter, current vLLM |
+| `reasoning_content` | DeepSeek, older vLLM |
+
+Neither is in OpenAI's own `ChoiceDelta`, whose documented fields are `content`, `role`,
+`refusal`, `tool_calls`, `function_call`. Both must be read and merged. Real clients have
+shipped this bug — see the vLLM/litellm/strands-agents issues linked from the session log.
+
+**`refusal` matters for the same reason:** when a model declines, the text lands there and
+`content` stays empty. A client watching only `content` shows a blank answer with no
+explanation.
+
+---
+
+## 4. Errors — and one that is not JSON
+
+| Case | Status | Body |
+|---|---|---|
+| Unknown model | 404 | `{"error":{"message":"model 'no-such-model:99b' not found","type":"not_found_error","param":null,"code":null}}` |
+| Missing `messages` | 400 | `{"error":{"message":"[] is too short - 'messages'","type":"invalid_request_error","param":null,"code":null}}` |
+| **Wrong path** (base URL without `/v1`) | 404 | `404 page not found` — **plain text** |
+
+The envelope matches OpenAI's documented shape; `param` and `code` were null on every
+capture. But the third row is the trap: **an error body is not necessarily JSON.** A user
+who pastes `http://127.0.0.1:11434` instead of `.../v1` gets plain text, and a client that
+insists on the envelope reports "expected value at line 1 column 1" instead of the one
+sentence that would let them fix it. Decode the envelope, fall back to the raw body.
+
+---
+
+## 5. `stream_options.include_usage` — and the frame with no choices
+
+Requesting usage appends one final frame **before** `[DONE]`:
+
+```json
+{"id":"chatcmpl-221","object":"chat.completion.chunk","model":"gemma4:12b-it-qat",
+ "choices":[],"usage":{"prompt_tokens":24,"completion_tokens":10,"total_tokens":34}}
+```
+
+`choices` is `[]`. The OpenAI SDK types it `List[Choice]` with no guarantee of length, so
+this is spec-conformant rather than an Ollama quirk — and `chunk.choices[0]` fails on the
+last frame of every metered stream. `usage` is `Optional`; it is absent unless requested.
+
+`finish_reason` (`"stop"`, `"length"`, `"content_filter"`, `"tool_calls"`,
+`"function_call"`) arrives on its own frame whose `delta` is `{}`.
+
+**Budget note:** `max_tokens` counts reasoning tokens. A 10-token budget on the capture
+above was spent entirely on chain-of-thought and returned `finish_reason: "length"` with
+zero content — so a lyrics request needs headroom for thinking, not just for lyrics.
+
+---
+
+## 6. SSE framing
+
+Standard `text/event-stream`. What the decoder must handle, none of it optional:
+
+- **Events split across reads.** A frame arrives in as many TCP segments as the network
+  feels like; the parser buffers until a blank line.
+- **Multi-byte characters split across reads.** Buffer **bytes**, decode UTF-8 only once a
+  whole event has arrived. Lyrics are written in 50+ languages; decoding each read on its
+  own corrupts exactly those characters.
+- **Comment heartbeats.** Lines beginning `:` — OpenRouter sends `: OPENROUTER PROCESSING`
+  while a model warms up. Parsing one as JSON fails the whole stream.
+- **`\r\n\r\n` as well as `\n\n`.** Proxies rewrite line endings; a decoder that knows only
+  `\n\n` buffers the entire response and emits nothing.
+- **Repeated `data:` lines** join with a newline, per the SSE spec.
+- **`data: [DONE]`** terminates an OpenAI-style stream. It is not JSON.
+
+---
+
+## 7. Dependencies added, with licences
+
+`cargo metadata`, not memory. All permissive; nothing copyleft (CONVENTIONS).
+
+| Crate | Version | Licence |
+|---|---|---|
+| `reqwest` | 0.13.4 | MIT OR Apache-2.0 |
+| `rustls` | 0.23.43 | Apache-2.0 OR ISC OR MIT |
+| `rustls-native-certs` | (via `rustls` feature) | Apache-2.0 OR ISC OR MIT |
+| `hyper-rustls` | 0.27.9 | Apache-2.0 OR ISC OR MIT |
+| `aws-lc-rs` | 1.18.0 | ISC AND (Apache-2.0 OR ISC) |
+| `ring` | 0.17.14 | Apache-2.0 AND ISC |
+| `bytes` | 1.12.1 | MIT |
+| `futures-core` / `futures-util` | 0.3.34 | MIT OR Apache-2.0 |
+
+⚠ **reqwest 0.13 renamed its TLS features.** There is no `rustls-tls` or
+`rustls-tls-native-roots`; the feature is plain **`rustls`**, and it pulls
+`rustls-native-certs`, so the OS trust store is used rather than a bundled root list. The
+0.12-era names fail to resolve outright — caught by compiling, which is the only reason
+this file does not repeat them.
+
+No OpenSSL enters the tree, so Linux CI needs no `libssl-dev`.
+
+---
+
+## 8. What is *not* verified
+
+- **OpenAI, Anthropic and OpenRouter proper.** Everything above was captured from Ollama.
+  The envelope and chunk shapes match the OpenAI SDK's own types, but no authenticated
+  request to a paid endpoint was made, so 401/429 bodies and rate-limit headers are
+  **unverified**. Verify before writing a provider that depends on them.
+- **`tool_calls` / `function_call` deltas.** Not used by the lyric flow, not captured.
+- **Non-streaming `POST /v1/chat/completions`.** The app streams; the non-streaming shape
+  was not captured.

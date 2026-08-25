@@ -119,6 +119,21 @@ pub trait LlmProvider: Send + Sync {
 
 Implementations, in priority order: `openai_compat` (base URL + optional key — covers Ollama's OpenAI endpoint, LM Studio, llama.cpp server, OpenRouter, vLLM), `ollama_native` (nicer model listing/pull status), `anthropic`, `openai`. **`openai_compat` is the universal baseline; the others are conveniences.** Keys stored via OS keychain (`keyring` crate), never in plaintext config. Streaming deltas forwarded to the frontend as Tauri events so lyrics render token-by-token.
 
+**Verified 2026-08-24 (docs/LLM-SURFACE.md) — the trait above is a sketch, and one finding
+reshapes it.** Streaming does not deliver a single kind of text. Providers send
+chain-of-thought in `delta.reasoning` (Ollama, OpenRouter, current vLLM) or
+`delta.reasoning_content` (DeepSeek, older vLLM), and on a live capture the model this app
+recommends for lyrics produced **163 characters of reasoning to 5 of content** for a
+one-word answer. So `ChatDelta` is an enum, not a string: `Content` is the only variant
+that may reach the user's document, `Reasoning` is status text, `Refusal` is the model
+declining (its text never appears in `content`), and `Finished`/`Usage` are terminal. A
+provider that merged the two text kinds would write the model's deliberation into the
+user's song.
+
+`LlmProvider` itself stays deferred until T-109 gives it a second implementation — the
+same rule applied to `ComfyBackend` in section 3, for the same reason: one impl cannot show
+where the seam belongs. T-108 exposes `OpenAiCompat` concretely.
+
 ## 5. Model capability profiles — the core abstraction
 
 The app is model-agnostic. Everything the UI shows for a music model comes from a **profile** (JSON in `profiles/`, user-extensible in the app data dir; app merges both, user dir wins). Profiles are data, not code — supporting a new model means writing a JSON file.
