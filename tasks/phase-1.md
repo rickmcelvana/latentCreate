@@ -188,7 +188,7 @@ three distinct result shapes. The trap is the same tool answering three ways —
 `DownloadState` (one shape for all actions). `filename` is effectively required when the URL
 does not end in the file name (`[missing_argument]`).
 
-### T-106 — node registry
+### T-106 — node registry  — ✅ **LANDED** `6cf434f` ([brief](t-106-brief.md))
 `nodes(action="get")` for live enum choices (`from_node_choices` in profiles) and for LoRA
 enumeration. Delivers the `NodeSchema` type + `node_schema(class)` wrapper + a `choices_for`
 helper that reads a COMBO input's live `choices` — the primitive the param panel (T-107+) and
@@ -206,7 +206,7 @@ here — ROADMAP Phase 3 and ARCHITECTURE §5a both assign it to the LoRA stack 
 are fuzzy enough (telling a real adapter from a misfiled full model by filename alone) to need
 owner iteration alongside the picker UI. T-106 delivers the **raw** list; the picker shapes it.
 
-### T-106b — `minimax-music-3` profile
+### T-106b — `minimax-music-3` profile  — ✅ **LANDED** `f337083` ([brief](t-106b-brief.md))
 **Unblocked 2026-08-23.** Weights are installed and the template validates once
 `37/6.unet_name` is overridden to the int8 DiT (MCP-SURFACE §6). Writing it exercises three
 things the ACE-Step profile does not: **subgraph slot addresses** (`37/...`), a

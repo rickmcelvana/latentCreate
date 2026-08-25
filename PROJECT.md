@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 74 offline tests) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), **T-105b (model download)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-106** (node registry: `nodes(action="get")` for enum choices + LoRA enumeration). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), **T-106b (`minimax-music-3` profile + `slot_overrides`)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-107** (profile loader: shipped `profiles/` + a user directory, user wins on id collision, slot addresses checked against the template). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -663,3 +663,42 @@ T-107 (profile loader), T-108/T-109 (`llm-bridge`), T-110–T-112 (wizard), T-11
 `cargo fmt` in the scratch crate, and **every touched file — including `lib.rs` re-exports — is
 copied from the post-fmt state, never re-typed.** Six occurrences and counting; it is the single
 most common gate failure in this project.
+### 2026-08-24 (later) — T-106 landed; the node registry closes the comfy-mcp surface
+
+`nodes.rs` (318 lines, +5 tests -> `mcp-bridge` at 79) wraps `nodes(action="get")`: `NodeSchema`
+with metadata + `inputs[]` + `outputs[]`, `input(name)`, and the `choices_for(name)` primitive that
+both `from_node_choices` enums and the Phase 3 LoRA picker read. The diff touched only the two
+listed files. **`mcp-bridge` now covers every comfy-mcp tool the app needs** — the surface is closed.
+
+**The two live-captured traps both landed in the type, not in prose.** `NodeOptions` keeps
+`min`/`max`/`step`/`default` as `Option<Value>` rather than numbers, because `default` is variously
+a string, a bool, a number or null, and the `INT` seed's `max` is `u64::MAX` — which does not fit
+`i64`. That is the same precision argument that made `Seed` its own `InputSpec` variant back in
+T-003; it has now bitten twice, in unrelated modules, from opposite directions.
+
+**Guards reviewed (reasoned, not re-run):** `test_options_default_is_polymorphic` feeds the real
+`u64::MAX` max and a string default, so narrowing `NodeOptions` to numeric types fails it;
+`test_unknown_node_is_a_tool_error` pins the `Ok(is_error: true)` decode that MCP-SURFACE §8 calls
+the shape of bug that ships. Neither can pass for the wrong reason.
+
+### 2026-08-24 (later) — T-106b landed; the second profile, and the schema grew one field
+
+`profiles/minimax-music-3.json` plus `ComfySpec.slot_overrides`
+(`BTreeMap<SlotAddress, InputValue>`) and 4 tests (`create-core` at 24). ARCHITECTURE §5 documents
+the field in the same commit as the schema change, per the docs rule.
+
+**Writing a second profile is what proved the schema, and the schema moved.** ACE-Step alone had
+never exercised subgraph addressing (`37/13.caption`), a three-way seed fan-out, a `caption` input
+where ACE-Step has `tags`, or a template whose save node is *already* `SaveAudioAdvanced`. The last
+one matters most: it proves the save-node swap is **conditional per profile**, not a universal
+pipeline step — a pipeline that always substituted would have corrupted this template.
+
+**`slot_overrides` is the generalisation of a one-off fix.** MiniMax's template hardcodes the fp16
+DiT filename while the installed weights are int8, so the profile pins `37/6.unet_name` rather than
+the app special-casing one model. Any profile can now target a checkpoint variant its template gets
+wrong, applied to the fetched template before the user's inputs.
+
+**The license test is doing real work.** `test_minimax_fixture_surfaces_the_conditional_license`
+asserts the notes carry both "attribution" and the revenue threshold, because this is the first
+shipped profile whose weights are open-*with-conditions*: users ship these tracks commercially, and
+T-111 must show those terms wherever the model is chosen.
