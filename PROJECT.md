@@ -6,8 +6,8 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 88 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), **T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row)**. **T-112a-d (LLM step) is briefed and awaiting runs**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-112a-d** — all four briefed and ready for producer Aider runs ([a](tasks/t-112a-brief.md) suggestions as data, [b](tasks/t-112b-brief.md) the LLM commands, [c](tasks/t-112c-brief.md) bridge and store, [d](tasks/t-112d-brief.md) the view) — then **T-113**'s live milestone and the `phase1-done` tag. ACE-Step is now installed on the producer's machine, so that milestone is reachable. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), **T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row)**, **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-113** — the Phase 1 live milestone, which is the producer's to run: the wizard from cold, ACE-Step present, server info visible, an LLM test call that returns, `cargo test -p llm-bridge -- --ignored` against the real endpoint, and a re-fetch of the ACE-Step template to confirm the profile's slot addresses still resolve. Then tag `phase1-done`. All three wizard steps are built; nothing is wired to a *generation pipeline* yet, which is Phase 2.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1234,3 +1234,40 @@ machine-readable list is now `data/lyric-llms.json`, shipped as a bundle resourc
 
 ~1405 lines of code, so four briefs. Gate green; vitest 41 to 51, create-core 34 to 41, library
 19 to 22, app 20 to 29.
+
+### 2026-08-25 (later still) — T-112a-d landed; and a fixture that could not fail
+
+All four runs came back **byte-identical to the verified reference** on every new file, and the
+`create-core`/`library` wiring diff matched exactly. Two cosmetic differences: an extra blank
+line in `theme.css`, and `Cargo.lock` arriving unbuilt, which the first gate run fixed. Nothing
+to correct.
+
+**Mutation testing: eight guards, seven caught, one survivor — and the survivor is the same
+mistake as last time, wearing different clothes.** Replacing the deterministic `.min()` in
+`preselect` with `.next()`, so the picker follows whatever order the endpoint returned, passed
+all 41 tests. The reason: my `INSTALLED` fixture is written in sorted order, so "lowest id" and
+"first one seen" give the same answer against it. The test asserted an outcome that **both**
+the correct and the broken implementation produce.
+
+T-110's lesson was "a test written from a captured payload guards the payload, not the rule".
+This is that lesson again at a different angle: **a fixture in sorted order cannot prove
+sorting.** The fix is one line of input — the same two variants listed worst-first — which is
+the only shape that can tell the two implementations apart. Armed and re-mutated; it fails now.
+
+The seven that were caught are the ones the step exists for: unknown capability rendered as
+`false` (twice, once for `can_chat` and once for the privacy flag), prefix matching degraded to
+equality, a suggestion overriding the user's own configured model, the missing-`/v1` hint going
+silent, a reasoning-only test call reported as failure, and an unchecked model losing the chip
+that says so.
+
+**Two errors of mine in the briefs, both in predicted test counts.** I wrote "51 across 9 files"
+(it is 8) and "20 -> 29" for the app crate (it is 21 -> 30; I forgot the second ignored test I
+had added in the T-111 follow-up). I made the same file-count slip in T-111d, saying 8 where it
+was 7. Predicted counts are supposed to be a cheap check that the executor landed everything,
+and one that is wrong by default trains the reviewer to ignore it. **Derive them from a run
+before writing the brief, never from arithmetic.**
+
+Live tests re-run against the landed code: 13 ids, 13 enriched, 2 unusable removed, 8 remote
+disclosed; the test call returned `ok=true saw_reasoning=true content="ok"`. Gate green.
+Final counts: create-core 41, library 21 (+1 ignored), llm-bridge 34 (+3), mcp-bridge 88,
+app 26 (+4), vitest 51 across 8 files.

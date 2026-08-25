@@ -373,7 +373,7 @@ lands an untested half.
 `Setup.tsx`, `theme.css`. Licence on every row. Install offered only when every missing file
 carries a URL.
 
-### T-112 — Setup wizard: LLM step  — **split in four; briefed 2026-08-25**
+### T-112 — Setup wizard: LLM step  — ✅ **LANDED** as T-112a-d (one commit, `e4c3e98`)
 Provider, base URL, key to keychain, `list_models`, test call. Mark Gemma 4 12B / 26B / 31B
 with a "recommended for lyrics" chip and preselect the 12B, reading the list as data.
 **Never auto-pull an LLM.** One keychain read per probe, never a bare `has_secret` from the
@@ -401,19 +401,19 @@ party.
   `gemma4:12b-it-qat`; neither is named `gemma4:12b`. Matching is by prefix, and because two
   can match, the preselect is deterministic.
 
-#### T-112a — suggestions as data  — **briefed** ([brief](t-112a-brief.md))
+#### T-112a — suggestions as data  — ✅ **LANDED** `e4c3e98` ([brief](t-112a-brief.md))
 `data/lyric-llms.json` + `create-core/suggestions.rs` + `library/suggestions.rs`. A configured
 model always wins over a suggestion; that is the difference between a suggestion and a setting.
 
-#### T-112b — the LLM commands  — **briefed** ([brief](t-112b-brief.md))
+#### T-112b — the LLM commands  — ✅ **LANDED** `e4c3e98` ([brief](t-112b-brief.md))
 `src-tauri/llm.rs`. Capabilities are `Option<bool>`: unknown is neither false nor unusable.
 One keychain read; the key value never crosses the boundary. ~574 lines, over the guide, but
 roughly 250 of it is tests and the file is one coherent surface.
 
-#### T-112c — bridge and store  — **briefed** ([brief](t-112c-brief.md))
+#### T-112c — bridge and store  — ✅ **LANDED** `e4c3e98` ([brief](t-112c-brief.md))
 `bridge/llm.ts`, `state/llm.ts` + tests. Never implies privacy for a model it could not check.
 
-#### T-112d — the view  — **briefed** ([brief](t-112d-brief.md))
+#### T-112d — the view  — ✅ **LANDED** `e4c3e98` ([brief](t-112d-brief.md))
 `Setup.tsx`, `theme.css`. The remote disclosure sits on the row, not in a footnote.
 
 ### T-113 — Phase 1 milestone (producer)
