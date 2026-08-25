@@ -4,6 +4,28 @@
 //! OpenRouter, vLLM); native providers are conveniences (ARCHITECTURE.md §4).
 //! Populated in Phase 1.
 
+pub mod error;
+pub mod openai;
+pub mod sse;
+pub mod wire;
+
+/// Re-export of [`error::LlmError`].
+pub use error::LlmError;
+/// Re-export of [`openai::OpenAiCompat`].
+pub use openai::OpenAiCompat;
+/// Re-export of [`sse::SseDecoder`].
+pub use sse::SseDecoder;
+/// Re-export of [`sse::SseEvent`].
+pub use sse::SseEvent;
+/// Re-export of [`wire::ChatDelta`].
+pub use wire::ChatDelta;
+/// Re-export of [`wire::ChatMessage`].
+pub use wire::ChatMessage;
+/// Re-export of [`wire::ChatRequest`].
+pub use wire::ChatRequest;
+/// Re-export of [`wire::Role`].
+pub use wire::Role;
+
 #[cfg(test)]
 mod tests {
     /// Gives the crate a test target from the start and pins its published
