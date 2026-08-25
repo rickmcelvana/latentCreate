@@ -4,6 +4,7 @@
 //! Secrets live in the OS keychain, never in config. Populated by T-004.
 
 pub mod config;
+pub mod profiles;
 pub mod secrets;
 
 /// Re-export of [`config::Config`].
@@ -12,6 +13,14 @@ pub use config::Config;
 pub use config::ConfigWarning;
 /// Re-export of [`config::LoadedConfig`].
 pub use config::LoadedConfig;
+/// Re-export of [`profiles::LoadedProfile`].
+pub use profiles::LoadedProfile;
+/// Re-export of [`profiles::ProfileSet`].
+pub use profiles::ProfileSet;
+/// Re-export of [`profiles::ProfileSource`].
+pub use profiles::ProfileSource;
+/// Re-export of [`profiles::ProfileWarning`].
+pub use profiles::ProfileWarning;
 /// Re-export of [`secrets::SecretKey`].
 pub use secrets::SecretKey;
 
