@@ -14,12 +14,14 @@ pub mod profile;
 pub mod project;
 pub mod provenance;
 pub mod readiness;
+pub mod suggestions;
 
 pub use generation::*;
 pub use profile::*;
 pub use project::*;
 pub use provenance::*;
 pub use readiness::*;
+pub use suggestions::*;
 
 #[cfg(test)]
 mod tests {

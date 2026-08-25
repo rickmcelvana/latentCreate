@@ -434,3 +434,78 @@ body {
   flex: none;
   color: var(--text-muted);
 }
+
+/* --- Setup wizard, lyrics model step --- */
+
+.llm-models {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.llm-model {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--gap-sm) 0;
+  border-top: 1px solid var(--border);
+}
+
+.llm-model-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  cursor: pointer;
+}
+
+.llm-model-pick input:disabled {
+  cursor: not-allowed;
+}
+
+.llm-model-pick input:disabled + code {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.llm-model-pick code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.llm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 26px;
+}
+
+.llm-chip {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-bright);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.llm-disclosure {
+  margin: 0;
+  padding-left: 26px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.llm-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}

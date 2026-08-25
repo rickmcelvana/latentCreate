@@ -30,7 +30,8 @@
   "bundle": {
     "active": true,
     "resources": [
-      "../profiles/*.json"
+      "../profiles/*.json",
+      "../data/*.json"
     ],
     "targets": "all",
     "licenseFile": "../LICENSE",

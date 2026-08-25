@@ -6,6 +6,7 @@
 pub mod config;
 pub mod profiles;
 pub mod secrets;
+pub mod suggestions;
 
 /// Re-export of [`config::Config`].
 pub use config::Config;
@@ -23,6 +24,10 @@ pub use profiles::ProfileSource;
 pub use profiles::ProfileWarning;
 /// Re-export of [`secrets::SecretKey`].
 pub use secrets::SecretKey;
+
+pub use suggestions::SuggestionSet;
+
+pub use suggestions::SuggestionWarning;
 
 use thiserror::Error;
 

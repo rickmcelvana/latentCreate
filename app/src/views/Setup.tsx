@@ -3,6 +3,7 @@ import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
 import { curatedFirst, formatBytes, installView, rowFor, useModelsStore } from '../state/models'
+import { canTest, modelView, testSummary, useLlmStore } from '../state/llm'
 
 /**
  * Setup wizard, ComfyUI step.
@@ -64,7 +65,135 @@ export function Setup() {
       </section>
 
       <ModelsStep />
+      <LlmStep />
     </>
+  )
+}
+
+/** Where the lyric LLM lives. Ollama's default, and the commonest case. */
+const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1'
+
+/**
+ * Setup wizard, lyric-LLM step.
+ *
+ * Probes once on mount and otherwise only when the user asks. The probe is
+ * also the step's only keychain read -- `has_key` rides on the status, so
+ * nothing here calls `has_secret`, whose answer requires reading the secret
+ * and on macOS can raise a prompt (T-004).
+ */
+function LlmStep() {
+  const status = useLlmStore((state) => state.status)
+  const busy = useLlmStore((state) => state.busy)
+  const testing = useLlmStore((state) => state.testing)
+  const result = useLlmStore((state) => state.result)
+  const model = useLlmStore((state) => state.model)
+  const probe = useLlmStore((state) => state.probe)
+  const choose = useLlmStore((state) => state.choose)
+  const test = useLlmStore((state) => state.test)
+
+  useEffect(() => {
+    void probe(DEFAULT_BASE_URL, null)
+  }, [probe])
+
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">Lyrics model</h2>
+        <button
+          type="button"
+          className="setup-button"
+          onClick={() => void probe(DEFAULT_BASE_URL, model)}
+          disabled={busy}
+        >
+          {busy ? 'Checking...' : 'Retry'}
+        </button>
+      </header>
+
+      {status !== null && status.state === 'not_configured' ? (
+        <p className="setup-next-step">Set an endpoint to write lyrics with a model.</p>
+      ) : null}
+
+      {status !== null && status.state === 'unreachable' ? (
+        <>
+          <p className="setup-next-step">{status.detail}</p>
+          {status.hint !== null ? <p className="setup-next-step">{status.hint}</p> : null}
+        </>
+      ) : null}
+
+      {status !== null && status.state === 'ready' ? (
+        <>
+          {/* Said once, plainly: without Ollama's native API neither the
+              capability nor the privacy question can be answered at all. */}
+          {!status.enriched ? (
+            <p className="setup-next-step">
+              This endpoint does not report model capabilities, so it cannot be checked whether a
+              model runs locally or can write lyrics at all.
+            </p>
+          ) : null}
+
+          <ul className="llm-models">
+            {status.models.map((row) => {
+              const view = modelView(row)
+              return (
+                <li key={view.id} className="llm-model">
+                  <label className="llm-model-pick">
+                    <input
+                      type="radio"
+                      name="lyric-model"
+                      value={view.id}
+                      checked={model === view.id}
+                      disabled={!view.selectable}
+                      onChange={() => choose(view.id)}
+                    />
+                    <code>{view.id}</code>
+                  </label>
+                  {view.chips.length > 0 ? (
+                    <span className="llm-chips">
+                      {view.chips.map((chip) => (
+                        <span key={chip} className="llm-chip">
+                          {chip}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                  {view.disclosure !== null ? (
+                    <p className="llm-disclosure">{view.disclosure}</p>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+
+          {status.missing_suggestions.map((suggestion) => (
+            <div key={suggestion.label} className="llm-suggestion">
+              <p className="setup-next-step">
+                {suggestion.label} is suggested for lyrics
+                {suggestion.why === null ? '' : ` -- ${suggestion.why}`}
+                {suggestion.vram_hint === null ? '' : ` Needs ${suggestion.vram_hint}.`}
+              </p>
+              {/* The command is shown, never run: this app does not pull an
+                  LLM onto the user's disk (docs/MODELS.md). */}
+              {suggestion.pull_command !== null ? (
+                <code className="setup-command">{suggestion.pull_command}</code>
+              ) : null}
+            </div>
+          ))}
+
+          <div className="setup-actions">
+            <button
+              type="button"
+              className="setup-button setup-button-primary"
+              onClick={() => void test(DEFAULT_BASE_URL)}
+              disabled={!canTest(status, model) || testing}
+            >
+              {testing ? 'Testing...' : 'Test call'}
+            </button>
+          </div>
+
+          {result !== null ? <p className="setup-next-step">{testSummary(result)}</p> : null}
+        </>
+      ) : null}
+    </section>
   )
 }
 
