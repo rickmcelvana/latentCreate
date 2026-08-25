@@ -6,7 +6,7 @@
 
 use crate::generation::InputValue;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A ComfyUI workflow slot address: `"<node_id>.<input_name>"` (e.g. `"94.tags"`),
 /// or `"<subgraph>/<node>.<input>"` for subgraph interiors. Produced by
@@ -234,6 +234,55 @@ pub struct ModelProfile {
     pub prompt_guide: Option<PromptGuide>,
 }
 
+impl InputSpec {
+    /// Adds every slot address this control writes to `into`, descending into
+    /// group members. [`InputSpec::Unsupported`] writes nothing by definition.
+    fn collect_slots(&self, into: &mut BTreeSet<SlotAddress>) {
+        match self {
+            InputSpec::Text { slots, .. }
+            | InputSpec::Lyrics { slots, .. }
+            | InputSpec::Int { slots, .. }
+            | InputSpec::Float { slots, .. }
+            | InputSpec::Seed { slots }
+            | InputSpec::Enum { slots, .. } => {
+                into.extend(slots.iter().cloned());
+            }
+            InputSpec::Group { members, .. } => {
+                for member in members.values() {
+                    member.collect_slots(into);
+                }
+            }
+            InputSpec::Unsupported { .. } => {}
+        }
+    }
+}
+
+impl ModelProfile {
+    /// Every slot address this profile names, de-duplicated and sorted.
+    ///
+    /// Three sources, because all three must exist in the template or the
+    /// profile is broken in a way the user sees only at generation time: the
+    /// `inputs` it writes (group members included), the `slot_overrides` it
+    /// pins, and the `lyrics_contract.languages_from` address it reads the
+    /// live language list from.
+    ///
+    /// Pair with `SlotList::missing` in `mcp-bridge` to check a profile
+    /// against a fetched template; nothing here touches ComfyUI.
+    pub fn slot_addresses(&self) -> BTreeSet<SlotAddress> {
+        let mut addresses = BTreeSet::new();
+        for input in self.inputs.values() {
+            input.collect_slots(&mut addresses);
+        }
+        addresses.extend(self.comfy.slot_overrides.keys().cloned());
+        if let Some(contract) = &self.lyrics_contract {
+            if let Some(languages_from) = &contract.languages_from {
+                addresses.insert(languages_from.clone());
+            }
+        }
+        addresses
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,5 +495,135 @@ mod tests {
         let notes = profile.license_notes.as_ref().expect("license notes");
         assert!(notes.contains("attribution"));
         assert!(notes.contains("20"));
+    }
+
+    /// Every slot address MCP-SURFACE 3 records from the live
+    /// `audio_ace_step1_5_xl_turbo` template (verified 2026-08-23,
+    /// `local_check: runnable: true`). Not the full 33 -- the documented
+    /// subset, which covers everything the shipped profile drives.
+    const VERIFIED_ACE_STEP_SLOTS: &[&str] = &[
+        "107.filename_prefix",
+        "107.quality",
+        "3.cfg",
+        "3.denoise",
+        "3.sampler_name",
+        "3.scheduler",
+        "3.seed",
+        "3.steps",
+        "78.shift",
+        "94.bpm",
+        "94.cfg_scale",
+        "94.duration",
+        "94.generate_audio_codes",
+        "94.keyscale",
+        "94.language",
+        "94.lyrics",
+        "94.min_p",
+        "94.seed",
+        "94.tags",
+        "94.temperature",
+        "94.timesignature",
+        "94.top_k",
+        "94.top_p",
+        "98.seconds",
+    ];
+
+    /// Protects: the collector descends into groups and skips `Unsupported`.
+    /// Asserted as an exact set, so a group whose members stop being walked
+    /// (the LM-planner's five controls) fails, and so does an `Unsupported`
+    /// input that starts contributing a phantom address.
+    #[test]
+    fn test_slot_addresses_walk_groups_and_skip_unsupported() {
+        let profile: ModelProfile = serde_json::from_str(ACE_STEP_FIXTURE).unwrap();
+        let addresses: BTreeSet<String> =
+            profile.slot_addresses().into_iter().map(|a| a.0).collect();
+
+        let expected: BTreeSet<String> = [
+            "3.seed",
+            "3.steps",
+            "78.shift",
+            "94.bpm",
+            "94.cfg_scale",
+            "94.duration",
+            "94.keyscale",
+            "94.language",
+            "94.lyrics",
+            "94.min_p",
+            "94.seed",
+            "94.tags",
+            "94.temperature",
+            "94.timesignature",
+            "94.top_k",
+            "94.top_p",
+            "98.seconds",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        assert_eq!(addresses, expected);
+    }
+
+    /// Protects: a pinned checkpoint variant is checked like any other
+    /// address. `37/6.unet_name` appears in no input -- only in
+    /// `slot_overrides` -- and an override the template lacks fails at
+    /// generation time, which is exactly what this collector exists to
+    /// prevent.
+    #[test]
+    fn test_slot_addresses_include_slot_overrides() {
+        let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
+        let addresses = profile.slot_addresses();
+        assert!(addresses.contains(&SlotAddress("37/6.unet_name".to_string())));
+        assert!(profile
+            .inputs
+            .values()
+            .all(|input| !format!("{input:?}").contains("37/6.unet_name")));
+    }
+
+    /// Protects: `lyrics_contract.languages_from` is collected even when no
+    /// input writes it. The app reads the live language list from that
+    /// address; if it does not exist the language picker is empty, silently.
+    #[test]
+    fn test_slot_addresses_include_languages_from() {
+        let json = r#"
+        {
+            "id": "reads-languages",
+            "display_name": "Reads Languages",
+            "kind": "music",
+            "license": "MIT",
+            "comfy": { "output": { "save_node": "SaveAudioAdvanced" } },
+            "inputs": {
+                "tags": { "type": "text", "slots": ["94.tags"] }
+            },
+            "lyrics_contract": {
+                "format": "plain",
+                "languages_from": "94.language"
+            }
+        }
+        "#;
+        let profile: ModelProfile = serde_json::from_str(json).unwrap();
+        let addresses = profile.slot_addresses();
+        assert!(addresses.contains(&SlotAddress("94.language".to_string())));
+        assert_eq!(addresses.len(), 2);
+    }
+
+    /// Protects: every address the shipped ACE-Step profile names exists in
+    /// the live-captured slot list. A typo in the profile JSON -- `94.tag`
+    /// for `94.tags` -- fails here instead of producing a track generated
+    /// from the template's default prompt.
+    #[test]
+    fn test_shipped_ace_step_addresses_all_exist_in_the_verified_template() {
+        let profile: ModelProfile = serde_json::from_str(ACE_STEP_FIXTURE).unwrap();
+        let known: BTreeSet<&str> = VERIFIED_ACE_STEP_SLOTS.iter().copied().collect();
+        let missing: Vec<String> = profile
+            .slot_addresses()
+            .into_iter()
+            .filter(|a| !known.contains(a.0.as_str()))
+            .map(|a| a.0)
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "addresses not in the template: {missing:?}"
+        );
     }
 }
