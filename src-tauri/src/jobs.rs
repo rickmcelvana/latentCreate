@@ -47,6 +47,21 @@ pub struct ComfyState {
     jobs: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
 }
 
+impl ComfyState {
+    /// The connected backend, or `None` before the first successful connect.
+    pub async fn connected(&self) -> Option<Arc<LocalComfy>> {
+        self.comfy.read().await.clone()
+    }
+
+    /// Store a freshly connected backend, replacing any existing one, and
+    /// hand back the shared handle.
+    pub async fn store(&self, comfy: LocalComfy) -> Arc<LocalComfy> {
+        let comfy = Arc::new(comfy);
+        *self.comfy.write().await = Some(Arc::clone(&comfy));
+        comfy
+    }
+}
+
 /// Connect to `comfy-mcp`, replacing any existing connection.
 #[tauri::command]
 pub async fn connect_comfy(

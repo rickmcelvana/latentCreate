@@ -14,8 +14,9 @@ use serde_json::{Map, Value};
 use tokio::io::AsyncBufReadExt;
 
 use crate::error::{parse_error_code, ComfyError};
+use crate::health::ServerInfo;
 use crate::session_log::SessionLog;
-use crate::types::{ServerInfo, SystemStats};
+use crate::types::SystemStats;
 
 /// A live `comfy-mcp` session.
 ///
@@ -228,10 +229,10 @@ pub(crate) mod test_helpers {
 mod transport_tests {
     use serde_json::json;
 
+    use crate::health::ServerInfo;
     use crate::local::test_helpers::{client_and_log, client_with, client_with_session_log};
     use crate::mock::Reply;
     use crate::session_log::SessionLog;
-    use crate::types::ServerInfo;
 
     #[tokio::test]
     async fn test_handshake_completes_over_a_duplex_transport() {
@@ -333,7 +334,7 @@ mod transport_tests {
         }))])
         .await;
         let info: ServerInfo = client.health().await.expect("health decodes ServerInfo");
-        assert!(info.server.is_some());
+        assert!(info.is_running());
         assert!(info.workspace.is_none());
     }
 

@@ -258,3 +258,115 @@ body {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* --- Setup wizard steps --- */
+
+.setup-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.setup-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.setup-step-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.status-pill-neutral {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.setup-next-step {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.setup-command {
+  align-self: flex-start;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  user-select: all;
+}
+
+.setup-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  margin: 0;
+}
+
+.setup-fact {
+  display: flex;
+  gap: var(--gap-md);
+  font-size: 13px;
+}
+
+.setup-fact dt {
+  min-width: 96px;
+  color: var(--text-muted);
+}
+
+.setup-fact dd {
+  margin: 0;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.setup-update {
+  padding: 0 var(--gap-sm);
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  color: var(--warning);
+  font-size: 11px;
+}
+
+.setup-actions {
+  display: flex;
+  gap: var(--gap-sm);
+}
+
+.setup-button {
+  padding: var(--gap-sm) var(--gap-lg);
+  background: var(--panel-hover);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.setup-button:hover:not(:disabled) {
+  background: var(--panel);
+  border-color: var(--accent);
+}
+
+.setup-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.setup-button-primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}

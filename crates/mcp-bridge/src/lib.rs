@@ -6,6 +6,7 @@
 
 mod download;
 mod error;
+mod health;
 mod jobs;
 mod local;
 mod models;
@@ -18,6 +19,10 @@ mod types;
 
 pub use download::{DownloadState, DownloadSubmit};
 pub use error::ComfyError;
+pub use health::{
+    Compatibility, CoreFreshness, Freshness, GpuInfo, Hardware, LaunchResult, RunningServer,
+    ServerInfo, Workspace,
+};
 pub use jobs::{JobCancel, JobRun, JobStatus, OutputBatch, OutputFile};
 pub use local::{with_timeout, LocalComfy};
 pub use models::{ModelFile, ModelFolder, ModelFolderEntry, ModelFolders, ModelHit, ModelSearch};
@@ -26,7 +31,7 @@ pub use preflight::{node_id_to_instance, Finding, Note, NoteList, Validation, Ve
 pub use session_log::SessionLog;
 pub use slots::{split_address, Slot, SlotList, SlotOverride, SlotWrite};
 pub use templates::{FetchedTemplate, LocalCheck, TemplateDetail, TemplateInfo, TemplateSearch};
-pub use types::{ServerInfo, SystemStats};
+pub use types::SystemStats;
 
 #[cfg(test)]
 mod mock;

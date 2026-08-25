@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod comfy;
 mod jobs;
 
 use jobs::ComfyState;
@@ -37,6 +38,8 @@ pub fn run() {
             set_secret,
             has_secret,
             delete_secret,
+            comfy::comfy_status,
+            comfy::comfy_launch,
             jobs::connect_comfy,
             jobs::run_workflow,
             jobs::cancel_job

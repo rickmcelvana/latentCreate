@@ -3,24 +3,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Subset of `server_info` the app actually uses.
-///
-/// Every field is optional: `server` is absent when ComfyUI itself is down,
-/// and `hardware` is absent on older comfy-cli builds. A missing block means
-/// "unknown", never "none" -- the setup wizard must ask rather than assume.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerInfo {
-    /// Running-server block: `{"running": true, "url": "http://127.0.0.1:8188"}`.
-    #[serde(default)]
-    pub server: Option<Value>,
-    /// comfy-cli's hardware snapshot, captured once at comfy-mcp start.
-    #[serde(default)]
-    pub hardware: Option<Value>,
-    /// Resolved ComfyUI workspace on disk.
-    #[serde(default)]
-    pub workspace: Option<Value>,
-}
-
 /// `system_stats` payload: `{"devices": [...], "system": {...}}`.
 ///
 /// Left as `Value` deliberately -- T-105 types the device blocks once the
