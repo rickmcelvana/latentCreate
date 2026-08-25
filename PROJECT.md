@@ -6,8 +6,8 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 88 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), **T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-112** (LLM step: provider, base URL, key to keychain, `list_models`, test call; where T-109's capability work pays off in filtered pickers, thinking flags and the remote-model privacy disclosure) — then **T-113**'s live milestone and the `phase1-done` tag. The wizard now has both its ComfyUI and models steps. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), **T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row)**. **T-112a-d (LLM step) is briefed and awaiting runs**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-112a-d** — all four briefed and ready for producer Aider runs ([a](tasks/t-112a-brief.md) suggestions as data, [b](tasks/t-112b-brief.md) the LLM commands, [c](tasks/t-112c-brief.md) bridge and store, [d](tasks/t-112d-brief.md) the view) — then **T-113**'s live milestone and the `phase1-done` tag. ACE-Step is now installed on the producer's machine, so that milestone is reachable. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -82,6 +82,24 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   `MiniMaxAI/MiniMax-Music3` carries a bare LICENSE file with a custom community licence,
   an attribution obligation and a revenue threshold. The repackager's tag describes the
   repackaging, not the weights, and showing it would misstate the user's obligations.
+- **2026-08-25 — model capabilities are `Option<bool>`, and unknown is never rendered as
+  false.** The OpenAI-compatible `/v1/models` returns ids and nothing else, so against any
+  endpoint that is not Ollama the app cannot tell an embedding model from a chat model, or a
+  local model from one running on someone else's servers. Reporting `is_remote: false` there
+  would tell a user their unreleased lyrics stay on their machine when nobody checked. The UI
+  says "capabilities unknown" instead, and still lets the model be chosen -- hiding unchecked
+  models would strand a user on LM Studio with an empty picker (LLM-SURFACE 11.1, 11.2).
+- **2026-08-25 — the LLM test call succeeds on a well-formed response, not on non-empty
+  content.** A reasoning model spends its token budget on chain-of-thought before writing a
+  word: 20 tokens returned empty content and `finish_reason: length` from a healthy endpoint.
+  Asserting text would report a broken setup to a user whose setup is fine (LLM-SURFACE 11.4).
+- **2026-08-25 — lyric-model suggestions ship as `data/lyric-llms.json`, matched by id
+  prefix.** docs/MODELS.md required the list be read as data rather than hardcoded; the table
+  there is now the human-readable twin of that file. Prefix matching is not a convenience: the
+  verification machine has `gemma4:12b-32k` and `gemma4:12b-it-qat` and **no endpoint reports a
+  tag named plainly `gemma4:12b`**, so equality would recommend nothing while the recommended
+  model sat installed. Because two variants can match, the preselect takes the lowest id, and a
+  model the user already configured always wins over any suggestion.
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
@@ -1166,3 +1184,53 @@ and are recorded in MCP-SURFACE 11.1. The listing is also unfiltered: `loras` re
 ACE-Step 1.5 XL Turbo is now installed on the producer's machine, which makes T-113's live
 milestone reachable and leaves the remaining VRAM open question answerable by an actual run.
 Gate green; landed as `ca610ad`, with the install findings following.
+
+### 2026-08-25 (later still) — T-112 verified live and briefed in four; T-109 paid for itself
+
+The LLM step was verified against the producer's real Ollama, 0.32.15 with 13 models. That
+catalogue turned out to be an unusually good test case, and it settled the design in four
+places.
+
+**T-109's `ollama_native` work paid for itself, and the numbers are stark.** `/v1/models`
+returns four keys per row — id, object, created, owned_by — and nothing else. Of the 13
+models here, **2 cannot chat at all** (`all-minilm`, `nomic-embed-text`) and **8 run on
+Ollama's servers**. The OpenAI-compatible list presents all 13 identically. Without enrichment
+the wizard offers two models that fail later at lyric time, far from the screen where the
+choice was made, and says nothing at all when a user picks one that ships their unreleased
+lyrics to a third party. A live test now asserts exactly this: 13 ids, 13 enriched, 2 unusable
+removed, 8 remote disclosed.
+
+**The privacy half is the sharper one.** Over the OpenAI API there is no way to tell a remote
+model from a local one; the only hint is the `:cloud` suffix, which is a naming convention, not
+a contract. `remote_host` from `/api/tags` is the only reliable signal, and it comes in two
+forms (`https://ollama.com` and `https://ollama.com:443`). That drove the rule that unknown is
+never rendered as false: on a non-Ollama endpoint the app cannot check, and a silent absence of
+disclosure reads to a user as "this is private".
+
+**A thinking model spends the token budget on reasoning first.** Section 2 recorded this for
+generation; it bites the *test call* just as hard, and now with numbers. Asking `gemma4:12b-32k`
+to "Reply with exactly: ok" returned **empty content** with `finish_reason: length` at 20
+tokens, and `"ok"` after 108 characters of reasoning at 400. A test call that asserts non-empty
+content reports a broken endpoint to a user whose setup is fine. Success is now a well-formed
+response, and an ignored live test pins it.
+
+**Recommendation matching cannot be equality.** MODELS.md asks for a "Gemma 4 12B" chip. This
+machine has two of them — `gemma4:12b-32k` and `gemma4:12b-it-qat` — and **neither is named
+`gemma4:12b`**. Equality would have recommended nothing while the recommended model sat
+installed. Prefix matching, deterministic preselect (lowest id), and a configured model always
+wins over a suggestion.
+
+**A doc correction found along the way.** LLM-SURFACE section 10 still listed "`/api/pull` of a
+model already up to date" as unverified, but T-109 shipped
+`test_live_pull_of_an_installed_model_reaches_success`, which runs green. The list of unknowns
+had gone stale in the direction that matters least — claiming less coverage than exists — but
+it is the same class of error as claiming more, so it is corrected.
+
+Also settled a small interpretation: MODELS.md said the suggestion list "lives in this file and
+the wizard reads it as data". Parsing a markdown table at runtime would be fragile, so the
+machine-readable list is now `data/lyric-llms.json`, shipped as a bundle resource beside
+`profiles/`, and MODELS.md's table is explicitly its human-readable twin. `data/` is kept out of
+`profiles/`, which is scanned for model profiles and would report a stray file as malformed.
+
+~1405 lines of code, so four briefs. Gate green; vitest 41 to 51, create-core 34 to 41, library
+19 to 22, app 20 to 29.

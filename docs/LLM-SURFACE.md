@@ -276,6 +276,78 @@ gigabytes of someone else's bandwidth and disk (phase-1 T-112).
   **unverified**. Verify before writing a provider that depends on them.
 - **`tool_calls` / `function_call` deltas.** Not used by the lyric flow, not captured.
 - **`/api/ps` with a model loaded.** Captured empty only.
-- **`/api/pull` of a model already up to date**, and cancellation mid-pull.
-- **Non-streaming `POST /v1/chat/completions`.** The app streams; the non-streaming shape
-  was not captured.
+- **Cancellation mid-pull.** (Pull of an already-installed model *is* verified -- see
+  `test_live_pull_of_an_installed_model_reaches_success`, which runs green against
+  `all-minilm`.)
+- **Non-streaming `POST /v1/chat/completions`** beyond the single capture in section 11.4.
+  The app streams, so this path is not exercised in anger.
+## 11. The setup wizard's LLM step -- verified 2026-08-25
+
+Captured against Ollama 0.32.15 with 13 models installed (2 embedding-only, 8 remote).
+
+### 11.1 WARNING `/v1/models` carries no capability data at all
+
+The OpenAI-compatible list returns exactly four keys per row:
+
+```json
+{ "id": "gemma4:12b-32k", "object": "model", "created": 1787..., "owned_by": "library" }
+```
+
+Thirteen ids came back, and **`all-minilm:latest` and `nomic-embed-text:latest` are listed
+indistinguishably from chat models**. A picker built on this list offers the user two models
+that cannot answer a chat request at all; the failure then surfaces at lyric-generation time,
+far from the screen where the choice was made.
+
+`/api/tags` answers the same 13 models **with** a `capabilities` array, which is the entire
+reason `ollama_native` exists (section 8). `can_chat()` is `capabilities` containing
+`completion`.
+
+### 11.2 WARNING The privacy fact is invisible over the OpenAI-compatible API
+
+Eight of the thirteen run on Ollama's servers. Over `/v1/models` there is **no way to tell** --
+the only hint is the `:cloud` suffix in the id, which is a naming convention, not a contract.
+`/api/tags` reports `remote_host` (`"https://ollama.com"`, sometimes with an explicit `:443`),
+and that is the only reliable signal.
+
+This matters more than the capability filtering. latentCreate's premise is that generation
+happens on the user's own hardware; choosing a remote model means **unreleased lyrics leave the
+machine**. A wizard that cannot say so is misleading by omission.
+
+**Consequence:** against a non-Ollama OpenAI-compatible endpoint neither fact is knowable. The
+UI must say the capabilities are unknown -- it must never present unknown as "local" or as
+"can chat".
+
+### 11.3 A missing `/v1` is a 404 with a plain-text body
+
+The likeliest user misconfiguration. `http://127.0.0.1:11434/models` returns HTTP 404 with the
+body `404 page not found` -- **not JSON**. T-108's `http_error()` already falls back to the raw
+body for exactly this, but the wizard should recognise it and suggest adding `/v1` rather than
+relaying a bare 404.
+
+### 11.4 WARNING A thinking model spends the token budget on reasoning first
+
+Section 2 recorded this for generation, where a 10-token budget produced no lyrics at all. It bites the **test call** just as hard, and here are the numbers for it. Asking `gemma4:12b-32k` to "Reply with exactly: ok":
+
+| `max_tokens` | `finish_reason` | `content` | `reasoning` |
+|---|---|---|---|
+| 20 | `length` | `""` | 68 chars, truncated |
+| 400 | `stop` | `"ok"` | 108 chars |
+
+A budget that looks generous for a two-letter answer is consumed entirely by chain-of-thought,
+and the endpoint returns **empty content on a perfectly healthy connection**. A test call that
+asserts non-empty content reports failure on a working setup.
+
+**Therefore the test call's success criterion is a well-formed response, not non-empty
+content.** Reasoning-only proves the endpoint answers. Round trip was 0.75 s with the model
+already resident; a cold model must load first, so the UI needs a spinner and a generous
+timeout, not a fast failure.
+
+Note also that the non-streaming response carries `reasoning` on `message`, the same split the
+streaming deltas use (sections 2 and 3).
+
+### 11.5 Recommendation matching cannot be equality
+
+`docs/MODELS.md` suggests Gemma 4 12B. This install has **two** of them --
+`gemma4:12b-32k` and `gemma4:12b-it-qat` -- and **neither is named `gemma4:12b`**. Matching is
+by prefix on the id, and because more than one can match, the preselect must be deterministic
+(lowest id wins) and must never override a model the user has already chosen.

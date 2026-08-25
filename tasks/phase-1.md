@@ -373,11 +373,48 @@ lands an untested half.
 `Setup.tsx`, `theme.css`. Licence on every row. Install offered only when every missing file
 carries a URL.
 
-### T-112 — Setup wizard: LLM step
+### T-112 — Setup wizard: LLM step  — **split in four; briefed 2026-08-25**
 Provider, base URL, key to keychain, `list_models`, test call. Mark Gemma 4 12B / 26B / 31B
-with a "recommended for lyrics" chip and preselect the 12B, reading the list as data from
-docs/MODELS.md. **Never auto-pull an LLM.** Call `has_secret` on screen load only — it reads
-the secret to answer, and on macOS that can raise the keychain prompt (T-004).
+with a "recommended for lyrics" chip and preselect the 12B, reading the list as data.
+**Never auto-pull an LLM.** One keychain read per probe, never a bare `has_secret` from the
+frontend — answering it means reading the secret, and on macOS that can raise a prompt (T-004).
+
+**Surface verified live** against Ollama 0.32.15 with 13 models installed (LLM-SURFACE 11).
+Reference implementation written, compiled, gate-run, exercised against the real endpoint by
+two ignored tests, and every rendered state driven through the real store in a browser before
+briefing; ~1405 lines of code — four briefs.
+
+**This is where T-109's `ollama_native` work pays for itself, and the numbers are stark.**
+`/v1/models` returns ids and nothing else. Of the 13 models on the verification machine, **2
+cannot chat at all** and **8 run on Ollama's servers**, and the OpenAI-compatible list presents
+all 13 identically. Without enrichment the wizard offers two models that fail later at lyric
+time, and says nothing when a user picks one that sends their unreleased lyrics to a third
+party.
+
+**Two traps that only a live call finds:**
+
+- **A thinking model spends the token budget on reasoning first.** Asking for "ok" with 20
+  tokens returned **empty content** and `finish_reason: length` on a healthy endpoint. A test
+  call that asserts non-empty content reports a broken setup to a user whose setup is fine, so
+  success means a well-formed response, not text.
+- **Recommendation matching cannot be equality.** The machine has `gemma4:12b-32k` and
+  `gemma4:12b-it-qat`; neither is named `gemma4:12b`. Matching is by prefix, and because two
+  can match, the preselect is deterministic.
+
+#### T-112a — suggestions as data  — **briefed** ([brief](t-112a-brief.md))
+`data/lyric-llms.json` + `create-core/suggestions.rs` + `library/suggestions.rs`. A configured
+model always wins over a suggestion; that is the difference between a suggestion and a setting.
+
+#### T-112b — the LLM commands  — **briefed** ([brief](t-112b-brief.md))
+`src-tauri/llm.rs`. Capabilities are `Option<bool>`: unknown is neither false nor unusable.
+One keychain read; the key value never crosses the boundary. ~574 lines, over the guide, but
+roughly 250 of it is tests and the file is one coherent surface.
+
+#### T-112c — bridge and store  — **briefed** ([brief](t-112c-brief.md))
+`bridge/llm.ts`, `state/llm.ts` + tests. Never implies privacy for a model it could not check.
+
+#### T-112d — the view  — **briefed** ([brief](t-112d-brief.md))
+`Setup.tsx`, `theme.css`. The remote disclosure sits on the row, not in a footnote.
 
 ### T-113 — Phase 1 milestone (producer)
 Live check on a real install: wizard from cold → ACE-Step present or installed via the app →
