@@ -219,7 +219,7 @@ swap is conditional rather than universal.
 `ComfySpec.slot_overrides` (`BTreeMap<SlotAddress, InputValue>`), so a profile can pin a
 checkpoint variant the template gets wrong — the generalisation MCP-SURFACE §6 calls for.
 
-### T-107 — profile loader  — **split in two; one brief was ~529 lines**
+### T-107 — profile loader  — ✅ **LANDED** as T-107a + T-107b (split; one brief was ~529 lines)
 `library` loads shipped `profiles/` plus a user directory, user wins on id collision.
 Validates that a profile's slot addresses exist in its template, and reports which do not.
 The reference implementation came to ~529 lines against the ~400 rule, so it is two briefs.
@@ -230,11 +230,11 @@ sits in `create-core` next to `ModelProfile`; the *comparison* is `mcp-bridge`'s
 fetch and the profile. `library` therefore gains no dependency on `mcp-bridge`, and
 nothing here needs a live ComfyUI to test.
 
-#### T-107a — profile loader  — **briefed 2026-08-24** ([brief](t-107a-brief.md))
+#### T-107a — profile loader  — ✅ **LANDED** `883d240` ([brief](t-107a-brief.md))
 `library::profiles`: two directories into one id-keyed `ProfileSet`, user wins, every
 failure a `ProfileWarning` rather than an error. Never fails, mirroring `config::load`.
 
-#### T-107b — profile slot addresses  — **briefed 2026-08-24** ([brief](t-107b-brief.md))
+#### T-107b — profile slot addresses  — ✅ **LANDED** `0b272ed` ([brief](t-107b-brief.md))
 `ModelProfile::slot_addresses()`: inputs (groups walked), `slot_overrides` keys, and
 `lyrics_contract.languages_from`, de-duplicated and sorted. Composes with
 `SlotList::missing`; adds no comparison function of its own.

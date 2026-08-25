@@ -6,8 +6,8 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), **T-106b (`minimax-music-3` profile + `slot_overrides`)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-107a** then **T-107b** — both briefed and ready for producer Aider runs ([t-107a](tasks/t-107a-brief.md): `library::profiles` loader; [t-107b](tasks/t-107b-brief.md): `ModelProfile::slot_addresses()`). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), **T-107b (profile slot addresses)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-108** (`llm-bridge`: `openai_compat` + streaming, SSE parsed from canned fixtures) then T-109. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -738,3 +738,41 @@ MCP-SURFACE §3 captured live.
 **The fmt rule held again.** Reference code was written into the real tree, compiled,
 `cargo fmt`-ed, gate-run, then copied out post-fmt and reverted — so both briefs carry
 text `cargo fmt` is a no-op on. Second run in a row without the recurring defect.
+### 2026-08-24 (later) — T-107a and T-107b landed; both transcribed byte-identically
+
+Producer ran both briefs (T-104a through T-106b having been run in opencode during a
+weekly-refresh gap here, which is where the doc drift this session opened on came from).
+Gate green: `library` 11 -> 18 tests, `create-core` 24 -> 28, `mcp-bridge` unchanged at 79.
+
+**Both files came back byte-identical to the brief's reference code.** Diffing the landed
+`profiles.rs` against the verified scratch copy showed zero lines of difference, and the
+`impl`/test blocks in `profile.rs` matched exactly. That is the strongest evidence yet for
+WORKFLOW —1's claim: a brief carrying compiled, `cargo fmt`-clean reference code gets
+transcribed rather than reinterpreted. No fmt defect for the third run running.
+
+**Two placement defects, both fixed directly rather than by a fix-up brief** (WORKFLOW —2):
+
+1. The executor put T-107b's two `impl` blocks immediately after `InputSpec` instead of
+   before `mod tests` as the brief said. Rust does not care, but it left `impl ModelProfile`
+   about 120 lines *above* `struct ModelProfile` and rewrote every untouched type in
+   between — a 3x larger diff for no reason. Moved to the specified position.
+2. The executor ASCII-ified `ARCHITECTURE.md —8` to `ARCHITECTURE.md 8` in `library/src/lib.rs`'s
+   module doc — a line the brief did not touch. CONVENTIONS does say ASCII in comments, and
+   past runs' `...`/`!` strippings were accepted, but eight other section signs remain across
+   the workspace, so this one made the codebase *less* consistent. Restored.
+
+   Worth carrying: the executor edits ASCII-adjacent lines it happens to be transcribing past.
+   When a brief pastes a "complete file after the change", it is also handing over every
+   unrelated line in that file.
+
+**The guards were armed by mutation, not by reasoning.** Injecting `94.tag` for `94.tags`
+into the shipped ACE-Step profile failed
+`test_shipped_ace_step_addresses_all_exist_in_the_verified_template` with the offending
+address named, and flipping the merge to `entry().or_insert()` failed
+`test_user_profile_replaces_shipped_and_reports_it`. Both restored. This is the T-003 lesson
+applied ahead of time rather than after: a test that has never been seen to fail is a claim,
+not a guard.
+
+**What this unblocks:** the wizard now has a model list to show (T-111) and a way to tell a
+user *why* a model is missing. The slot check still needs its one call at the `src-tauri`
+seam, which belongs to T-110's wiring, not to either of these tasks.
