@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 87 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-111** (models step: installed models against shipped profiles, per-model licence terms wherever a model is chosen), then **T-112** (LLM step, where T-109's capability work pays off: filtered pickers, thinking flags, the remote-model privacy disclosure) and **T-113**’s live milestone. The wizard now has its first real step; nothing is wired to a *model pipeline* yet. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-111a-e** — all five briefed and ready for producer Aider runs ([a](tasks/t-111a-brief.md) profiles declare their files, [b](tasks/t-111b-brief.md) the models command, [c](tasks/t-111c-brief.md) installing, [d](tasks/t-111d-brief.md) bridge and store, [e](tasks/t-111e-brief.md) the view) — then T-112 (LLM step) and T-113's live milestone. The wizard has its ComfyUI step; nothing is wired to a *model pipeline* yet. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -64,6 +64,24 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 - **2026-08-24 — The backend classifies service states; the frontend renders them.** `ComfyStatus` is a serde-tagged union (`not_installed` / `unreachable` / `server_down` / `ready`) and `comfy_status` **never returns `Err` for a service problem** — only for this app failing to open its own session log. Rationale: CONVENTIONS requires degraded services to become a status pill with a next step, which is only possible if the states are enumerable. A frontend deciding what to show by parsing error strings is the alternative, and it breaks the first time a message is reworded.
 - **2026-08-24 — `[port_in_use]` is not a launch failure.** Verified live: launching while something already holds 8188 fails with that code, which means something is already serving. `comfy_launch` ignores it and reports whatever the following health check finds, rather than alarming a user whose ComfyUI is simply already up.
 
+- **2026-08-25 — model readiness is decided from the profile, not from ComfyUI.** No comfy-mcp
+  tool answers "which model files does this workflow need": `workflow_deps` maps node classes to
+  node *packs*, `node_dependencies` checks a pack's Python requirements, and `local_check`'s
+  errors are English prose. Each profile therefore declares `comfy.models` (file, folder,
+  source_url, size), and readiness is exact string matching against `search_models(folder=)`.
+  **`local_check.runnable` is explicitly not used** — it answers a different question, and
+  MiniMax Music 3 proves the gap: fully installed, `runnable: false`, over a filename its own
+  `slot_overrides` already corrects (MCP-SURFACE 14).
+- **2026-08-25 — "update available" is dropped for models.** `search_models` returns filenames
+  only, with no hash, version or timestamp. Nothing local can distinguish a stale checkpoint
+  from a current one, so the badge would be invented. It stays on ComfyUI core, where
+  `freshness` supplies real data. The advanced `search_models` browser is backlogged for the
+  same kind of reason — it is a different feature from "can I use this profile".
+- **2026-08-25 — licence text comes from the profile, never from the download host.**
+  `Comfy-Org/MiniMax-Music-3` is tagged Apache-2.0 on Hugging Face; the upstream
+  `MiniMaxAI/MiniMax-Music3` carries a bare LICENSE file with a custom community licence,
+  an attribution obligation and a revenue threshold. The repackager's tag describes the
+  repackaging, not the weights, and showing it would misstate the user's obligations.
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
@@ -72,6 +90,15 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 
 *Resolved: OQ-1 (Apache-2.0), OQ-2 (lyric-LLM guidance), OQ-4 (send-to owned by mixing/mastering) — all in the decisions log above.*
 
+- **OQ: is ACE-Step 1.5 XL Turbo's `vram_gb_min: 8` right?** The profile says 8 GiB, but the
+  XL turbo DiT alone is 9.3 GiB and the full set is 18.5 GiB. The figure predates any live run.
+  Not changed here, because guessing a different number is no better — settle it at T-113 on
+  the real card (this machine has 15.9 GiB).
+- **OQ: `download` status `"completed"` is still inferred.** MCP-SURFACE 11.3 records that no
+  real download has been watched to the end; the capture run failed on purpose. T-111's poll
+  loop treats only `completed` and `failed` as terminal, so if the real success value differs
+  the install UI hangs on a finished download. T-113's ACE-Step install is the first chance to
+  confirm it.
 ## Backlog (accepted, not yet scheduled)
 - Album lists → bulk send-to-mastering once mastering's bulk import lands (owner-stated future feature).
 - latentPlayer integration (library hand-off) once player matures.
@@ -1022,3 +1049,71 @@ step each failed exactly one test, the sweep naming the offending state in its m
 mcp-bridge is now 87 tests. Gate green; landed as `50186c2`. No browser re-verification — the
 frontend is byte-identical to what was driven through all five states before briefing. The
 pill's colour transition remains unverified by me, for the producer's click-through.
+
+### 2026-08-25 (later) — T-111 verified live and briefed in five; and T-110's launch shape was wrong
+
+Started ComfyUI to verify the models surface and the very first call disproved a line I had
+written into MCP-SURFACE the same morning. **`launch_comfyui` success carries no `ok` key:**
+
+```json
+{"background": true, "listen": "127.0.0.1", "port": 8188, "url": "http://127.0.0.1:8188", "pid": 23404}
+```
+
+T-110 captured the *failure* path live (`[port_in_use]`) and took the *success* shape from the
+tool's docstring, which promises `{"ok": true}`. `#[serde(default)]` meant it decoded fine and
+read `false` from every real launch; nothing branched on it, so the shipped behaviour was
+correct by luck. The test asserted `result.ok` against a mock returning a shape the server
+never sends — a guard around a fiction. Fixed in `50186c2`... `5b04e42`, with a second test
+pinning the actual rule: success is the `Ok` arm, never a field. `stop_comfyui` has no `ok`
+key either. **The lesson is narrower than "verify live" and worth stating exactly: verifying
+the error path is not verifying the success path.**
+
+**Then T-111, where four separate findings changed the design.**
+
+**`search_models` needs a running ComfyUI.** Its docstring says "re-read from disk every
+call"; it fetches `http://127.0.0.1:8188/models` and fails `[server_not_running]` when the
+server is down. So the models step cannot answer anything until the ComfyUI step is green, and
+it needs an explicit "cannot check" state. This is the single most damaging confusion available
+to this step: ACE-Step is 18.5 GiB, and reporting an empty install to a user whose server is
+merely stopped would send them to re-download models they already have.
+
+**Nothing answers "which model files does this workflow need".** `workflow_deps` maps node
+classes to node *packs*; `node_dependencies` checks a pack's *Python* requirements. The only
+signal is `local_check.errors`, which is English prose. Deciding on a multi-gigabyte download
+by parsing that is not acceptable, so the profile declares its own file list.
+
+**`local_check` is worse than merely unhelpful here.** `runnable: false` does not mean models
+are missing — MiniMax has all three files and fails on the fp16/int8 filename its own
+`slot_overrides` corrects. And `local_check.summary` renders *every* such problem as node-class
+advice ("Update ComfyUI and its custom nodes, or pick another template"), which for a missing
+model points at something that cannot fix it. It must never be shown to a user.
+
+**A repackaged repo's licence tag is not the model's licence.** `Comfy-Org/MiniMax-Music-3` is
+tagged Apache-2.0; the upstream carries a custom community licence with an attribution
+obligation and a revenue threshold. Had the UI read the licence from the download host it would
+have told users they had no obligations they in fact have.
+
+**Two items in the original T-111 line were disproved and dropped**, rather than built as
+written: the quiet "update available" badge (no version or hash data exists for model files,
+so it would be invented) and the advanced `search_models` expander (a different feature,
+backlogged). Both are recorded in the decisions log.
+
+Verification went further than usual because the machine offered a free case: ACE-Step, the
+app's *default* model, is not installed here, while MiniMax's three files are — one profile in
+each state. The reference implementation was run against the real comfy-mcp and a real
+ComfyUI via an `#[ignore]` test that passes, and all five rendered states were driven through
+the real store in a browser. Byte-weighted progress was confirmed live at 8% where a
+file-counted bar would have read 25%.
+
+Two process notes. The pill-colour reading needed the `transition: none` clone again
+(WORKFLOW section 5) and this time I went straight to it. And my first pass at adding
+`comfy.models` ran the profiles through `json.dumps`, which reformatted both files and turned
+an 11-line change into 171 lines of noise; reverted and inserted textually.
+
+Also fills the MCP-SURFACE 9.4 gap: the `local_check: {"checked": false}` arm is now verified
+live rather than quoted from documentation. It carries a `reason` and `summary` the tool does
+not document, and **the template is still written to `out_path`** when the check cannot run.
+
+~1659 lines, so five briefs rather than the usual three. `install.rs` was split out of
+`models.rs` mid-way, which improved the module boundary as well as the split — reporting and
+acting are different jobs. Gate green.

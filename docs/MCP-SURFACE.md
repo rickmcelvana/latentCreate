@@ -744,4 +744,109 @@ handles it). **It is not an error to show the user**: it means something is alre
 so the honest response is to re-read `server_info` and report what is actually there.
 
 **Call `server_info` first and only launch when `server.running` is false.**
+## 14. Model readiness -- verified 2026-08-25
 
+How the app decides whether a profile's models are installed. Every claim below was captured
+live against comfy-cli 1.16.0, ComfyUI v0.33.3.
+
+### 14.1 WARNING `search_models` needs a RUNNING ComfyUI
+
+The tool docstring says "Freshness: LIVE -- re-read from disk every call". It does not read
+the disk. With ComfyUI stopped:
+
+```
+comfy models list-folders failed [server_not_running]: failed to fetch
+http://127.0.0.1:8188/models: <urlopen error [WinError 10061] No connection could be made
+because the target machine actively refused it>
+```
+
+The existing `[slug]` parser handles the code. **Consequence for the wizard:** the models step
+cannot answer anything until the ComfyUI step is green, so it needs an explicit "cannot check"
+state that points back at that step. Reporting an empty install would tell a user with 18.5 GiB
+of models on disk to download them again.
+
+### 14.2 Nothing answers "which model files does this workflow need"
+
+The two tools whose names suggest it do not:
+
+| Tool | What it actually answers |
+|---|---|
+| `workflow_deps` | node classes to node **packs** (ComfyUI-Manager manifest) |
+| `node_dependencies` | one pack's **Python** requirements against the venv |
+
+The only signal is `local_check.errors`, and it is **prose**:
+
+```
+node 104: 'acestep_v1.5_xl_turbo_bf16.safetensors' not in 2 known options for unet_name
+  (this install has: minimax_h3_fl2va_pruned_int8_convrot.safetensors, ...)
+```
+
+Deciding whether to start a multi-gigabyte download by parsing English is not acceptable.
+**Therefore the profile declares its own files** (`comfy.models`), and readiness is exact
+string matching against `search_models(folder=)`.
+
+### 14.3 WARNING `local_check.summary` is wrong for missing models
+
+Both templates below produce the same advice, and for a missing model it is misleading:
+
+> this template needs a node class or an input option your ComfyUI install does not have --
+> a template served from the gallery can be newer than your install. Update ComfyUI and its
+> custom nodes (`update_comfyui`), or pick another template.
+
+The actual problem in both cases is model files, which `update_comfyui` cannot fix and picking
+another template does not address. **Never surface `local_check.summary` to the user.**
+
+### 14.4 `runnable: false` does NOT mean "models missing"
+
+The load-bearing case. With all three MiniMax files installed:
+
+```json
+{ "checked": true, "runnable": false, "error_count": 1,
+  "errors": ["node 37:6: 'minimax_music3_dit_fp16.safetensors' not in 2 known options for
+              unet_name (this install has: ..., minimax_music3_dit_int8_convrot.safetensors)"] }
+```
+
+The template pins the fp16 DiT; the int8 is installed; the profile's own `slot_overrides`
+already corrects it (section 6). A models step driven off `runnable` tells a user with a
+working install to download 2.3 GiB they have. **Readiness is decided from the declared file
+list, never from `local_check`.**
+
+### 14.5 The two shipped profiles' files, captured
+
+ACE-Step 1.5 XL Turbo -- `Comfy-Org/ace_step_1.5_ComfyUI_files`, under `split_files/`.
+Note it puts **nothing in `checkpoints`**; the empty `checkpoints` folder is a red herring.
+
+| File | Folder | Bytes |
+|---|---|---|
+| `acestep_v1.5_xl_turbo_bf16.safetensors` | `diffusion_models` | 9,974,719,892 |
+| `qwen_0.6b_ace15.safetensors` | `text_encoders` | 1,191,588,248 |
+| `qwen_4b_ace15.safetensors` | `text_encoders` | 8,379,154,232 |
+| `ace_1.5_vae.safetensors` | `vae` | 337,431,732 |
+
+**Total 18.5 GiB.** The size must be shown before the user commits to it.
+
+MiniMax Music 3 -- `Comfy-Org/MiniMax-Music-3`, 11.1 GiB across `diffusion_models`,
+`text_encoders`, `vae` (the int8 variants the profile pins).
+
+### 14.6 WARNING A repackaged repo's licence tag is not the model's licence
+
+`Comfy-Org/MiniMax-Music-3` is tagged **Apache-2.0** on Hugging Face. The upstream
+`MiniMaxAI/MiniMax-Music3` carries a bare `LICENSE` file with no SPDX tag -- a custom
+community licence with an attribution obligation and a revenue threshold. The repackager's
+tag describes the repackaging, not the weights. **Licence text shown to the user comes from
+the profile**, which records the upstream terms, never from the download host.
+
+### 14.7 There is no "update available" for model files
+
+`search_models` returns **filenames only** -- no hash, no version, no timestamp (section 11.1).
+Nothing in the local surface can tell a stale checkpoint from a current one. The quiet
+"update available" badge is answerable for **ComfyUI core** (`freshness`, section 13.1) and
+not for models. Do not invent it.
+
+### 14.8 `stop_comfyui` shape
+
+Like `launch_comfyui` (section 13.2), the synthesised envelope carries **no `ok` key**:
+
+```json
+{ "stopped": true, "host": "127.0.0.1", "port": 8188, "pid": 23404 }
+```
