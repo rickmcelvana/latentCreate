@@ -1,6 +1,7 @@
-# LLM-SURFACE.md — verified OpenAI-compatible wire format
+# LLM-SURFACE.md — verified LLM wire formats
 
-**Status: verified live 2026-08-24** against Ollama on `127.0.0.1:11434`, cross-checked
+**Status: verified live 2026-08-24** against Ollama 0.32.15 on `127.0.0.1:11434` — both the
+OpenAI-compatible surface (1-7) and Ollama's own API (8-9) — cross-checked
 against the OpenAI Python SDK's own chunk type. Authoritative over model documentation and
 over docs/RESEARCH.md, exactly as [MCP-SURFACE.md](MCP-SURFACE.md) is for comfy-mcp. Read
 before touching `llm-bridge`.
@@ -172,12 +173,109 @@ No OpenSSL enters the tree, so Linux CI needs no `libssl-dev`.
 
 ---
 
-## 8. What is *not* verified
+## 8. Ollama's native API — what the OpenAI shape cannot say
+
+Verified against **Ollama 0.32.15**, 2026-08-24. Fixture:
+[testdata/llm/ollama-tags.json](../testdata/llm/ollama-tags.json).
+
+`GET /api/tags` returns, per model, what `/v1/models` has nowhere to put:
+
+```json
+{"name":"gemma4:12b-it-qat","size":7151003754,
+ "details":{"family":"gemma4","families":["gemma4"],"parameter_size":"11.9B",
+            "quantization_level":"Q4_0","context_length":262144},
+ "capabilities":["completion","tools","thinking","vision"]}
+```
+
+**`capabilities` is the payload.** Three facts follow from it that the app cannot get
+otherwise:
+
+1. **`completion` marks a model that can chat at all.** `nomic-embed-text` reports
+   `["embedding"]` and nothing else — yet `/v1/models` lists it identically to a chat
+   model. Without this, an embedding model sits in the lyric picker and fails only at
+   generation time.
+2. **`thinking` marks a model that will emit `delta.reasoning`** (section 2). It is the
+   only way to know *before* generating that part of the token budget goes to
+   chain-of-thought. On this install every completion model had it, including both
+   `gemma4:12b` variants.
+3. `tools` / `vision` / `audio` are listed too, unused by the lyric flow.
+
+**⚠ `remote_host` is a privacy fact.** Present only on cloud entries
+(`"https://ollama.com"`), it means generation happens on someone else's hardware — the
+user's unreleased lyrics leave the machine. The UI must say so wherever a model is chosen.
+Their `size` is a **stub manifest** (308 bytes for a 2.81T model), so it must never be
+shown as disk usage.
+
+**Three decode traps, all captured:**
+
+| Trap | Why it bites |
+|---|---|
+| `families` arrives as JSON **`null`** on cloud entries | `#[serde(default)]` on `Vec<String>` rejects an explicit null, so the entire model list fails to decode the moment a user signs in to Ollama's cloud. Needs `Option<Vec<String>>`. |
+| `parameter_size` is **not normalised** | One install reported `"1t"`, `"1T"`, `"756b"`, `"2.81T"` — and `""` for one model. A label to display, never a number to sort or parse. |
+| `parent_model`, `format`, `family` are **empty strings** on cloud entries | Absent-vs-empty is not distinguished; treat empty as unknown. |
+
+**`GET /api/show` is not for lists.** It returns **68 KB for one model** — a 667-entry
+tensor manifest, 43 `model_info` keys, and the full 10 KB licence text — against **5.7 KB
+for all twelve models** from `/api/tags`. Building a picker from `/api/show` would be
+~825 KB of JSON for one screen. It is a details panel call, whose real value is `license`
+(CONVENTIONS requires per-model licence terms wherever a model is chosen) and `requires`,
+the minimum Ollama version.
+
+`GET /api/version` returns `{"version":"0.32.15"}`, and doubles as the probe for "is this
+actually Ollama" — LM Studio and vLLM also serve `/v1` but answer this with a 404.
+
+`GET /api/ps` lists loaded models; it returned `{"models":[]}` with nothing warm, and its
+loaded shape was **not captured**.
+
+---
+
+## 9. `POST /api/pull` — NDJSON, and a failure that returns 200
+
+Verified by pulling a real 46 MB model, 2026-08-24. Full capture:
+[testdata/llm/ollama-pull.ndjson](../testdata/llm/ollama-pull.ndjson) (23 frames).
+
+**Different framing from the chat stream:** newline-delimited JSON, no `data:` prefix, no
+blank-line delimiter. The SSE decoder does not apply; pull needs its own line-based one.
+
+```
+{"status":"pulling manifest"}
+{"status":"pulling 797b70c4edf8","digest":"sha256:797b...","total":45949216}
+{"status":"pulling 797b70c4edf8","digest":"sha256:797b...","total":45949216,"completed":236265}
+{"status":"verifying sha256 digest"}
+{"status":"writing manifest"}
+{"status":"success"}
+```
+
+**⚠ A failed pull answers HTTP 200.** The failure is a frame in the body:
+
+```
+{"status":"pulling manifest"}
+{"error":"pull model manifest: file does not exist"}
+```
+
+This is comfy-mcp's `Ok(is_error: true)` in a different protocol (MCP-SURFACE 8): a client
+that checks the status code reports a failed download as a success, and the user is left
+looking for a model that was never fetched. The error frame carries **no `status` field**.
+
+**`completed` is absent, not zero.** Of 23 frames, 19 carried `digest` and `total` but only
+**11** carried `completed` — a layer's first frame arrives before any bytes land. Typing it
+`u64` with a serde default reports "0 bytes fetched", which is indistinguishable from a
+stalled download. Absent-with-a-total means *started*; no total at all (manifest, verify,
+success) means there is nothing to draw a bar for.
+
+Terminal status is `"success"`. **Never call this without the user asking** — models are
+gigabytes of someone else's bandwidth and disk (phase-1 T-112).
+
+---
+
+## 10. What is *not* verified
 
 - **OpenAI, Anthropic and OpenRouter proper.** Everything above was captured from Ollama.
   The envelope and chunk shapes match the OpenAI SDK's own types, but no authenticated
   request to a paid endpoint was made, so 401/429 bodies and rate-limit headers are
   **unverified**. Verify before writing a provider that depends on them.
 - **`tool_calls` / `function_call` deltas.** Not used by the lyric flow, not captured.
+- **`/api/ps` with a model loaded.** Captured empty only.
+- **`/api/pull` of a model already up to date**, and cancellation mid-pull.
 - **Non-streaming `POST /v1/chat/completions`.** The app streams; the non-streaming shape
   was not captured.

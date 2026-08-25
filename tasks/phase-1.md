@@ -268,8 +268,31 @@ the committed live capture through the decoder as one test.
 knowingly a little over the guide: splitting one stream state machine would cost more than
 it saves. Carries an `#[ignore]` live test for the T-113 checklist.
 
-### T-109 — `llm-bridge`: `ollama_native`
+### T-109 — `llm-bridge`: `ollama_native`  — **split in two; briefed 2026-08-24**
 Nicer model listing and pull status. `list_models` feeds the wizard's recommendation chips.
+
+**Surface verified live** against Ollama 0.32.15 (LLM-SURFACE 8-9), including a real 46 MB
+pull to capture the progress frames. Reference implementation written, compiled, gate-run
+and run against the live server before briefing; 745 lines — two briefs.
+
+**⚠ T-109 answered the `LlmProvider` trait question, and the answer was no.** The second
+implementation is not an implementation of the same thing: **`ollama_native` does not
+chat**. Ollama's `/v1/chat/completions` already goes through `openai_compat`, so this is an
+*enrichment layer* over an endpoint that happens to be Ollama, not a peer provider. Forcing
+it into the trait would mean a `stream_chat` that returns an error. The trait stays
+deferred — `anthropic` is what will settle it, because it genuinely chats with a different
+wire format (ARCHITECTURE 4).
+
+#### T-109a — model listing  — **briefed** ([brief](t-109a-brief.md))
+`/api/tags`: `capabilities` tells the app which models can chat at all (an embedding model
+is indistinguishable on `/v1/models`), which emit reasoning, and which run on someone
+else's hardware. Traps: `families: null`, unnormalised `parameter_size`, stub `size` on
+cloud entries.
+
+#### T-109b — pull with progress  — **briefed** ([brief](t-109b-brief.md))
+`/api/pull`: NDJSON framing, and **a failed pull answers HTTP 200** with the error in the
+body — comfy-mcp's `Ok(is_error: true)` in a second protocol. `completed` is absent, not
+zero, on a layer's first frame.
 
 ### T-110 — Setup wizard: ComfyUI step
 Detect `comfy-mcp`, install guidance when absent, `launch_comfyui`, health pill, server info.

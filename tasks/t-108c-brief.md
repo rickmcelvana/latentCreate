@@ -532,7 +532,7 @@ pub use openai::OpenAiCompat;
   rule applied to `ComfyBackend` (ARCHITECTURE 3, 4).
 - Reading the key from the keychain and wiring Tauri events (T-112).
 - `ollama_native` (T-109), and any authenticated cloud provider, whose 401/429 shapes are
-  explicitly unverified (LLM-SURFACE 8).
+  explicitly unverified (LLM-SURFACE 10).
 
 ## If unclear
 Do not guess. Output a numbered list of questions and stop.

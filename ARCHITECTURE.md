@@ -130,9 +130,25 @@ declining (its text never appears in `content`), and `Finished`/`Usage` are term
 provider that merged the two text kinds would write the model's deliberation into the
 user's song.
 
-`LlmProvider` itself stays deferred until T-109 gives it a second implementation — the
-same rule applied to `ComfyBackend` in section 3, for the same reason: one impl cannot show
-where the seam belongs. T-108 exposes `OpenAiCompat` concretely.
+**⚠ T-109 answered the trait question, and the answer was no (2026-08-24).** The second
+implementation turned out not to be an implementation of the same thing. `ollama_native`
+**does not chat** — Ollama's own `/v1/chat/completions` already does that through
+`openai_compat`, and a second path to the same tokens would be two things to keep correct.
+What the native API adds is *facts about models*: which can chat at all (an embedding model
+is indistinguishable on `/v1/models`), which emit reasoning, which run on someone else's
+hardware, how much context they hold.
+
+So `OllamaNative` is **an enrichment layer over an endpoint that happens to be Ollama**,
+not a peer of `OpenAiCompat`. Forcing it into a `LlmProvider` trait would mean a
+`stream_chat` that returns an error — the shape of a wrong abstraction. The trait, if it is
+ever written, is for providers that *chat*: `openai_compat`, `anthropic`, `openai`. There is
+still exactly one of those, so it stays deferred, now for a stronger reason than "only one
+impl" — the obvious second candidate proved to be a different kind of thing. `anthropic`
+is what will finally settle it, because it genuinely chats with a different wire format.
+
+Consequence for the wizard: the user configures **one** OpenAI-compatible base URL, and the
+app probes `/api/version` on its parent to decide whether the enrichment is available.
+Everything still works when it is not; the picker simply shows less.
 
 ## 5. Model capability profiles — the core abstraction
 

@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), **T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-109** (`llm-bridge`: `ollama_native` — nicer model listing and pull status; also the point at which the `LlmProvider` trait gets its second implementation and stops being a guess), then T-110–T-112 (setup wizard) and T-113 (milestone). Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-109a/b** — both briefed and ready for producer Aider runs ([a](tasks/t-109a-brief.md) model listing, [b](tasks/t-109b-brief.md) pull with progress) — then T-110–T-112 (setup wizard) and T-113 (milestone). Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -59,6 +59,8 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 
 - **2026-08-24 — TLS provider: rustls with aws-lc-rs, accepting a C build step.** reqwest 0.13's `rustls` feature pulls `aws-lc-rs` (built via cmake) and `rustls-platform-verifier`, adding ~400 lines to Cargo.lock and a native compile to every clean build. The alternative, `rustls-no-provider` + `ring`, avoids the C toolchain but requires the process to call `CryptoProvider::install_default()` before any TLS — forget it and **every** request fails at runtime. A slower build beats a runtime footgun in a desktop app whose TLS path is exercised only when the user configures a cloud endpoint. CI already installs `build-essential` and the runners ship cmake. Revisit if CI build times become painful.
 
+- **2026-08-24 — `LlmProvider` is not written, and T-109 is why.** The trait was deferred at T-108 for lack of a second implementation; T-109 supplied one and it turned out not to be an implementation of the same thing. **`ollama_native` does not chat** — Ollama's `/v1/chat/completions` already goes through `openai_compat`, so the native API is an *enrichment layer* (which models can chat, which think, which are remote), not a peer provider. Forcing it into the trait would mean a `stream_chat` returning an error, the shape of a wrong abstraction. `anthropic` will settle the question, because it genuinely chats with a different wire format. ARCHITECTURE 4 records it.
+- **2026-08-24 — Remote models are a privacy disclosure, not a performance note.** Ollama lists cloud models beside local ones with a `remote_host` field; generating with one sends the user's unreleased lyrics to another party. This app's premise is local-first generation, so the UI must show that distinction wherever a model is chosen — the same rule already applied to per-model licence terms (CONVENTIONS).
 
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
@@ -857,3 +859,54 @@ into `Content` fails three tests including the real-stream replay. Both restored
 `aws-lc-rs`, which compiles C via cmake. Recorded as a decision above with its rationale
 rather than absorbed silently — the first CI run on this commit is what confirms all three
 runners build it.
+### 2026-08-24 (later) — T-109 verified live and briefed in two; the trait question answered
+
+Captured Ollama's own API live — `/api/tags`, `/api/show`, `/api/version`, `/api/ps`, and a
+real 46 MB `/api/pull` — recorded as **LLM-SURFACE 8-9** with both captures committed to
+`testdata/llm/`. Implementation written, compiled, gate-run and run against the live server
+before briefing. 745 lines, so two briefs.
+
+**T-109 was supposed to settle the `LlmProvider` trait, and it did — by disproving it.**
+The expected second implementation is not an implementation of the same thing:
+**`ollama_native` does not chat.** Ollama's `/v1/chat/completions` already goes through
+`openai_compat`, and a second path to the same tokens would be two things to keep correct.
+What the native API adds is facts *about* models. Forcing it into the trait would have
+meant a `stream_chat` that returns an error — the recognisable shape of a wrong
+abstraction. So the trait stays unwritten, now for a stronger reason than "only one impl":
+the obvious candidate turned out to be a different kind of thing. `anthropic` will settle
+it properly.
+
+**The single most useful field is `capabilities`.** `nomic-embed-text` reports
+`["embedding"]` and nothing else — yet `/v1/models` lists it identically to a chat model.
+Without the native call, an embedding model sits in the lyric picker and fails only after
+the user has chosen it and written a brief. The same field carries `thinking`, which is the
+only advance warning that a model will spend budget on `delta.reasoning` (T-108's finding),
+and it is set on every completion model on this box.
+
+**`remote_host` turned out to be a privacy disclosure.** Cloud models are listed beside
+local ones; generating with one sends unreleased lyrics to another party. Recorded as a
+decision, because it is a UI requirement rather than a detail. Their `size` is a stub
+manifest — 308 bytes for a 2.81T model — so it must never be shown as disk usage.
+
+**Second sighting of the "success that isn't" bug, in a second protocol.** `/api/pull`
+answers **HTTP 200** when the pull fails, putting the error in a frame in the body. That is
+exactly comfy-mcp's `Ok(is_error: true)` (MCP-SURFACE 8), found independently in an
+unrelated service. It now has its own error variant, `LlmError::Reported`. Worth treating as
+a general expectation rather than a quirk: **a streaming API's HTTP status describes the
+connection, not the operation.**
+
+**Two decode traps that would have shipped.** `families` arrives as JSON null on cloud
+entries, and `#[serde(default)]` on a `Vec<String>` rejects an explicit null — the whole
+model list would fail to decode the moment a user signs in to Ollama's cloud. And
+`completed` is absent on 12 of 23 pull frames, so a `u64` default would report "0 bytes
+fetched" for a layer that has merely started, which looks exactly like a stall.
+
+**Applied the T-108 lesson this time.** Both briefs give **changed lines and anchors** for
+existing files instead of pasting complete files, and T-109a makes "the module doc comment
+is unchanged, section sign included" an explicit acceptance criterion. The ASCII-ification
+defect has appeared in two consecutive runs, both times on a line handed over needlessly.
+
+**One note for the producer:** capturing the pull frames required a real download, so
+`all-minilm` (46 MB) is now installed on the box. Remove it with `ollama rm all-minilm` if
+unwanted — though `test_live_pull_of_an_installed_model_reaches_success` re-verifies
+against it without downloading, so keeping it makes that live check free.
