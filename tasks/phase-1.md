@@ -239,7 +239,7 @@ failure a `ProfileWarning` rather than an error. Never fails, mirroring `config:
 `lyrics_contract.languages_from`, de-duplicated and sorted. Composes with
 `SlotList::missing`; adds no comparison function of its own.
 
-### T-108 — `llm-bridge`: `openai_compat` + streaming  — **split in three; briefed 2026-08-24**
+### T-108 — `llm-bridge`: `openai_compat` + streaming  — ✅ **LANDED** as T-108a/b/c (one commit, `fc6dc1b`)
 The universal baseline (Ollama, LM Studio, llama.cpp, vLLM, OpenRouter). SSE parsing with
 canned fixtures, no live endpoint in tests. Keys read from the keychain in Rust — never
 sent to the frontend (T-004's boundary).
@@ -255,15 +255,15 @@ exactly: tulip", `gemma4:12b-it-qat` — the model this app recommends for lyric
 model's thinking into the user's song; dropping reasoning shows a frozen UI for 40 frames.
 Two spellings exist (`reasoning`, `reasoning_content`) and both must be read.
 
-#### T-108a — errors and SSE framing  — **briefed** ([brief](t-108a-brief.md))
+#### T-108a — errors and SSE framing  — ✅ **LANDED** `fc6dc1b` ([brief](t-108a-brief.md))
 `error.rs` + `sse.rs`. Byte-buffered decoder (multi-byte characters split across reads),
 comment heartbeats, CRLF framing; error bodies that are not JSON. No async, no HTTP.
 
-#### T-108b — the wire format and the reasoning split  — **briefed** ([brief](t-108b-brief.md))
+#### T-108b — the wire format and the reasoning split  — ✅ **LANDED** `fc6dc1b` ([brief](t-108b-brief.md))
 `wire.rs`. `ChatDelta` as an enum so only `Content` can reach the user's document. Replays
 the committed live capture through the decoder as one test.
 
-#### T-108c — `OpenAiCompat`, the streaming client  — **briefed** ([brief](t-108c-brief.md))
+#### T-108c — `OpenAiCompat`, the streaming client  — ✅ **LANDED** `fc6dc1b` ([brief](t-108c-brief.md))
 `openai.rs` + dependencies. Hand-written `Debug` that redacts the API key. ~435 lines,
 knowingly a little over the guide: splitting one stream state machine would cost more than
 it saves. Carries an `#[ignore]` live test for the T-113 checklist.

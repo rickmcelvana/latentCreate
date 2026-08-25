@@ -6,8 +6,8 @@
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), **T-107b (profile slot addresses)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-108a/b/c** — all three briefed and ready for producer Aider runs ([a](tasks/t-108a-brief.md) errors+SSE, [b](tasks/t-108b-brief.md) wire format, [c](tasks/t-108c-brief.md) the client) — then T-109. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), **T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-109** (`llm-bridge`: `ollama_native` — nicer model listing and pull status; also the point at which the `LlmProvider` trait gets its second implementation and stops being a guess), then T-110–T-112 (setup wizard) and T-113 (milestone). Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -56,6 +56,8 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 - **2026-08-24 — Streamed LLM text is typed, not concatenated.** `ChatDelta` is an enum (`Content` / `Reasoning` / `Refusal` / `Finished` / `Usage`) and **only `Content` may reach the user's document**. Forced by a live capture: `gemma4:12b-it-qat`, the model recommended for lyrics, answered a one-word prompt with 163 characters of `delta.reasoning` and 5 of `delta.content`. Two spellings exist (`reasoning`, Ollama/OpenRouter/current vLLM; `reasoning_content`, DeepSeek/older vLLM) and both are read, because clients that know one have shipped the bug of dropping the other. Full evidence: [docs/LLM-SURFACE.md](docs/LLM-SURFACE.md).
 - **2026-08-24 — `LlmProvider` deferred to T-109**, the same rule already applied twice to `ComfyBackend`: a trait with one implementation is a guess about where the seam goes. T-108 ships `OpenAiCompat` concretely; T-109's `ollama_native` is what will show which methods actually differ.
 - **2026-08-24 — TLS is `rustls` with the OS trust store**, via reqwest 0.13's `rustls` feature (which pulls `rustls-native-certs`). No OpenSSL enters the tree, so Linux CI needs no `libssl-dev`. Every added crate is permissive (MIT/Apache-2.0/ISC/BSD-3-Clause), verified with `cargo metadata` rather than assumed — LLM-SURFACE 7. Note reqwest 0.13 **renamed these features**: the 0.12 names `rustls-tls` and `rustls-tls-native-roots` do not exist and fail to resolve.
+
+- **2026-08-24 — TLS provider: rustls with aws-lc-rs, accepting a C build step.** reqwest 0.13's `rustls` feature pulls `aws-lc-rs` (built via cmake) and `rustls-platform-verifier`, adding ~400 lines to Cargo.lock and a native compile to every clean build. The alternative, `rustls-no-provider` + `ring`, avoids the C toolchain but requires the process to call `CryptoProvider::install_default()` before any TLS — forget it and **every** request fails at runtime. A slower build beats a runtime footgun in a desktop app whose TLS path is exercised only when the user configures a cloud endpoint. CI already installs `build-essential` and the runners ship cmake. Revisit if CI build times become painful.
 
 
 ## Open questions (owner to decide)
@@ -826,3 +828,32 @@ offline test can show, and it is now on the T-113 checklist.
 **One brief is knowingly over the limit.** T-108c is ~435 lines against the ~400 guide;
 splitting one stream state machine across two runs would cost more than it saves. Said in
 the brief rather than quietly ignored.
+### 2026-08-24 (later) — T-108a/b/c landed; four files byte-identical, one predicted defect
+
+Producer ran all three briefs. Gate green, `llm-bridge` 1 -> **22 tests plus 1 ignored**,
+and the ignored live test passed against Ollama in 5.18 s. Landed as one commit because
+`Cargo.toml` and `lib.rs` each carry changes from all three briefs; splitting the history
+would have meant reconstructing and gating two intermediate states for cosmetic reasons.
+
+**All four new files came back byte-identical to the briefs' reference code** — error.rs,
+sse.rs, wire.rs and openai.rs, 1000+ lines, zero differences. Fourth consecutive run
+without a formatting defect.
+
+**The one fix was the defect I predicted last session and did nothing about.** The executor
+ASCII-ified `ARCHITECTURE.md §4` to `ARCHITECTURE.md 4` in `lib.rs`'s module doc — a
+pre-existing line, outside the brief's change — exactly as it did in T-107a. The T-107
+session log even names the mechanism: *when a brief pastes a "complete file after the
+change", it hands over every unrelated line in that file.* I then pasted a complete
+`lib.rs` in T-108a anyway. **Rule going forward: a brief modifying an existing file gives
+the changed lines and their anchors, never the whole file, unless the whole file is new.**
+T-108b and T-108c did it that way and neither drifted.
+
+**Guards armed by mutation, not by reasoning.** Two mattered enough to break on purpose:
+a derived `Debug` on `OpenAiCompat` fails `test_debug_never_prints_the_api_key` with
+`api_key: Some("sk-secret-123")` printed in the failure output, and routing `reasoning`
+into `Content` fails three tests including the real-stream replay. Both restored.
+
+**One thing to watch.** The `rustls` feature grew Cargo.lock by 396 lines and pulls
+`aws-lc-rs`, which compiles C via cmake. Recorded as a decision above with its rationale
+rather than absorbed silently — the first CI run on this commit is what confirms all three
+runners build it.
