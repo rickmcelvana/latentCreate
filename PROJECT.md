@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 87 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-111a-e** — all five briefed and ready for producer Aider runs ([a](tasks/t-111a-brief.md) profiles declare their files, [b](tasks/t-111b-brief.md) the models command, [c](tasks/t-111c-brief.md) installing, [d](tasks/t-111d-brief.md) bridge and store, [e](tasks/t-111e-brief.md) the view) — then T-112 (LLM step) and T-113's live milestone. The wizard has its ComfyUI step; nothing is wired to a *model pipeline* yet. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 88 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), **T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-112** (LLM step: provider, base URL, key to keychain, `list_models`, test call; where T-109's capability work pays off in filtered pickers, thinking flags and the remote-model privacy disclosure) — then **T-113**'s live milestone and the `phase1-done` tag. The wizard now has both its ComfyUI and models steps. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -94,11 +94,11 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   XL turbo DiT alone is 9.3 GiB and the full set is 18.5 GiB. The figure predates any live run.
   Not changed here, because guessing a different number is no better — settle it at T-113 on
   the real card (this machine has 15.9 GiB).
-- **OQ: `download` status `"completed"` is still inferred.** MCP-SURFACE 11.3 records that no
-  real download has been watched to the end; the capture run failed on purpose. T-111's poll
-  loop treats only `completed` and `failed` as terminal, so if the real success value differs
-  the install UI hangs on a finished download. T-113's ACE-Step install is the first chance to
-  confirm it.
+- ~~**OQ: `download` status `"completed"` is still inferred.**~~ **Settled 2026-08-25** by a real
+  18.5 GiB ACE-Step install: `starting` -> `downloading` -> `completed`, and nothing else across
+  four concurrent downloads. `isTerminal` is correct as written. Also settled: freshly downloaded
+  files appear to `search_models` with **no ComfyUI restart**, so the post-install re-check is
+  enough.
 ## Backlog (accepted, not yet scheduled)
 - Album lists → bulk send-to-mastering once mastering's bulk import lands (owner-stated future feature).
 - latentPlayer integration (library hand-off) once player matures.
@@ -1117,3 +1117,52 @@ not document, and **the template is still written to `out_path`** when the check
 ~1659 lines, so five briefs rather than the usual three. `install.rs` was split out of
 `models.rs` mid-way, which improved the module boundary as well as the split — reporting and
 acting are different jobs. Gate green.
+
+### 2026-08-25 (later still) — T-111a-e landed; the real install ran, and settled two questions
+
+All five runs came back **byte-identical to the verified reference** on every new file. One
+difference, and it was an improvement: `install.rs` gained a blank line before `#[cfg(test)]`.
+Test counts hit the briefed targets — create-core 28 to 34, app 12 to 19 (+1 ignored), vitest 28
+to 41. My brief said 41 across *8* files; it is 7. My miscount, not the executor's.
+
+**The executor caught a bug I had missed, again.** It converted a pre-existing em dash on line 1
+of `profile.rs` to `--`. Correct: CONVENTIONS names em dash explicitly. That is five runs in a
+row where an executor was right about this rule. It prompted a proper sweep, which turned up
+**four more** in `generation.rs`, `project.rs` and `provenance.rs`, plus one in a `config.test.ts`
+comment — all from earlier tasks, all now purged. The em dash in `CoverArt.tsx` stays: it is a
+rendered UI string, which the rule explicitly permits, and the distinction is the whole reason
+the rule says "code/comments" rather than "files".
+
+**Mutation testing: seven guards, seven caught.** A clean sweep, where T-110 had two survivors
+and the fix was to arm them. The instructive one was byte-weighted progress: the file-counted
+mutant reported **50%** where the real code says **3%**.
+
+**Then the producer offered their bandwidth, and the real install answered two open questions.**
+
+`"completed"` is no longer inferred. Four concurrent downloads reported `starting` at submit,
+then `downloading`, then `completed`, and nothing else. `isTerminal` was right as written — but
+it was right on an assumption, and the cost of being wrong was an install UI spinning forever on
+a finished download.
+
+And **freshly downloaded files appear with no ComfyUI restart.** The readiness check flipped from
+four-missing to Ready the moment the transfer finished. That was the live risk in the design: had
+ComfyUI cached its folder listing, a user would have downloaded 18.5 GiB and still been told
+"Not installed" — the exact failure the whole step is built to avoid, arriving through a door I
+had not checked.
+
+**A number worth keeping: 821 seconds.** 18.5 GiB at roughly 23 MB/s aggregate, on a 2 Gbit
+line. The host throttles, so this is a minutes-long operation no matter how fast the user's
+connection is. The progress UI is not a nicety.
+
+**Two new traps found while confirming the install, neither affecting T-111.** `search_models`
+returns `name` as a **relative path with the OS-native separator** — this install has
+`loragoth\checkpoint-epoch-105\adapter\adapter_model.safetensors`, three levels deep — so a
+nested file cannot be named portably in a profile, and `ModelFileSpec` now says to declare
+top-level files only. And `subfolders` comes back `[]` from list-folders **even for folders that
+demonstrably have subfolders**, so it answers nothing. Both matter for the Phase 3 LoRA picker
+and are recorded in MCP-SURFACE 11.1. The listing is also unfiltered: `loras` returns
+`training_state.pt` files beside the adapters.
+
+ACE-Step 1.5 XL Turbo is now installed on the producer's machine, which makes T-113's live
+milestone reachable and leaves the remaining VRAM open question answerable by an actual run.
+Gate green; landed as `ca610ad`, with the install findings following.

@@ -324,7 +324,7 @@ never parses an error string. `comfy_status` never returns `Err` for a service p
 next step, enforced by a test that sweeps all states. ~440 lines, knowingly a little over the
 guide.
 
-### T-111 — Setup wizard: models step  — **split in five; briefed 2026-08-25**
+### T-111 — Setup wizard: models step  — ✅ **LANDED** as T-111a-e (one commit, `ca610ad`)
 Installed models checked against shipped profiles: ready ✅ / install. Curated first.
 **Per-model licence terms shown wherever a model is chosen or installed** — some weights are
 open-with-conditions (CONVENTIONS).
@@ -350,26 +350,26 @@ decided by comparing a profile's **declared** file list against `search_models(f
 because no comfy-mcp tool answers "which model files does this workflow need" — `workflow_deps`
 maps node packs and `node_dependencies` checks Python requirements.
 
-#### T-111a — profiles declare their files  — **briefed** ([brief](t-111a-brief.md))
+#### T-111a — profiles declare their files  — ✅ **LANDED** `ca610ad` ([brief](t-111a-brief.md))
 `create-core/readiness.rs` + `ComfySpec.models` + both profiles. Four states, because three
 different absences must not collapse into "not installed": no inventory (ComfyUI stopped), no
 declared list, and genuinely missing files.
 
-#### T-111b — the models command  — **briefed** ([brief](t-111b-brief.md))
+#### T-111b — the models command  — ✅ **LANDED** `ca610ad` ([brief](t-111b-brief.md))
 `src-tauri/models.rs`. Never returns `Err` for a service problem. Lists only the folders the
 profiles name. Adds `ProfilesDir` — the shipped profiles had no runtime home until now.
 
-#### T-111c — installing  — **briefed** ([brief](t-111c-brief.md))
+#### T-111c — installing  — ✅ **LANDED** `ca610ad` ([brief](t-111c-brief.md))
 `src-tauri/install.rs`. Per-file submit and per-file reporting; `relative_path` must start with
 `models`. The only thing in the app that starts a multi-gigabyte transfer, and only ever from a
 button.
 
-#### T-111d — bridge and store  — **briefed** ([brief](t-111d-brief.md))
+#### T-111d — bridge and store  — ✅ **LANDED** `ca610ad` ([brief](t-111d-brief.md))
 `bridge/models.ts`, `state/models.ts` + tests. Progress is byte-weighted, not file-counted.
 ~505 lines, over the guide, but around 210 of it is tests and splitting a store from its tests
 lands an untested half.
 
-#### T-111e — the view  — **briefed** ([brief](t-111e-brief.md))
+#### T-111e — the view  — ✅ **LANDED** `ca610ad` ([brief](t-111e-brief.md))
 `Setup.tsx`, `theme.css`. Licence on every row. Install offered only when every missing file
 carries a URL.
 

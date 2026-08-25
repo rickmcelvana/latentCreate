@@ -560,7 +560,19 @@ modells one shape reads empty out of the other two.
               "id": null }, … ] }
 ```
 
-Key distinctions: folder mode has `files` of `{name, pathIndex}` (**camelCase** `pathIndex`);
+**WARNING `name` is a relative path, not a file name** (verified 2026-08-25). Nested models come
+back with the OS-native separator -- on Windows,
+`loragoth\checkpoint-epoch-105\adapter\adapter_model.safetensors`, three levels deep.
+Anything comparing against a bare file name misses them, and anything writing one into a profile
+is writing a non-portable string. The two shipped profiles are unaffected: their files sit at the
+top of their folders.
+
+**WARNING `subfolders` is `[]` even when subfolders exist.** The same install reports
+`{"name": "loras", "subfolders": []}` from list-folders while its folder listing returns the
+nested paths above. `subfolders` answers nothing; do not use it to discover nesting.
+
+**The listing is not filtered to weights.** `loras` returns `training_state.pt` files beside the
+adapters. A picker built on it must filter by extension itself.Key distinctions: folder mode has `files` of `{name, pathIndex}` (**camelCase** `pathIndex`);
 query mode has `rows` of `{name, type, tags, …}`. The query rows' registry fields (`base_model`,
 `trained_words`, `source_url`, `preview_url`, `size`, `id`) are **always null** on the local
 surface and `is_public` always false — they are cloud-registry metadata this install never
@@ -594,9 +606,15 @@ Terminal failure (`wait`):
   "error": "Download failed after 3 attempts: a network error occurred …" }
 ```
 
-Status values observed: `starting` → `downloading` → `failed`. `"completed"` is **inferred** (needs
-a real download — not reproduced; the bogus URL failed, and comfy-cli cleaned up its own partial
-file, leaving `checkpoints` empty). `percent` and `total_bytes` are `null` until the server sends a
+Status values, **all now verified live** (2026-08-25, against the real ACE-Step install):
+`starting` at submit, then `downloading`, then **`completed`**. `"completed"` was inferred until
+that run and is now confirmed, so a poller may treat it as the success terminal; `failed` was
+already verified from a bogus URL, where comfy-cli cleaned up its own partial file. No other
+value appeared across four concurrent downloads.
+
+Timing, for the UI's sake: 18.5 GiB across four concurrent downloads took **821 seconds** (about
+23 MB/s aggregate) on a 2 Gbit connection. The host throttles, so this is minutes-long however
+fast the user's line is -- a progress UI is not optional. `percent` and `total_bytes` are `null` until the server sends a
 content length. `cancel` returns the same shape as `status` (the current state), not a distinct
 confirmation — the same racy-cancel caveat as jobs §10.5.
 
@@ -759,6 +777,10 @@ comfy models list-folders failed [server_not_running]: failed to fetch
 http://127.0.0.1:8188/models: <urlopen error [WinError 10061] No connection could be made
 because the target machine actively refused it>
 ```
+
+Freshly downloaded files **do** appear without restarting ComfyUI (verified 2026-08-25: readiness
+flipped from four-missing to Ready immediately after the install finished), so a post-install
+re-check is enough and no restart prompt is needed.
 
 The existing `[slug]` parser handles the code. **Consequence for the wizard:** the models step
 cannot answer anything until the ComfyUI step is green, so it needs an explicit "cannot check"

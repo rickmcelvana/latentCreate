@@ -164,8 +164,12 @@ fn default_true() -> bool {
 /// multi-gigabyte download is not something this app will do (MCP-SURFACE 14).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelFileSpec {
-    /// Exact filename, as ComfyUI lists it in `search_models(folder=)`.
-    /// Compared verbatim: this is the string the workflow's enum slot holds.
+    /// Exact name, as ComfyUI lists it in `search_models(folder=)`. Compared
+    /// verbatim: this is the string the workflow's enum slot holds.
+    ///
+    /// ComfyUI reports nested models as a relative path with the OS-native
+    /// separator, so a file inside a sub-directory cannot be named portably
+    /// here (MCP-SURFACE 11.1). Declare top-level files only.
     pub file: String,
     /// ComfyUI models sub-folder, e.g. `"diffusion_models"`. Not always
     /// `"checkpoints"` -- ACE-Step 1.5 ships as a split unet/vae/text-encoder

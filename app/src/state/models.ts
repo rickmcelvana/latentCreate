@@ -98,11 +98,11 @@ function rank(profile: ProfileStatus): number {
 /**
  * Whether a download has stopped moving.
  *
- * `completed` is comfy-cli's own success value but is **inferred, not
- * verified** (MCP-SURFACE 11.3 -- the capture run failed on purpose and no real
- * download has been watched to the end). `failed` is verified. Anything else is
- * treated as still running, which errs towards polling one tick too long
- * rather than declaring a half-finished 9 GiB file done.
+ * Both values are verified live: the real 18.5 GiB ACE-Step install reported
+ * `starting` -> `downloading` -> `completed` and nothing else (MCP-SURFACE
+ * 11.3), and `failed` came from a bogus URL. Anything else is treated as still
+ * running -- `unknown` is what a failed *poll* reports, and calling that
+ * terminal would declare a half-finished 9 GiB file done.
  */
 export function isTerminal(status: string): boolean {
   return status === 'completed' || status === 'failed'
