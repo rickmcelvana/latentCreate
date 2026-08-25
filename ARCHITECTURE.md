@@ -195,6 +195,18 @@ Maps are `BTreeMap`, so serialised profiles and provenance sidecars have stable 
 
 Initial profiles to ship (docs/MODELS.md): **ace-step-1.5-turbo** (default; verified runnable, Apache-2.0, lyrics+vocals, LoRA ecosystem), **minimax-music-3** (template verified to exist; profile blocked on a machine where it runs), **stable-audio-open** (instrumental/SFX, no lyrics), **musicgen** (instrumental, simple), **yue** (24 GB+ VRAM, "advanced"), **diffrhythm**. Plus one image profile for cover art. The gallery also carries ACE-Step base/SFT/split variants and **v1 M2M editing + instrumentals** templates — the M2M one is the natural home for the backlog's audio-to-audio flows.
 
+**Loading, and checking a profile against its template (T-107).** `library::profiles`
+merges the shipped `profiles/` directory with the user's, keyed by id, user winning
+collisions wholesale; loading never fails, and every unreadable or malformed file becomes
+a `ProfileWarning` the UI can show. The check that a profile's slot addresses actually
+exist in its template is deliberately split across the crates that already own each half:
+`ModelProfile::slot_addresses()` in `create-core` collects every address the profile names
+(inputs with groups walked, `slot_overrides` keys, and `lyrics_contract.languages_from`),
+and `mcp-bridge`'s `SlotList::missing` does the comparison against a fetched template. They
+meet in `src-tauri`. `library` therefore never depends on `mcp-bridge`, and a wrong address
+— which ComfyUI would otherwise absorb by running the template's own defaults — is
+reportable without a live server in any test.
+
 **Profile authoring rule:** a profile is only written against a template whose `local_check` reports `runnable: true` on a real install, with its slot list read from `list_workflow_slots`. Profiles are never authored from documentation or model cards — the 2026-08-23 verification found several documented assumptions false (docs/MCP-SURFACE.md §7).
 
 ### 5a. LoRAs (first-class, not an afterthought)

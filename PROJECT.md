@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), **T-106b (`minimax-music-3` profile + `slot_overrides`)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-107** (profile loader: shipped `profiles/` + a user directory, user wins on id collision, slot addresses checked against the template). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-107a** then **T-107b** — both briefed and ready for producer Aider runs ([t-107a](tasks/t-107a-brief.md): `library::profiles` loader; [t-107b](tasks/t-107b-brief.md): `ModelProfile::slot_addresses()`). The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -52,6 +52,7 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   - **The `ComfyBackend` trait is deferred from T-101 to T-104.** Async fns in traits are not object-safe, so dyn-vs-enum dispatch should be decided when a backend first enters Tauri managed state — not guessed now around a single impl.
 - **2026-08-23 — Send-to sequencing** (closes OQ-4 for this repo): the real handoff mechanism is being built on the mixing/mastering side **before** latentCreate reaches Phase 4. latentCreate therefore builds only the v1 link-out + reveal-file behavior and adopts whatever protocol those repos define when it exists — this repo does not design the handshake. Re-check the mixing/mastering repos' state at the start of Phase 4.
 - **2026-08-24 — `ComfyBackend` trait re-deferred (from T-104 to "until cloud is verified").** The T-104 planning session confirmed holding `LocalComfy` concretely in Tauri managed state rather than introducing the trait now. Three reasons, concrete rather than speculative: (1) still a single impl; (2) the ARCHITECTURE §3 sketch has drifted from the landed methods (`search_templates(query, limit) -> TemplateSearch`, batch `set_slots`, `list_slots -> SlotList`, missing `get_template`/`notes`); (3) MCP-SURFACE §1 proves local/cloud are different surfaces, so the eventual seam is more likely `enum Backend { Local, Cloud }` than a 17-method trait — shaped when cloud is actually verified, not guessed. ARCHITECTURE §3 now marks the trait a sketch and records this.
+- **2026-08-24 — The profile/template check is split across the crates that already own each half.** `ModelProfile::slot_addresses()` (create-core, pure) collects every address a profile names; `SlotList::missing` (mcp-bridge, landed T-103b) does the comparison against a fetched template; they meet in `src-tauri`. Rejected: putting the comparison in `library` (it would need a `mcp-bridge` dependency, against ARCHITECTURE §2's role for the on-disk store) and adding a second comparison function to `create-core` (two answers to one question). Consequence: nothing in the check needs a live ComfyUI to test, and the wiring is one call at the T-110 seam.
 
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
@@ -702,3 +703,38 @@ wrong, applied to the fetched template before the user's inputs.
 asserts the notes carry both "attribution" and the revenue threshold, because this is the first
 shipped profile whose weights are open-*with-conditions*: users ship these tracks commercially, and
 T-111 must show those terms wherever the model is chosen.
+### 2026-08-24 — session opened on drift; T-107 briefed as a split
+
+**Session ritual caught real drift.** T-106 and T-106b had landed with no PROJECT.md entry:
+the Snapshot still read "next up: T-106", the landed list stopped at T-105b, the mcp-bridge
+test count said 74 (79), and tasks/phase-1.md carried no LANDED markers for either. Written
+up and committed before touching T-107. Gate was green on arrival.
+
+**T-107 is two briefs, and the reason is worth recording.** I wrote the whole reference
+implementation first — loader plus address collector — compiled it, ran `cargo fmt`,
+clippy and the full gate against the real crates, and only then measured: **529 lines**
+against the ~400 rule. Splitting after verification rather than guessing beforehand cost
+nothing and made the split obvious, because the two halves turned out to live in different
+crates anyway: [t-107a-brief.md](tasks/t-107a-brief.md) is `library::profiles` (339 lines,
+7 tests), [t-107b-brief.md](tasks/t-107b-brief.md) is `ModelProfile::slot_addresses()` (180
+lines, 4 tests).
+
+**The design question this task actually posed was "where does the check live".** The phase
+file's sentence — "validates that a profile's slot addresses exist in its template" —
+reads like one function, but the fetch is `mcp-bridge`, the profile is `create-core`, and
+`library` is the on-disk store. Making `library` do it would have dragged an MCP dependency
+into the crate that ARCHITECTURE §2 defines as files-on-disk. The answer that needed no new
+code at all: `mcp-bridge`'s `SlotList::missing` has done the comparison since T-103b, so
+T-107b adds only the collector and the two compose at the `src-tauri` seam. Recorded in the
+decisions log and ARCHITECTURE §5.
+
+**A profile with a wrong slot address fails silently, which is why this exists.** ComfyUI
+does not reject an address it does not have — the app simply never writes that input, and
+the template generates from its own default prompt. The user gets a plausible track that
+ignores what they typed. `test_shipped_ace_step_addresses_all_exist_in_the_verified_template`
+turns that into a build failure by checking the shipped profile against the 24 addresses
+MCP-SURFACE §3 captured live.
+
+**The fmt rule held again.** Reference code was written into the real tree, compiled,
+`cargo fmt`-ed, gate-run, then copied out post-fmt and reverted — so both briefs carry
+text `cargo fmt` is a no-op on. Second run in a row without the recurring defect.
