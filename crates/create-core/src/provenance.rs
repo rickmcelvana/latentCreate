@@ -18,7 +18,7 @@ pub struct ComfyServerInfo {
 
 /// The full recipe for one generated asset.
 ///
-/// Complete enough to reproduce the result — including the LoRA stack, which lives in
+/// Complete enough to reproduce the result -- including the LoRA stack, which lives in
 /// `spec`. A LoRA-generated track that cannot be recreated from its sidecar is a bug
 /// (CONVENTIONS.md).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub struct Provenance {
     pub profile_id: String,
     /// Display name at the time of generation.
     pub profile_display_name: String,
-    /// The model's licence, copied at generation time — some weights are
+    /// The model's licence, copied at generation time -- some weights are
     /// open-with-conditions, and the user may need it long after generating.
     pub model_license: String,
     /// Gallery template name, when one was used.

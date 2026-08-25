@@ -7,7 +7,7 @@ import { useConfigStore } from './config'
  * The shared wire fixture, re-declared with literal types.
  *
  * TypeScript widens JSON imports to `string`, so `wireFile` can never satisfy the union
- * types (`ComfyMode`, `LlmProvider`) on its own — the import alone proves nothing about
+ * types (`ComfyMode`, `LlmProvider`) on its own -- the import alone proves nothing about
  * the TypeScript types. Declaring it here restores the compile-time check, and
  * `test_typed_fixture_matches_shared_wire_file` asserts the two are identical, so editing
  * one without the other fails. The JSON file therefore stays the single source of truth

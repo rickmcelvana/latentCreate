@@ -370,3 +370,67 @@ body {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* --- Setup wizard, models step --- */
+
+.model-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: var(--gap-md) 0;
+  border-top: 1px solid var(--border);
+}
+
+.model-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.model-row-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.model-row-license {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.model-row-license-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.model-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-files li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  font-size: 12px;
+}
+
+.model-files code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.model-file-folder {
+  flex: none;
+  color: var(--text-muted);
+}

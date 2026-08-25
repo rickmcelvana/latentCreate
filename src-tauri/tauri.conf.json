@@ -29,6 +29,9 @@
   },
   "bundle": {
     "active": true,
+    "resources": [
+      "../profiles/*.json"
+    ],
     "targets": "all",
     "licenseFile": "../LICENSE",
     "icon": [

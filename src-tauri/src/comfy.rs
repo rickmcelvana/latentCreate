@@ -141,7 +141,7 @@ fn is_port_in_use(error: &ComfyError) -> bool {
 }
 
 /// Why `ensure_connected` gave up.
-enum EnsureError {
+pub(crate) enum EnsureError {
     /// A service problem, which becomes a status rather than an error.
     Comfy(ComfyError),
     /// This app could not open its own session log. Genuinely our fault.
@@ -149,7 +149,7 @@ enum EnsureError {
 }
 
 /// The connected backend, connecting on first use.
-async fn ensure_connected(
+pub(crate) async fn ensure_connected(
     state: &State<'_, ComfyState>,
     config_dir: &State<'_, ConfigDir>,
     bin: Option<String>,

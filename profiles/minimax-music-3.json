@@ -8,6 +8,11 @@
     "template": "audio_minimax_music_3",
     "workflow": null,
     "vram_gb_min": 16,
+    "models": [
+      { "file": "minimax_music3_dit_int8_convrot.safetensors", "folder": "diffusion_models", "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_int8_convrot.safetensors", "size_bytes": 2502161682 },
+      { "file": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors", "folder": "text_encoders", "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors", "size_bytes": 9196611886 },
+      { "file": "minimax_music3_dav.safetensors", "folder": "vae", "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors", "size_bytes": 216696128 }
+    ],
     "output": { "save_node": "SaveAudioAdvanced", "prefer_lossless": true },
     "slot_overrides": {
       "37/6.unet_name": { "type": "enum", "value": "minimax_music3_dit_int8_convrot.safetensors" }

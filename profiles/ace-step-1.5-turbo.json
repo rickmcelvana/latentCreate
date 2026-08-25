@@ -8,6 +8,12 @@
     "template": "audio_ace_step1_5_xl_turbo",
     "workflow": null,
     "vram_gb_min": 8,
+    "models": [
+      { "file": "acestep_v1.5_xl_turbo_bf16.safetensors", "folder": "diffusion_models", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors", "size_bytes": 9974719892 },
+      { "file": "qwen_0.6b_ace15.safetensors", "folder": "text_encoders", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors", "size_bytes": 1191588248 },
+      { "file": "qwen_4b_ace15.safetensors", "folder": "text_encoders", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors", "size_bytes": 8379154232 },
+      { "file": "ace_1.5_vae.safetensors", "folder": "vae", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors", "size_bytes": 337431732 }
+    ],
     "output": { "save_node": "SaveAudioAdvanced", "prefer_lossless": true }
   },
   "loras": {

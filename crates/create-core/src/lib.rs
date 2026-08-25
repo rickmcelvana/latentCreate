@@ -7,16 +7,19 @@
 //! [`generation`] holds what the user asked for before it is fanned out to slots.
 //! [`project`] holds the library's project, lyric and track-id types.
 //! [`provenance`] holds the reproducible recipe for one generated asset.
+//! [`readiness`] decides whether a profile's model files are present.
 
 pub mod generation;
 pub mod profile;
 pub mod project;
 pub mod provenance;
+pub mod readiness;
 
 pub use generation::*;
 pub use profile::*;
 pub use project::*;
 pub use provenance::*;
+pub use readiness::*;
 
 #[cfg(test)]
 mod tests {

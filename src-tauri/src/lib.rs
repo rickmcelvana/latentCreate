@@ -8,12 +8,22 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 mod comfy;
+mod install;
 mod jobs;
+mod models;
 
 use jobs::ComfyState;
 
 /// Resolved once at startup so every command shares one location.
 struct ConfigDir(PathBuf);
+
+/// Where the profiles that ship with the app live, resolved once at startup.
+///
+/// Bundled as a resource; in a dev build the bundle has not been assembled, so
+/// this falls back to the repo's own `profiles/`. A missing directory is not an
+/// error here -- `library::profiles::load` treats it as "no shipped profiles",
+/// and the models step then has nothing to check rather than failing to open.
+struct ProfilesDir(PathBuf);
 
 /// Launches the Tauri application.
 ///
@@ -28,6 +38,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_config_dir()?;
             app.manage(ConfigDir(dir));
+            app.manage(ProfilesDir(shipped_profiles_dir(app.handle())));
             app.manage(ComfyState::default());
             Ok(())
         })
@@ -40,6 +51,9 @@ pub fn run() {
             delete_secret,
             comfy::comfy_status,
             comfy::comfy_launch,
+            models::models_status,
+            install::models_install,
+            install::models_progress,
             jobs::connect_comfy,
             jobs::run_workflow,
             jobs::cancel_job
@@ -86,6 +100,22 @@ fn has_secret(name: String) -> Result<bool, String> {
 fn delete_secret(name: String) -> Result<(), String> {
     let key = library::SecretKey::parse(&name).map_err(|e| e.to_string())?;
     library::secrets::delete_secret(key).map_err(|e| e.to_string())
+}
+
+/// Locate the shipped profiles directory.
+///
+/// The bundled resource wins. A dev build has no bundle, so it falls back to
+/// the repo checkout next to this crate -- which is also why this returns a
+/// path rather than failing: neither location existing is a normal state for a
+/// build with no profiles, not a startup error.
+fn shipped_profiles_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
+    if let Ok(resources) = app.path().resource_dir() {
+        let bundled = resources.join("profiles");
+        if bundled.is_dir() {
+            return bundled;
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../profiles")
 }
 
 #[cfg(test)]

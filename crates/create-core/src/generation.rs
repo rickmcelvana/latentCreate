@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 ///
 /// Adjacently tagged on purpose: untagged, a JSON `3` could deserialise as `Int`,
 /// `Float` or `Seed`, and a seed silently demoted to an `Int` would make a track
-/// unreproducible — the one thing provenance must never allow.
+/// unreproducible -- the one thing provenance must never allow.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum InputValue {

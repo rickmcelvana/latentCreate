@@ -1,4 +1,4 @@
-//! Model capability profiles — the core abstraction of latentCreate.
+//! Model capability profiles -- the core abstraction of latentCreate.
 //!
 //! Profiles are data, not code. Everything the UI shows for a music or image model
 //! comes from a JSON profile. This module contains the Serde schema and the verified
@@ -153,6 +153,37 @@ fn default_true() -> bool {
     true
 }
 
+/// One model file this profile needs present in ComfyUI.
+///
+/// **Declared, not derived.** comfy-mcp has no tool that answers "which model
+/// files does this workflow need": `workflow_deps` maps node classes to node
+/// *packs*, and `node_dependencies` checks a pack's *Python* requirements
+/// against the venv. The only signal is `local_check`'s prose errors --
+/// `"node 104: 'acestep_v1.5_xl_turbo_bf16.safetensors' not in 2 known options
+/// for unet_name"` -- and parsing English to decide whether to start a
+/// multi-gigabyte download is not something this app will do (MCP-SURFACE 14).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelFileSpec {
+    /// Exact filename, as ComfyUI lists it in `search_models(folder=)`.
+    /// Compared verbatim: this is the string the workflow's enum slot holds.
+    pub file: String,
+    /// ComfyUI models sub-folder, e.g. `"diffusion_models"`. Not always
+    /// `"checkpoints"` -- ACE-Step 1.5 ships as a split unet/vae/text-encoder
+    /// set and puts nothing in `checkpoints` at all.
+    pub folder: String,
+    /// Direct download URL. `None` means this app cannot fetch the file and
+    /// must instead tell the user the name and folder to place it in.
+    #[serde(default)]
+    pub source_url: Option<String>,
+    /// Download size in bytes, so the total can be shown *before* the user
+    /// commits to it. ACE-Step 1.5 XL Turbo is 18.5 GiB across four files.
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    /// Set only when this file's terms differ from the profile's own licence.
+    #[serde(default)]
+    pub license: Option<String>,
+}
+
 /// How this profile reaches ComfyUI.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ComfySpec {
@@ -172,6 +203,10 @@ pub struct ComfySpec {
     /// overrides `37/6.unet_name` to the int8 file (MCP-SURFACE 6).
     #[serde(default)]
     pub slot_overrides: BTreeMap<SlotAddress, InputValue>,
+    /// Every model file this profile needs. Empty means "not declared", which
+    /// the UI reports as unknown -- never as ready.
+    #[serde(default)]
+    pub models: Vec<ModelFileSpec>,
     pub output: OutputSpec,
 }
 

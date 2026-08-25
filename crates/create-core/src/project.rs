@@ -71,7 +71,7 @@ impl LyricDoc {
     }
 }
 
-/// A named ordering of tracks — a single, an EP, an album.
+/// A named ordering of tracks -- a single, an EP, an album.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AlbumList {
     /// User-facing name for this list.

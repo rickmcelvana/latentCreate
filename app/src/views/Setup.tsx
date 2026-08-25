@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
+import type { ProfileStatus } from '../bridge/models'
+import { curatedFirst, formatBytes, installView, rowFor, useModelsStore } from '../state/models'
 
 /**
  * Setup wizard, ComfyUI step.
@@ -60,7 +62,114 @@ export function Setup() {
           ) : null}
         </div>
       </section>
+
+      <ModelsStep />
     </>
+  )
+}
+
+/**
+ * Setup wizard, models step.
+ *
+ * Readiness is decided by comparing each profile's declared files against what
+ * ComfyUI reports it has -- never by `local_check.runnable`, which answers a
+ * different question and calls a working MiniMax install unrunnable over a
+ * filename the profile already corrects.
+ */
+function ModelsStep() {
+  const view = useModelsStore((state) => state.view)
+  const busy = useModelsStore((state) => state.busy)
+  const refresh = useModelsStore((state) => state.refresh)
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const profiles = view === null ? [] : curatedFirst(view.profiles)
+
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">Models</h2>
+        <button type="button" className="setup-button" onClick={() => void refresh()} disabled={busy}>
+          {busy ? 'Checking...' : 'Retry'}
+        </button>
+      </header>
+
+      {view !== null && !view.inventory_available ? (
+        <p className="setup-next-step">
+          Cannot see which models are installed. {view.inventory_detail ?? 'Start ComfyUI above.'}
+        </p>
+      ) : null}
+
+      {profiles.map((profile) => (
+        <ModelRow key={profile.id} profile={profile} />
+      ))}
+    </section>
+  )
+}
+
+/** One model, its licence, and whether it can be used. */
+function ModelRow({ profile }: { profile: ProfileStatus }) {
+  const install = useModelsStore((state) => state.install)
+  const installing = useModelsStore((state) => state.installing)
+  const progress = useModelsStore((state) => state.progress)
+
+  const row = rowFor(profile.readiness)
+  const active = installing === profile.id
+  const live = active ? installView(progress) : null
+
+  return (
+    <article className="model-row">
+      <header className="model-row-head">
+        <h3 className="model-row-title">{profile.display_name}</h3>
+        <span className={`status-pill status-pill-${row.tone}`}>{row.label}</span>
+      </header>
+
+      {/* Shown for every model, installed or not: some weights are open with
+          conditions the user takes on by generating with them (CONVENTIONS). */}
+      <p className="model-row-license">
+        <span className="model-row-license-name">{profile.license}</span>
+        {profile.license_notes !== null ? ` -- ${profile.license_notes}` : null}
+      </p>
+
+      {row.nextStep !== null && !active ? <p className="setup-next-step">{row.nextStep}</p> : null}
+
+      {live !== null ? (
+        <p className="setup-next-step">
+          Downloading {live.done} of {live.total} files
+          {live.percent === null ? '' : ` -- ${live.percent}%`}
+          {live.failed.length > 0 ? ` -- ${live.failed.length} failed` : ''}
+        </p>
+      ) : null}
+
+      {profile.readiness.state === 'missing' ? (
+        <ul className="model-files">
+          {profile.readiness.files.map((file) => (
+            <li key={`${file.folder}/${file.file}`}>
+              <code>{file.file}</code>
+              <span className="model-file-folder">
+                {file.folder}
+                {formatBytes(file.size_bytes) === null ? '' : ` -- ${formatBytes(file.size_bytes)}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {profile.readiness.state === 'missing' && profile.readiness.installable ? (
+        <div className="setup-actions">
+          <button
+            type="button"
+            className="setup-button setup-button-primary"
+            onClick={() => void install(profile.id)}
+            disabled={installing !== null}
+          >
+            {active ? 'Downloading...' : 'Install'}
+          </button>
+        </div>
+      ) : null}
+    </article>
   )
 }
 
