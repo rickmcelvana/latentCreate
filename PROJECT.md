@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), **T-109a/b (`ollama_native`: model listing + pull with progress)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-110** (setup wizard: ComfyUI step — detect `comfy-mcp`, install guidance, `launch_comfyui`, health pill). Both bridges are complete; from here the work is UI and wiring, then T-113's live milestone. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Next up:** **T-110a/b/c** — all three briefed and ready for producer Aider runs ([a](tasks/t-110a-brief.md) typed `server_info` + launch, [b](tasks/t-110b-brief.md) Tauri commands, [c](tasks/t-110c-brief.md) the view) — then T-111/T-112 and T-113's live milestone. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -61,6 +61,8 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 
 - **2026-08-24 — `LlmProvider` is not written, and T-109 is why.** The trait was deferred at T-108 for lack of a second implementation; T-109 supplied one and it turned out not to be an implementation of the same thing. **`ollama_native` does not chat** — Ollama's `/v1/chat/completions` already goes through `openai_compat`, so the native API is an *enrichment layer* (which models can chat, which think, which are remote), not a peer provider. Forcing it into the trait would mean a `stream_chat` returning an error, the shape of a wrong abstraction. `anthropic` will settle the question, because it genuinely chats with a different wire format. ARCHITECTURE 4 records it.
 - **2026-08-24 — Remote models are a privacy disclosure, not a performance note.** Ollama lists cloud models beside local ones with a `remote_host` field; generating with one sends the user's unreleased lyrics to another party. This app's premise is local-first generation, so the UI must show that distinction wherever a model is chosen — the same rule already applied to per-model licence terms (CONVENTIONS).
+- **2026-08-24 — The backend classifies service states; the frontend renders them.** `ComfyStatus` is a serde-tagged union (`not_installed` / `unreachable` / `server_down` / `ready`) and `comfy_status` **never returns `Err` for a service problem** — only for this app failing to open its own session log. Rationale: CONVENTIONS requires degraded services to become a status pill with a next step, which is only possible if the states are enumerable. A frontend deciding what to show by parsing error strings is the alternative, and it breaks the first time a message is reworded.
+- **2026-08-24 — `[port_in_use]` is not a launch failure.** Verified live: launching while something already holds 8188 fails with that code, which means something is already serving. `comfy_launch` ignores it and reports whatever the following health check finds, rather than alarming a user whose ComfyUI is simply already up.
 
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
@@ -942,3 +944,42 @@ tests.
 **Phase 1's bridges are done.** `mcp-bridge` (79 tests) and `llm-bridge` (34 + 3 live) both
 cover their verified surfaces. What remains is the wizard (T-110-T-112), which is UI and
 Tauri wiring over surfaces already proven, and T-113's live milestone.
+### 2026-08-24 (later) — T-110 verified live and briefed in three; the first UI task
+
+Captured `server_info` and `launch_comfyui` live from comfy-cli 1.16.0 (**MCP-SURFACE 13**,
+payload committed to `testdata/mcp/`). Wrote the whole step — crate, Tauri commands, store,
+view, CSS — compiled it, ran the gate, and drove all five rendered states through the real
+store in a browser before briefing. 922 lines plus CSS, so three briefs.
+
+**The `ServerInfo` written at T-101 was guesswork, and this is what that costs.** It modelled
+three blocks as opaque `Value`s. The live payload carries **seven**, four of which the wizard
+needs: `server.running`, `hardware.gpu.vram_bytes` (the number a profile's `vram_gb_min` is
+checked against), `workspace.path`, and `freshness.core.outdated`. It was written before
+anyone had seen the payload, which is exactly the practice the project banned after
+2026-08-23 — and it survived nine tasks because nothing had needed it yet.
+
+**A third polymorphic-shape trap, in a third service.** `freshness` is either
+`{"core": {...}, "packs": [...]}` or `{"unsupported": true}` — "could not check", not "up to
+date". Rendering it as an update badge gives the user a notice they can never clear. That is
+now three services (comfy-mcp `search_models`, Ollama `families`, this) where the shape
+depends on the answer, and the pattern is worth expecting rather than discovering.
+
+**Absent is not zero, twice over.** No `server` block means ComfyUI is **down**, not unknown
+— comfy-mcp answers happily while ComfyUI is dead, which is precisely the state the wizard
+exists to show. No `hardware` block means VRAM is **unknown**, and rendering that as `0 GB`
+puts a hardware warning on a working machine. Both are carried as `Option` all the way to the
+UI, where `formatVram` returns null rather than a zero reading.
+
+**The browser check found no bug, and that itself took work.** All five states rendered
+correctly, but computed pill colours read as muted on every one of them. The cause was the
+180 ms colour transition: **the review pane does not composite frames, so transitions never
+advance**, and a mid-transition read returns the start value. WORKFLOW section 5 records this
+exact limitation from the sibling repos, and I still spent four probes rediscovering it —
+including one `requestAnimationFrame` call that hung the tool for 30 seconds. Reading a
+`transition: none` clone gives the true value; the animation itself is listed in the brief as
+unverified, for the producer's click-through.
+
+**Process note:** all three briefs give changed lines and anchors for existing files, and
+each carries "no non-ASCII characters anywhere in the diff" as an explicit acceptance
+criterion. A separate task is queued to enforce that in the gate rather than in prose — it
+has now cost a review round on four consecutive tasks, most recently my own `health.rs`.

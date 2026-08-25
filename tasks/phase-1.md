@@ -294,9 +294,35 @@ cloud entries.
 body — comfy-mcp's `Ok(is_error: true)` in a second protocol. `completed` is absent, not
 zero, on a layer's first frame.
 
-### T-110 — Setup wizard: ComfyUI step
+### T-110 — Setup wizard: ComfyUI step  — **split in three; briefed 2026-08-24**
 Detect `comfy-mcp`, install guidance when absent, `launch_comfyui`, health pill, server info.
 Degraded states are status pills with retry, never modal walls (CONVENTIONS).
+
+**Surface verified live** against comfy-cli 1.16.0 (MCP-SURFACE 13), with the payload
+committed to `testdata/mcp/server_info.json`. Reference implementation written, compiled,
+gate-run, and the five rendered states driven through the real store in a browser before
+briefing; 922 lines plus CSS — three briefs.
+
+**The `server_info` type written at T-101 was guesswork.** It modelled three blocks as opaque
+`Value`s; the live payload has seven, and four drive the wizard — `server.running`,
+`hardware.gpu.vram_bytes` (the number `vram_gb_min` is checked against), `workspace.path`, and
+`freshness.core.outdated` (the quiet update badge). `freshness` is also polymorphic: an older
+comfy-cli answers `{"unsupported": true}`, meaning "could not check", not "up to date".
+
+#### T-110a — typed `server_info` + `launch`  — **briefed** ([brief](t-110a-brief.md))
+`mcp-bridge/health.rs`. Absent blocks stay absent: no `server` means not running, no GPU means
+unknown VRAM rather than zero. `launch` passes no arguments (every flag it accepts exposes an
+unauthenticated ComfyUI to the network).
+
+#### T-110b — Tauri commands  — **briefed** ([brief](t-110b-brief.md))
+`src-tauri/comfy.rs`. `ComfyStatus` is a tagged union with one variant per state, so the UI
+never parses an error string. `comfy_status` never returns `Err` for a service problem, and
+`[port_in_use]` is treated as "something is already serving", not a failure.
+
+#### T-110c — the view  — **briefed** ([brief](t-110c-brief.md))
+`bridge/comfy.ts`, `state/comfy.ts`, `Setup.tsx`, `theme.css`. Every degraded state carries a
+next step, enforced by a test that sweeps all states. ~440 lines, knowingly a little over the
+guide.
 
 ### T-111 — Setup wizard: models step
 Installed models checked against shipped profiles: ready ✅ / install / quiet "update

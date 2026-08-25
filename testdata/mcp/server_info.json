@@ -1,0 +1,57 @@
+{
+  "python": {
+    "version": "3.14.5",
+    "executable": "C:\\Python314\\python.exe",
+    "virtualenv": null,
+    "conda_env": null
+  },
+  "config": {
+    "path": "C:\\Users\\USER\\AppData\\Local\\comfy-cli\\config.ini",
+    "default_workspace": "C:\\Comfy-Installs\\comfyUI\\ComfyUI",
+    "default_launch_extras": null,
+    "recent_workspace": "C:\\Comfy-Installs\\comfyUI\\ComfyUI",
+    "tracking_enabled": false,
+    "background": null
+  },
+  "server": {
+    "running": true,
+    "url": "http://127.0.0.1:8188"
+  },
+  "hardware": {
+    "os": "Windows",
+    "os_version": "11",
+    "arch": "AMD64",
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD",
+    "ram_bytes": 68633681920,
+    "gpu": {
+      "vendor": "nvidia",
+      "model": "NVIDIA GeForce RTX 5060 Ti",
+      "vram_bytes": 17102733312,
+      "unified_memory": false
+    }
+  },
+  "workspace": {
+    "path": "C:\\Comfy-Installs\\comfyUI\\ComfyUI",
+    "type": "default",
+    "manager_mode": "enable-gui",
+    "manager_detected": "venv-package",
+    "uv_compile_default": false
+  },
+  "compatibility": {
+    "comfy_cli_version": "1.16.0",
+    "min_comfy_cli_version": null,
+    "envelope_schema_major": 1,
+    "warnings": [],
+    "envelope_schema": "envelope/1"
+  },
+  "freshness": {
+    "core": {
+      "installed": "v0.33.3",
+      "commit": "4da9e2db",
+      "latest": "v0.33.4",
+      "outdated": true
+    },
+    "packs": [],
+    "checked_at": "2026-08-25T02:58:22.383294+00:00"
+  }
+}

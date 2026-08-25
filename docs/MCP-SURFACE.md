@@ -661,3 +661,65 @@ models (`minimax_h3_fl2v_turbo_*_bf16.safetensors`).
 dedupe case variants — is a UI design task that §4 assigns to **Phase 3** (the LoRA stack panel),
 not here. The rules are fuzzy enough (how to tell a real adapter from a misfiled full model by
 filename alone) that they need owner iteration alongside the picker UI.
+
+## 13. `server_info` and `launch_comfyui` -- verified 2026-08-24
+
+Captured live from **comfy-cli 1.16.0**. Fixture:
+[testdata/mcp/server_info.json](../testdata/mcp/server_info.json) (home-directory path
+replaced with `USER`; everything else verbatim). This is the whole basis of the wizard's
+ComfyUI step (T-110).
+
+### 13.1 `server_info` -- seven blocks, not three
+
+The type written at T-101 modelled `server`/`hardware`/`workspace` as opaque `Value`s. The
+live payload carries **seven** top-level blocks, and four of them matter:
+
+| Block | What the wizard uses |
+|---|---|
+| `server` | `{"running": true, "url": "http://127.0.0.1:8188"}` -- the health pill's core fact |
+| `hardware` | `gpu.vram_bytes` (17102733312 on this box) plus `ram_bytes`, `cpu`, `os`. This is the number a profile's `vram_gb_min` is checked against |
+| `workspace` | `path` -- which ComfyUI install would start, for users with several |
+| `compatibility` | `comfy_cli_version`, plus advisory `warnings` (a hard incompatibility raises before returning, so anything here is informational) |
+| `freshness` | `core.outdated` -- the quiet "update available" badge. This box reported v0.33.3 against latest v0.33.4 |
+
+Also present: `python` (version/executable) and `config` (comfy-cli's own ini path and
+default workspace). Neither is needed yet.
+
+**Trap: `freshness` is polymorphic.** An older comfy-cli answers `{"unsupported": true}`
+with **no `core` block at all**. That means "could not check", not "up to date" -- rendering
+it as an update badge gives the user a notice they can never clear, and failing to decode it
+breaks the whole health pill. Both `unsupported` and `core` are therefore optional on one
+struct.
+
+**Trap: absent is not zero.** `hardware` is absent on comfy-cli builds that do not report
+one, so `vram_bytes` is `Option`. A "0 GB VRAM" warning on a working machine reads as a
+broken app, so unknown must stay unknown all the way to the UI.
+
+**A missing `server` block means not running.** comfy-mcp answers happily while ComfyUI
+itself is down -- that is precisely the degraded state the wizard exists to show, and it must
+not be read as "unknown, probably fine".
+
+### 13.2 `launch_comfyui` -- and the failure that is really a success
+
+No arguments are passed. The tool accepts `extra_args`, but every network-exposing flag
+(`--listen`, `--enable-cors-header`) publishes an **unauthenticated** ComfyUI API to anything
+that can reach the machine, and comfy-mcp raises an elicitation for them. This app does not
+offer them.
+
+Success is a synthesised `{"ok": true}` envelope, because `comfy launch` itself prints plain
+text.
+
+Launching while something already holds the port fails, verified live:
+
+```
+comfy launch --background failed [port_in_use]: The 8188 port is already in use.
+A new ComfyUI server cannot be launched.
+hint: stop the process on that port or pass a different `--port`
+```
+
+That arrives as `ComfyError::Tool` with `code = "port_in_use"` (the existing `[slug]` parser
+handles it). **It is not an error to show the user**: it means something is already serving,
+so the honest response is to re-read `server_info` and report what is actually there.
+
+**Call `server_info` first and only launch when `server.running` is false.**
+
