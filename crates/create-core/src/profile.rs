@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// A ComfyUI workflow slot address: `"<node_id>.<input_name>"` (e.g. `"94.tags"`),
 /// or `"<subgraph>/<node>.<input>"` for subgraph interiors. Produced by
-/// `list_workflow_slots`; see docs/MCP-SURFACE.md §2.
+/// `list_workflow_slots`; see docs/MCP-SURFACE.md section 2.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SlotAddress(pub String);
@@ -128,7 +128,7 @@ pub struct StrengthRange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoraSupport {
     /// Node class that applies a LoRA. Per-profile because custom node packs differ;
-    /// core ComfyUI ships `LoraLoaderModelOnly` (verified, docs/MCP-SURFACE.md §4).
+    /// core ComfyUI ships `LoraLoaderModelOnly` (verified, docs/MCP-SURFACE.md section 4).
     pub loader_node: String,
     /// Instance id of the node whose MODEL output the loader chain splices after.
     pub attach_after: String,
@@ -159,7 +159,7 @@ pub struct ComfySpec {
     /// Gallery template name, e.g. `"audio_ace_step1_5_xl_turbo"`.
     #[serde(default)]
     pub template: Option<String>,
-    /// Path to a user-imported API-format workflow (ARCHITECTURE §5b), when the
+    /// Path to a user-imported API-format workflow (ARCHITECTURE section 5b), when the
     /// profile does not use a gallery template.
     #[serde(default)]
     pub workflow: Option<String>,
@@ -198,7 +198,7 @@ pub struct PromptExample {
     pub lyrics: Option<String>,
 }
 
-/// Guidance shown to the user and fed to the lyric LLM (ARCHITECTURE §6).
+/// Guidance shown to the user and fed to the lyric LLM (ARCHITECTURE section 6).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PromptGuide {
     #[serde(default)]
@@ -208,7 +208,7 @@ pub struct PromptGuide {
 }
 
 /// Everything the UI needs to drive one model. Profiles are data, not code:
-/// supporting a new model is a JSON file (ARCHITECTURE §5).
+/// supporting a new model is a JSON file (ARCHITECTURE section 5).
 ///
 /// Unknown fields are **ignored deliberately** (no `deny_unknown_fields`) so a profile
 /// written for a newer build still loads on an older one.

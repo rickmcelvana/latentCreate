@@ -1,6 +1,6 @@
 //! On-disk store: projects, tracks, provenance sidecars, config.
 //!
-//! JSON files under the app data dir, no database (ARCHITECTURE.md §8).
+//! JSON files under the app data dir, no database (ARCHITECTURE.md section 8).
 //! Secrets live in the OS keychain, never in config. Populated by T-004.
 
 pub mod config;

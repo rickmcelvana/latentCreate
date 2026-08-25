@@ -2,7 +2,7 @@
 //!
 //! The single place that wires the workspace crates to the frontend. Tauri
 //! commands and events live here; domain logic belongs in the crates
-//! (ARCHITECTURE.md §2).
+//! (ARCHITECTURE.md section 2).
 
 use std::path::PathBuf;
 use tauri::Manager;

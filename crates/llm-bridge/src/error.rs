@@ -21,6 +21,15 @@ pub enum LlmError {
         status: u16,
         message: String,
     },
+    /// The provider reported a failure inside an otherwise-successful
+    /// response.
+    ///
+    /// `/api/pull` answers **HTTP 200** and puts the failure in the streamed
+    /// body, so a client that trusts the status code reports a failed
+    /// download as a success. Same shape of trap as comfy-mcp's
+    /// `Ok(is_error: true)` (MCP-SURFACE 8).
+    #[error("{detail}")]
+    Reported { detail: String },
     /// A frame arrived that is not what the wire format promises.
     #[error("could not decode the response: {0}")]
     Decode(String),

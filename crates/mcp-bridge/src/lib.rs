@@ -1,6 +1,6 @@
 //! MCP client for a local ComfyUI via `comfy-mcp`.
 //!
-//! Implements the `ComfyBackend` seam (ARCHITECTURE.md §3) over stdio.
+//! Implements the `ComfyBackend` seam (ARCHITECTURE.md section 3) over stdio.
 //! Tool names are the verified LOCAL ones -- see docs/MCP-SURFACE.md, never the
 //! cloud documentation.
 
