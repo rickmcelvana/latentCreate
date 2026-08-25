@@ -378,8 +378,19 @@ payload there is no `local_check` key whatsoever. Model it as an enum with three
 `#[serde(default)] runnable: bool` reads "unknown" as "cannot run" and sends the user to fix
 a problem they do not have.
 
-*Verified live: the `checked: true` arm. The `checked: false` arm is from the tool's own
-documentation — not reproduced here, since it needs ComfyUI stopped.*
+**Both arms now verified live** (the `checked: false` arm on 2026-08-25, with ComfyUI
+stopped). It carries two fields beyond what the tool documents, and no `runnable` key:
+
+```json
+{ "checked": false, "reason": "check_unavailable",
+  "summary": "could not check this template against your ComfyUI install (the live node
+    catalog was unreachable — the server may not be running). The template was still
+    written. ... Details: comfy validate ... failed [cql_no_graph]: cannot reach
+    http://127.0.0.1:8188/object_info ..." }
+```
+
+The template **is still written to `out_path`** when the check cannot run, so a caller that
+treats "not checked" as "no file" is wrong twice over.
 
 ### 9.5 `search_templates` — `match` tells you the query was widened
 
@@ -706,8 +717,19 @@ No arguments are passed. The tool accepts `extra_args`, but every network-exposi
 that can reach the machine, and comfy-mcp raises an elicitation for them. This app does not
 offer them.
 
-Success is a synthesised `{"ok": true}` envelope, because `comfy launch` itself prints plain
-text.
+Success is a synthesised envelope, because `comfy launch` itself prints plain text. **The
+tool's docstring says that envelope is `{"ok": true}`. It is not.** Captured live 2026-08-25:
+
+```json
+{ "background": true, "listen": "127.0.0.1", "port": 8188,
+  "url": "http://127.0.0.1:8188", "pid": 23404 }
+```
+
+There is no `ok` key. A wrapper with `#[serde(default)] ok: bool` decodes this happily and
+then reads `false` from every successful launch. **Success is the `Ok` arm; failure arrives
+as an error, never as a falsy field.** (Recorded here from the docstring at T-110 and only
+caught when a real launch was run at T-111 -- the failure path had been captured live, the
+success path had not.)
 
 Launching while something already holds the port fails, verified live:
 

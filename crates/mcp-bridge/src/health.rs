@@ -167,14 +167,33 @@ impl ServerInfo {
     }
 }
 
-/// What `launch_comfyui` reports on success.
+/// What `launch_comfyui` reports on success, captured live 2026-08-25:
 ///
-/// comfy-mcp synthesises this envelope because `comfy launch` itself prints
-/// plain text. Only `ok` is relied on.
+/// ```json
+/// { "background": true, "listen": "127.0.0.1", "port": 8188,
+///   "url": "http://127.0.0.1:8188", "pid": 23404 }
+/// ```
+///
+/// **There is no `ok` field**, whatever the tool's own docstring says. Every
+/// field is optional here because comfy-mcp synthesises this envelope from
+/// `comfy launch`'s plain-text output, so its shape is not a wire contract --
+/// but a caller must never branch on a missing key to decide the launch
+/// failed. Failure arrives as [`ComfyError`], not as a falsy field.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LaunchResult {
+    /// Where the launched server is listening.
     #[serde(default)]
-    pub ok: bool,
+    pub url: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// Interface bound. Always loopback from this app, which passes no flags.
+    #[serde(default)]
+    pub listen: Option<String>,
+    /// comfy-cli's recorded pid -- the handle its own `stop_comfyui` uses.
+    #[serde(default)]
+    pub pid: Option<u32>,
+    #[serde(default)]
+    pub background: bool,
 }
 
 impl LocalComfy {
@@ -305,16 +324,39 @@ mod tests {
     /// every flag it accepts exposes an unauthenticated ComfyUI to the network.
     #[tokio::test]
     async fn test_launch_sends_no_arguments() {
-        let (client, recorded) = client_and_log(vec![Reply::Json(json!({ "ok": true }))]).await;
+        let (client, recorded) = client_and_log(vec![Reply::Json(json!({
+            "background": true,
+            "listen": "127.0.0.1",
+            "port": 8188,
+            "url": "http://127.0.0.1:8188",
+            "pid": 23404
+        }))])
+        .await;
 
         let result = client.launch().await.expect("launch succeeds");
-        assert!(result.ok);
+        assert_eq!(result.url.as_deref(), Some("http://127.0.0.1:8188"));
+        assert_eq!(result.port, Some(8188));
+        assert_eq!(result.listen.as_deref(), Some("127.0.0.1"));
 
         let log = recorded.lock().expect("recorded calls");
         assert_eq!(log[0]["name"], json!("launch_comfyui"));
         assert_eq!(log[0]["arguments"], json!({}));
     }
 
+    /// Protects: a launch succeeded when the call returned `Ok`, never because
+    /// some field in the body said so. The live payload carries no `ok` key
+    /// even though the tool's own docstring promises one, so a wrapper reading
+    /// success out of the body reports every real launch as a failure.
+    #[tokio::test]
+    async fn test_launch_success_does_not_depend_on_any_field() {
+        let (client, _recorded) = client_and_log(vec![Reply::Json(json!({}))]).await;
+        let result = client
+            .launch()
+            .await
+            .expect("an empty body is still a success");
+        assert_eq!(result.url, None);
+        assert_eq!(result.pid, None);
+    }
     /// Protects: the verified already-running failure. It arrives as a tool
     /// error with the `port_in_use` code, which the wizard reports as "already
     /// running" rather than as a fault.
