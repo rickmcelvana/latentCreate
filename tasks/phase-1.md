@@ -294,7 +294,7 @@ cloud entries.
 body — comfy-mcp's `Ok(is_error: true)` in a second protocol. `completed` is absent, not
 zero, on a layer's first frame.
 
-### T-110 — Setup wizard: ComfyUI step  — **split in three; briefed 2026-08-24**
+### T-110 — Setup wizard: ComfyUI step  — ✅ **LANDED** as T-110a/b/c (one commit, `50186c2`)
 Detect `comfy-mcp`, install guidance when absent, `launch_comfyui`, health pill, server info.
 Degraded states are status pills with retry, never modal walls (CONVENTIONS).
 
@@ -309,17 +309,17 @@ briefing; 922 lines plus CSS — three briefs.
 `freshness.core.outdated` (the quiet update badge). `freshness` is also polymorphic: an older
 comfy-cli answers `{"unsupported": true}`, meaning "could not check", not "up to date".
 
-#### T-110a — typed `server_info` + `launch`  — **briefed** ([brief](t-110a-brief.md))
+#### T-110a — typed `server_info` + `launch`  — ✅ **LANDED** `50186c2` ([brief](t-110a-brief.md))
 `mcp-bridge/health.rs`. Absent blocks stay absent: no `server` means not running, no GPU means
 unknown VRAM rather than zero. `launch` passes no arguments (every flag it accepts exposes an
 unauthenticated ComfyUI to the network).
 
-#### T-110b — Tauri commands  — **briefed** ([brief](t-110b-brief.md))
+#### T-110b — Tauri commands  — ✅ **LANDED** `50186c2` ([brief](t-110b-brief.md))
 `src-tauri/comfy.rs`. `ComfyStatus` is a tagged union with one variant per state, so the UI
 never parses an error string. `comfy_status` never returns `Err` for a service problem, and
 `[port_in_use]` is treated as "something is already serving", not a failure.
 
-#### T-110c — the view  — **briefed** ([brief](t-110c-brief.md))
+#### T-110c — the view  — ✅ **LANDED** `50186c2` ([brief](t-110c-brief.md))
 `bridge/comfy.ts`, `state/comfy.ts`, `Setup.tsx`, `theme.css`. Every degraded state carries a
 next step, enforced by a test that sweeps all states. ~440 lines, knowingly a little over the
 guide.

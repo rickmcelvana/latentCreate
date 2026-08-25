@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 79 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), **T-109a/b (`ollama_native`: model listing + pull with progress)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-110a/b/c** — all three briefed and ready for producer Aider runs ([a](tasks/t-110a-brief.md) typed `server_info` + launch, [b](tasks/t-110b-brief.md) Tauri commands, [c](tasks/t-110c-brief.md) the view) — then T-111/T-112 and T-113's live milestone. Profiles now load and can be checked against a template; nothing is wired to a *model pipeline* yet — that is T-110's wizard seam. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
+- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 87 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **T-111** (models step: installed models against shipped profiles, per-model licence terms wherever a model is chosen), then **T-112** (LLM step, where T-109's capability work pays off: filtered pickers, thinking flags, the remote-model privacy disclosure) and **T-113**’s live milestone. The wizard now has its first real step; nothing is wired to a *model pipeline* yet. The `ComfyBackend` trait is deferred (decisions log 2026-08-24).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -983,3 +983,42 @@ unverified, for the producer's click-through.
 each carries "no non-ASCII characters anywhere in the diff" as an explicit acceptance
 criterion. A separate task is queued to enforce that in the gate rather than in prose — it
 has now cost a review round on four consecutive tasks, most recently my own `health.rs`.
+
+### 2026-08-25 — T-110a/b/c landed; mutation testing found two guards I had written and never armed
+
+All three runs came back **byte-identical to the verified reference** on every new file
+(`health.rs`, `comfy.rs`, `bridge/comfy.ts`, `state/comfy.ts`, `comfy.test.ts`, `Setup.tsx`) and on the
+`theme.css` and `types.rs` edits. One defect, and a trivial one: `mod jobs;` landed after
+`mod local;` in `mcp-bridge/src/lib.rs`. Fixed directly. Test counts hit the briefed targets
+exactly — mcp-bridge 79 to 86, app 7 to 12, vitest 21 to 28 across 6 files.
+
+**The ASCII rule held for the first time in four tasks.** Not one non-ASCII character in the
+diff. Making it an explicit acceptance criterion in each brief appears to have been enough;
+the gate check is still worth having, because prose that works is still prose.
+
+**Then mutation testing earned its place.** Four guards checked; two survived, and both were
+guards I wrote myself in the reference implementation, with tests I also wrote that did not
+arm them.
+
+- Deleting the `unsupported` early return from `Freshness::update_available` changed nothing:
+  all 86 tests passed. The unsupported payload carries no `core` block, so the function
+  falls through to `false` anyway. The test asserted the *outcome* on the captured shape, not
+  the *rule*. Only a payload carrying both `unsupported: true` and a stale `core` can tell a
+  present guard from an absent one, and that is the test now added.
+- Replacing `is_running`'s body with `self.server.is_some()` also passed all 86 — mcp-bridge
+  never exercised `running: false`. It was caught, but one crate downstream, by
+  `test_stopped_server_classifies_as_server_down` in `src-tauri`. A rule should be armed in
+  the crate that owns it, not by a caller that happens to cover it.
+
+**The lesson, stated plainly: a test written from a captured payload guards the payload, not
+the rule.** Both of these read as thorough — they name the right rule in the doc comment and
+assert the right answer — and both would have let the rule be deleted silently. The captured
+shape made the guard look covered precisely because the captured shape is the easy case.
+Worth applying to the other payload-derived tests as they are written, not retrofitted.
+
+The two armed guards behaved: breaking `is_port_in_use` and dropping `server_down`'s next
+step each failed exactly one test, the sweep naming the offending state in its message.
+
+mcp-bridge is now 87 tests. Gate green; landed as `50186c2`. No browser re-verification — the
+frontend is byte-identical to what was driven through all five states before briefing. The
+pill's colour transition remains unverified by me, for the producer's click-through.

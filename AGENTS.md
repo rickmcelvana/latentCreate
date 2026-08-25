@@ -7,7 +7,7 @@
 4. [CONVENTIONS.md](CONVENTIONS.md) — code standards. Fed to Aider with `--read` on every run.
 4b. [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — **verified** comfy-mcp tool names, slot addresses, LoRA and template facts. Authoritative over docs/RESEARCH.md and over any model documentation. Read before touching `mcp-bridge` or writing a model profile.
 4c. [docs/LLM-SURFACE.md](docs/LLM-SURFACE.md) — **verified** OpenAI-compatible wire format: the `delta.reasoning` split, the empty-`choices` usage frame, non-JSON error bodies, SSE framing rules. Read before touching `llm-bridge`.
-5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number. **Currently [tasks/phase-1.md](tasks/phase-1.md)**; T-101 through T-106b have landed and **T-107 (profile loader) is next**. PROJECT.md's Snapshot carries the live state — trust it over this line if they ever disagree.
+5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number. **Currently [tasks/phase-1.md](tasks/phase-1.md)**; T-101 through T-110c have landed and **T-111 (Setup wizard: models step) is next**. PROJECT.md's Snapshot carries the live state — trust it over this line if they ever disagree.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.
