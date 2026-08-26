@@ -416,11 +416,24 @@ roughly 250 of it is tests and the file is one coherent surface.
 #### T-112d — the view  — ✅ **LANDED** `e4c3e98` ([brief](t-112d-brief.md))
 `Setup.tsx`, `theme.css`. The remote disclosure sits on the row, not in a footnote.
 
-### T-113 — Phase 1 milestone (producer)
+### T-113 — Phase 1 milestone (producer)  — ✅ **DONE 2026-08-25**, tagged `phase1-done`
 Live check on a real install: wizard from cold → ACE-Step present or installed via the app →
 server info visible → LLM test call returns. Run `cargo test -p llm-bridge -- --ignored` against the real endpoint too (T-108c). Re-fetch the ACE-Step template and confirm the
 `ace-step-1.5-turbo` profile's slot addresses still resolve (the gallery is cached with a
 24 h TTL and can drift). Tag `phase1-done`.
+
+**Result.** Producer: wizard from cold, ComfyUI started from the app's own button, server info
+visible, models step Ready, LLM test call returns, both `--ignored` suites green. Architect,
+same day: a freshly fetched `audio_ace_step1_5_xl_turbo` reports `local_check: runnable: true`
+with **zero errors** now the four model files are installed (it had four errors before), and
+**all 17 slot addresses** the `ace-step-1.5-turbo` profile declares resolve against it. No
+gallery drift.
+
+**One seam not exercised through the UI:** `models_install` / `models_progress` as Tauri
+commands. The 18.5 GiB install ran the same `download_model` calls they make, but the wizard
+was clicked through afterwards, when the models were already present and the Install button was
+therefore never offered. Verified by construction and unit tests, not by a click — worth doing
+once in Phase 2 on a machine missing a model.
 
 ---
 

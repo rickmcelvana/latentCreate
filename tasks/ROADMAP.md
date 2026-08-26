@@ -7,11 +7,12 @@ Repo skeleton that compiles, lints, tests, and launches an empty themed shell.
 Cargo workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library` stubs), Tauri 2 shell, Vite/React/TS app with nav rail + theme.css, CI (fmt/clippy/test/tsc/build on the three desktop OSes), config store + keychain plumbing, docs/license boilerplate.
 **Milestone check:** `npm run tauri dev` shows the themed empty shell; CI green.
 
-## Phase 1 — Connections & setup wizard (T-101 …) — **NEXT**, planned in [phase-1.md](phase-1.md)
+## Phase 1 — Connections & setup wizard (T-101 … T-113) — ✅ **COMPLETE**, tagged `phase1-done` — [phase-1.md](phase-1.md)
 `mcp-bridge` against real `comfy-mcp` — **tool surface and LoRA enumeration already verified 2026-08-23 (docs/MCP-SURFACE.md), so this phase implements against known names instead of discovering them.** `ComfyBackend` trait + **stdio (local) only**; the cloud backend is a separate later task gated on verifying a live cloud endpoint (its tool names differ). Mock-transport test rig, job event pump. `llm-bridge` with `openai_compat` + `ollama_native` (+ streaming). Model profile loader (`profiles/` + user dir merge) and the seed profiles (docs/MODELS.md). Setup wizard UI (ARCHITECTURE §10): detect/install guidance, health pills, curated model install with progress, per-model license display, LLM config + test call with the recommended-for-lyrics chips.
-**Milestone check (live):** fresh machine → wizard → ACE-Step installed via app → server info visible. Second check on the owner's machine: the `ace-step-1.5-turbo` profile's slot addresses still resolve against a freshly fetched template (guards against gallery drift).
+**Milestone check (live) — done 2026-08-25:** the wizard opened from cold, ComfyUI was started from the app's own button, server info rendered, the models step read Ready, and the LLM test call returned. ACE-Step 1.5 XL Turbo (18.5 GiB, four files) was downloaded through the app's install path, after which `local_check` on a freshly fetched template went to `runnable: true` with zero errors, and all 17 slot addresses the profile declares still resolved against it. `cargo test -p llm-bridge -- --ignored` and `cargo test -p app -- --ignored` both green.
+**Not exercised through the UI:** `models_install` / `models_progress` as *Tauri commands*. The download ran the same `download_model` calls they make, but by the time the wizard was clicked through the models were already installed, so the Install button was never offered. The wrappers are verified by construction and by their unit tests, not by a click.
 
-## Phase 2 — Lyrics Studio (T-201 …)
+## Phase 2 — Lyrics Studio (T-201 …) — **NEXT**
 Brief form with prefills, system-prompt assembly from profile (ARCHITECTURE §6), streaming generation UI, versioned editor with structure-tag validation, approve → handoff store action, consent-gated prompt optimizer with diff view (shared component — reused for audio tags in Phase 3).
 **Milestone check (live):** brief → lyrics stream in → edit → approve; optimizer diff accept/revert round-trips.
 

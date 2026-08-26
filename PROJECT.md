@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 complete, tagged `phase0-done`** (2026-08-23). **Phase 1 in progress** — [tasks/phase-1.md](tasks/phase-1.md). The app builds, runs, has a nav shell over five placeholder views, a complete domain model, a config store with OS-keychain secrets, and CI. **It can now talk to `comfy-mcp`** (`mcp-bridge`, 88 offline tests — the whole verified tool surface) end to end: `src-tauri` holds the backend in managed state with a job event pump, and the frontend bridge/store/queue consume the `job://*` events. Nothing is wired to a *model pipeline* yet.
-- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), **T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), **T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row)**, **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-113** — the Phase 1 live milestone, which is the producer's to run: the wizard from cold, ACE-Step present, server info visible, an LLM test call that returns, `cargo test -p llm-bridge -- --ignored` against the real endpoint, and a re-fetch of the ACE-Step template to confirm the profile's slot addresses still resolve. Then tag `phase1-done`. All three wizard steps are built; nothing is wired to a *generation pipeline* yet, which is Phase 2.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio, T-201 onwards) is next and has no briefs yet** — they are written at the start of a phase, not ahead of it. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
+- **Next up:** **Phase 2, Lyrics Studio.** Nothing is briefed. The phase covers the brief form with profile prefills, system-prompt assembly from the profile (ARCHITECTURE 6), streaming generation UI over `llm-bridge`, a versioned editor with structure-tag validation, approve-to-handoff, and the consent-gated prompt optimizer with a diff view. Start it the way every phase here has started: **read the surface before writing a wrapper**, and write the briefs only once the interfaces are known.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -108,16 +108,28 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 
 *Resolved: OQ-1 (Apache-2.0), OQ-2 (lyric-LLM guidance), OQ-4 (send-to owned by mixing/mastering) — all in the decisions log above.*
 
-- **OQ: is ACE-Step 1.5 XL Turbo's `vram_gb_min: 8` right?** The profile says 8 GiB, but the
-  XL turbo DiT alone is 9.3 GiB and the full set is 18.5 GiB. The figure predates any live run.
-  Not changed here, because guessing a different number is no better — settle it at T-113 on
-  the real card (this machine has 15.9 GiB).
+- **OQ: is ACE-Step 1.5 XL Turbo's `vram_gb_min: 8` right?** **Still open, and now the oldest
+  unanswered question in the repo.** The profile says 8 GiB; the XL turbo DiT alone is 9.3 GiB
+  and the full set is 18.5 GiB, so the figure looks wrong. T-113 did not settle it: the
+  milestone never required a *generation*, only that the wizard reach "ready". It cannot be
+  settled by argument — it needs one real run on the 15.9 GiB card, which is Phase 3's first
+  chance. Until then the number stays as written rather than swapping one guess for another.
 - ~~**OQ: `download` status `"completed"` is still inferred.**~~ **Settled 2026-08-25** by a real
   18.5 GiB ACE-Step install: `starting` -> `downloading` -> `completed`, and nothing else across
   four concurrent downloads. `isTerminal` is correct as written. Also settled: freshly downloaded
   files appear to `search_models` with **no ComfyUI restart**, so the post-install re-check is
   enough.
 ## Backlog (accepted, not yet scheduled)
+- **Click the Install button once, on a machine missing a model.** `models_install` and
+  `models_progress` are the only Tauri commands in the wizard never exercised through the UI:
+  the 18.5 GiB install ran the same `download_model` calls they wrap, but the click-through
+  happened afterwards, with the models already present, so the button was never offered. The
+  wrappers are covered by unit tests and by construction, not by a click.
+- **Enforce the ASCII rule in `npm run gate` and CI**, rather than in prose. It has cost a
+  review round on five consecutive tasks; executors have been right about it every single time,
+  and a sweep at T-111 found five pre-existing violations that earlier reviews had missed. The
+  rule is "ASCII in code and comments; UI strings may use Unicode", so the check must exempt
+  rendered strings — `app/src/views/CoverArt.tsx` holds a legitimate one.
 - Album lists → bulk send-to-mastering once mastering's bulk import lands (owner-stated future feature).
 - latentPlayer integration (library hand-off) once player matures.
 - Audio-to-audio flows (cover/remix/extend) for models that support it — profiles already leave room via `inputs`.
@@ -1271,3 +1283,49 @@ Live tests re-run against the landed code: 13 ids, 13 enriched, 2 unusable remov
 disclosed; the test call returned `ok=true saw_reasoning=true content="ok"`. Gate green.
 Final counts: create-core 41, library 21 (+1 ignored), llm-bridge 34 (+3), mcp-bridge 88,
 app 26 (+4), vitest 51 across 8 files.
+
+### 2026-08-25 — T-113 done; Phase 1 complete, tagged `phase1-done`
+
+**Producer, live on the real install:** the wizard opened from cold, **ComfyUI started from the
+app's own button**, server info rendered, the models step read Ready, and the LLM test call
+returned. `cargo test -p llm-bridge -- --ignored` and `cargo test -p app -- --ignored` both
+green.
+
+**Architect, same session:** the two checks T-113 asks for that are verifiable from here. A
+freshly fetched `audio_ace_step1_5_xl_turbo` now reports **`local_check: runnable: true` with
+zero errors** — it had four, one per missing model file, when T-111 was written. That is the
+cleanest possible end-to-end confirmation that the models step's declared-file list was correct:
+the app downloaded exactly what the template needed, nothing more, nothing missing. And **all 17
+slot addresses** the `ace-step-1.5-turbo` profile declares still resolve against that template.
+No gallery drift, which was the specific risk T-113 named (24 h TTL).
+
+**One seam recorded rather than glossed.** `models_install` and `models_progress` have never run
+through the Tauri boundary. The 18.5 GiB download used the same `download_model` calls they
+wrap, but the click-through came afterwards, when the models were present and the Install button
+was therefore never offered. Verified by construction and unit tests, not by a click —
+backlogged, because "the code underneath is tested" is exactly the reasoning that let the
+`launch_comfyui` payload be wrong for a day.
+
+**Phase 1 in one line: the app can now talk to both of the user's services and get them from a
+clean install to "ready to generate".** Three wizard steps, each of which turned out to be
+mostly about telling the truth when a service could not answer — ComfyUI down is not "no
+models", an unreadable capability is not "local", a stopped server is not an empty catalogue.
+
+**What the phase actually cost, and where.** Thirteen tasks became **34 executor runs**. Every
+run but a handful came back byte-identical to a reference implementation the architect had
+already compiled, gate-run and driven live, which is the loop working as designed. The expensive
+mistakes were never executor mistakes:
+
+- **Guessing a payload shape from documentation.** `ServerInfo` at T-101 (three opaque `Value`s
+  where the live payload has seven blocks) and `LaunchResult` at T-110 (`{"ok": true}`, which
+  the server never sends). Both cost a rewrite. The narrower lesson from the second: **verifying
+  the error path is not verifying the success path.**
+- **Tests that could not fail.** Four guards across T-110 and T-112 passed against mutations
+  because the fixture was already in the state that made the rule invisible — an unsupported
+  freshness block with no `core` to outrank, a model list already in sorted order. Mutation
+  testing caught all four; nothing else would have.
+- **Prose where a check belonged.** The ASCII rule, five tasks running.
+
+**Handoff state:** working tree clean, gate green, `phase1-done` tagged and pushed. ComfyUI is
+left **running** (the producer started it from the app); Ollama is running with 13 models.
+ACE-Step 1.5 XL Turbo and MiniMax Music 3 are both fully installed.
