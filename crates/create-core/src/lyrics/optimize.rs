@@ -115,6 +115,49 @@ pub fn clean_optimized(raw: &str) -> String {
     trimmed.to_string()
 }
 
+/// The label of every labelled line, in the order the lines appear.
+///
+/// A **measurement** helper, used by T-211's live check to answer "did the
+/// rewrite come back as the same brief". Lines with no colon contribute
+/// nothing: commentary the model added is not a label, and `clean_optimized`
+/// deliberately leaves it in place.
+pub fn labels_in_order(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| line.split_once(':'))
+        .map(|(label, _)| label.trim().to_string())
+        .collect()
+}
+
+/// Which [`FIXED_LABELS`] lines the rewrite failed to reproduce.
+///
+/// **This is a measurement, not a gate.** Nothing in the app calls it to reject
+/// a rewrite: a changed settings line is already a highlighted change the user
+/// has to accept, and a second enforcement point would be a second answer to a
+/// question the consent step answers (PROJECT.md, 2026-08-26). It exists so
+/// T-211 can put a number on how often the prompt's own rules hold.
+///
+/// A line is "reproduced" when its whole text matches after trimming --
+/// trailing whitespace is not a change anyone means. A label present in one
+/// text and absent from the other counts as altered, because dropping
+/// `Target duration` changes the request as surely as rewriting it. Line
+/// **order** is deliberately not considered here; [`labels_in_order`] is the
+/// question about order.
+pub fn altered_fixed_lines(original: &str, optimized: &str) -> Vec<String> {
+    FIXED_LABELS
+        .iter()
+        .filter(|label| labelled_line(original, label) != labelled_line(optimized, label))
+        .map(|label| (*label).to_string())
+        .collect()
+}
+
+/// The whole line carrying `label`, trimmed, if the text has one.
+fn labelled_line<'a>(text: &'a str, label: &str) -> Option<&'a str> {
+    text.lines().map(str::trim).find(|line| {
+        line.split_once(':')
+            .is_some_and(|(found, _)| found == label)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +273,63 @@ mod tests {
     fn test_clean_optimized_keeps_commentary_for_the_user_to_see() {
         let raw = "Here is the improved brief:\nTheme: a night drive";
         assert_eq!(clean_optimized(raw), raw);
+    }
+
+    /// Invariant: the measurement reports a settings line the rewrite changed
+    /// or dropped, and stays quiet about one it merely reformatted. A helper
+    /// that cried wolf over a trailing space would make T-211's number
+    /// meaningless; one blind to a dropped line would hide the failure that
+    /// matters most.
+    #[test]
+    fn test_altered_fixed_lines_reports_real_changes_only() {
+        let original = "Theme: a night drive\nStructure: V-C-V-C-B-C (Verse, Chorus)\nLanguage: English\nPoint of view: first person\nExplicit content allowed: no\nTarget duration: 120 seconds";
+
+        assert!(altered_fixed_lines(original, original).is_empty());
+
+        let creative_only = original.replace("a night drive", "a rain-slick night drive");
+        assert!(
+            altered_fixed_lines(original, &creative_only).is_empty(),
+            "rewriting the theme is what the optimizer is for"
+        );
+
+        let padded = original.replace("Language: English", "Language: English   ");
+        assert!(
+            altered_fixed_lines(original, &padded).is_empty(),
+            "trailing whitespace is not a change anyone means"
+        );
+
+        let retimed = original.replace("120 seconds", "180 seconds");
+        assert_eq!(altered_fixed_lines(original, &retimed), ["Target duration"]);
+
+        let dropped = original.replace("Point of view: first person\n", "");
+        assert_eq!(altered_fixed_lines(original, &dropped), ["Point of view"]);
+    }
+
+    /// Invariant: the labels come back in the order they appear, and prose the
+    /// model added is not mistaken for one. Order is the other half of "did it
+    /// come back as the same brief", and a colon in a sentence is not a label.
+    #[test]
+    fn test_labels_in_order_reads_the_brief_and_not_the_prose() {
+        let brief = assemble_user_message(&LyricBrief::default());
+        assert_eq!(
+            labels_in_order(&brief),
+            [
+                "Theme",
+                "Genre and style tags",
+                "Mood",
+                "Structure",
+                "Language",
+                "Point of view",
+                "Explicit content allowed",
+                "Target duration",
+            ]
+        );
+
+        let with_commentary = format!("Sure, here you go\n{brief}");
+        assert_eq!(
+            labels_in_order(&with_commentary),
+            labels_in_order(&brief),
+            "a line without a colon is not a label"
+        );
     }
 }

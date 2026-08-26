@@ -217,15 +217,74 @@ it was written down (LLM-SURFACE 12.5); this one is a first draft. T-211 is wher
 real model.
 
 ### T-211 — Phase 2 milestone verification (live)
-ROADMAP's check, run for real: brief -> lyrics stream in -> edit -> approve, and the
-optimizer diff accepts and reverts cleanly. Plus the two checks only a live run can make --
-that a thinking model chosen in the wizard generates a whole song, and that the lint fires on
-the production-cue lines the model actually writes.
 
-**T-210 adds a third live check, and it is a measurement rather than a click-through.** The
-optimizer prompt is unmeasured, and this repo's rule is that a prompt is a third-party surface
-(LLM-SURFACE 12.5). Over a handful of runs on the recommended model, record: does the rewrite
-come back as the same labelled lines; does it reproduce the five fixed lines word for word;
-does the rewritten brief produce a better song than the original. A prompt that fails the
-second one is not fixed by trusting it harder -- the diff already shows the user, and the
-question is whether the rule is worth keeping in the prompt at all.
+Producer-run, per WORKFLOW 5: this is the check nothing offline can make. **Lyrics need no
+ComfyUI** -- only the LLM endpoint -- so a failure here is never about the audio service.
+
+**Preconditions**
+- Ollama (or any OpenAI-compatible endpoint) running, and a lyric model configured through
+  the wizard's LLM step. Prefer a **thinking** model (gemma4): step 4 is meaningless without
+  one, since it is the `reasoning_effort` policy being exercised.
+- `npm run gate` green on the commit under test.
+
+**Step 1 -- the measurement (automated; run this first, it is the cheapest).**
+```
+cargo test -p app -- --ignored optimizer --nocapture
+```
+Five optimizer round trips against the real model. Prints, per run, whether the rewrite came
+back as the same labelled lines and which of the five fixed lines it altered, plus run 1's
+rewrite in full. **Paste the whole report into PROJECT.md's session log.** What the numbers
+mean:
+- *labels intact 5/5, fixed lines 5/5* -- the prompt's rules hold; record it and move on.
+- *fixed lines held only sometimes* -- the diff already shows the user, so the question is
+  whether the rule earns its place in the prompt. Consider surfacing "this rewrite also
+  changed: Target duration" under the diff, which informs consent without gating it.
+  `create-core::lyrics::optimize::altered_fixed_lines` already computes that list.
+- *labels mangled, or commentary in the answer* -- the rewrite is not diffable against the
+  brief, which is the one thing the prompt has to deliver. That is a prompt change, and by
+  this repo's rule it gets re-measured, not reasoned about.
+- Also judge, by eye, the one thing no assertion can: **does run 1's rewrite describe a better
+  song than the brief did?** An optimizer that reliably preserves structure and reliably makes
+  the song worse is not a feature.
+
+**Step 2 -- brief to approved lyric (the ROADMAP check).**
+1. Open Lyrics. The form opens prefilled, and the subtitle names the profile being written for.
+2. Generate. Watch the status: `Starting...` then `Thinking...` (reasoning on the status line)
+   then `Writing...`. **The thinking text is the point** -- if the panel sits silent for tens
+   of seconds, T-208's proof-of-life is not working.
+3. Let it finish. The draft is editable, and a version appears in the list labelled with the
+   model name.
+4. Edit the draft, Save. A second version appears, labelled `edited from v1`.
+5. Check. Lint findings render as advisories -- warnings and info, nothing blocking.
+6. Approve a version. The approved badge appears and the "ready for audio" line shows.
+
+**Step 3 -- the optimizer, accepted and reverted.**
+1. Optimize prompt. The diff appears: original left, rewrite right, changed words highlighted.
+2. Confirm the **Optimize button is now disabled** -- one rewrite in play at a time.
+3. Revert. The diff disappears; Generate is back to sending the brief.
+4. Optimize again, then Edit, change a word by hand, Done editing, Accept. The banner reads
+   "Generate will send your accepted prompt".
+5. Change any brief field. **The banner must disappear** -- an accepted prompt does not
+   survive the brief it was written against.
+6. Optimize, Accept, Generate. The lyric that comes back was written from the accepted prompt.
+
+**Step 4 -- the two checks only a live run can make.**
+- A thinking model generates a **whole song**, not 85 characters and a truncation banner. This
+  is `reasoning_effort: "none"` working end to end (LLM-SURFACE 12.2); if the truncation banner
+  appears on a default brief, the policy is not reaching the request.
+- The lint **fires on the production cues the model actually writes** -- `[Vocal style: ...]`
+  and friends appeared in 10 of 13 captured generations. A clean lint on every run is more
+  likely a broken scanner than a well-behaved model. Record the finding counts.
+
+**Step 5 -- what landed on disk.** Open the lyric document under the app config dir
+(`library/projects/my-first-song/lyrics/<doc-id>.json`) and confirm the claims T-209 and T-210
+make about provenance:
+- every version present, with its `source` (`llm` with the model name, `human`, `edited`);
+- `approved` naming the version approved in step 2;
+- **`prompt_optimized: true` on the version generated in step 3.6 and `false` on the others.**
+  This is the one T-210 claim that only a real run proves, and the flag is the record of the
+  user's consent.
+
+**Recording the result.** Results go in PROJECT.md's session log, pass or fail, with the
+measurement report pasted verbatim. A step that fails becomes a T-212 fix-up brief rather than
+a silent retry; the phase closes and tags `phase2-done` only when steps 1-5 all pass.

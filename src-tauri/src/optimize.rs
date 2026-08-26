@@ -15,6 +15,7 @@ use create_core::lyrics::optimize::{
     clean_optimized, optimizer_system_prompt, OPTIMIZER_MAX_TOKENS,
 };
 use create_core::lyrics::{assemble_user_message, LyricBrief};
+use create_core::profile::ModelProfile;
 use futures_util::StreamExt;
 use llm_bridge::{ChatDelta, ChatMessage, ChatRequest, LlmError, OpenAiCompat, Role};
 use serde::Serialize;
@@ -56,13 +57,28 @@ pub async fn lyrics_optimize(
     let (base_url, model) = configured_llm(&config_dir.0)?;
     let profile = load_profile(&profiles_dir.0, &config_dir.0, &profile_id)?;
 
-    let original = assemble_user_message(&brief);
-    let system = optimizer_system_prompt(&profile);
-
     let key = library::secrets::get_secret(library::SecretKey::LlmApiKey).ok();
     let client = OpenAiCompat::new(base_url.clone(), key).map_err(|e| e.to_string())?;
-
     let thinks = model_thinks(&base_url, &model).await;
+
+    optimize_with(&client, &profile, &brief, model, thinks).await
+}
+
+/// One optimizer round trip against an already-built client.
+///
+/// Split from the command so T-211's live check exercises **this** path rather
+/// than a re-implementation of it: a live test that rebuilds the request proves
+/// the endpoint works and nothing about the code that will call it.
+async fn optimize_with(
+    client: &OpenAiCompat,
+    profile: &ModelProfile,
+    brief: &LyricBrief,
+    model: String,
+    thinks: Option<bool>,
+) -> Result<PromptOptimization, String> {
+    let original = assemble_user_message(brief);
+    let system = optimizer_system_prompt(profile);
+
     let request = ChatRequest {
         model,
         messages: vec![
@@ -205,6 +221,104 @@ mod tests {
         .await
         .expect_err("a broken stream is not an answer");
         assert!(error.contains("bad frame"), "{error}");
+    }
+
+    /// **T-211's optimizer measurement**, excluded from CI.
+    ///
+    /// `cargo test -p app -- --ignored optimizer --nocapture` with Ollama
+    /// running on the default port and a gemma4 model installed.
+    ///
+    /// The optimizer prompt was written and shipped without ever meeting a
+    /// model, which this repo treats as an unverified third-party surface
+    /// (LLM-SURFACE 12.5). This run answers the two questions that decide
+    /// whether its rules are worth keeping: does the rewrite come back as the
+    /// **same labelled lines**, and does it reproduce the **five fixed lines**
+    /// word for word.
+    ///
+    /// **It asserts the plumbing and prints the measurement.** Asserting a rate
+    /// nobody has observed yet would encode a guess as a requirement, and the
+    /// third question -- whether the rewritten brief actually writes a better
+    /// song -- is a judgement no assertion can make. Paste the report into
+    /// PROJECT.md's session log; the decision about the prompt follows the
+    /// numbers, not the other way round.
+    #[tokio::test]
+    #[ignore = "T-211 live measurement: requires a local endpoint on 127.0.0.1:11434"]
+    async fn test_live_optimizer_returns_a_brief_and_reports_what_it_altered() {
+        use create_core::lyrics::optimize::{altered_fixed_lines, labels_in_order};
+
+        const RUNS: usize = 5;
+
+        let profile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../profiles/ace-step-1.5-turbo.json");
+        let profile: ModelProfile = serde_json::from_str(
+            &std::fs::read_to_string(&profile_path).expect("shipped profile is readable"),
+        )
+        .expect("shipped profile parses");
+
+        let base_url = "http://127.0.0.1:11434/v1";
+        let client = OpenAiCompat::new(base_url, None).expect("client");
+        let models = client.list_models().await.expect("model list");
+        let model = models
+            .iter()
+            .find(|id| id.starts_with("gemma4:"))
+            .cloned()
+            .unwrap_or_else(|| models.first().cloned().expect("endpoint offers no models"));
+        let thinks = crate::lyrics::model_thinks(base_url, &model).await;
+
+        let brief = LyricBrief::default();
+        let expected_labels = labels_in_order(&assemble_user_message(&brief));
+
+        println!("\n=== T-211 optimizer measurement ===");
+        println!("model: {model}  thinks: {thinks:?}  runs: {RUNS}");
+        println!("expected labels: {expected_labels:?}\n");
+
+        let mut labels_held = 0;
+        let mut fixed_held = 0;
+
+        for run in 1..=RUNS {
+            let started = std::time::Instant::now();
+            let result = optimize_with(&client, &profile, &brief, model.clone(), thinks)
+                .await
+                .unwrap_or_else(|e| panic!("run {run} failed: {e}"));
+            let elapsed = started.elapsed();
+
+            let labels = labels_in_order(&result.optimized);
+            let altered = altered_fixed_lines(&result.original, &result.optimized);
+            if labels == expected_labels {
+                labels_held += 1;
+            }
+            if altered.is_empty() {
+                fixed_held += 1;
+            }
+
+            println!(
+                "run {run}: {:.1}s  truncated={}  labels_match={}  altered_fixed={:?}",
+                elapsed.as_secs_f32(),
+                result.truncated,
+                labels == expected_labels,
+                altered
+            );
+            if labels != expected_labels {
+                println!("  labels were: {labels:?}");
+            }
+            if run == 1 {
+                println!("--- run 1 rewrite ---\n{}\n---", result.optimized);
+            }
+
+            assert!(
+                !result.optimized.trim().is_empty(),
+                "run {run} returned nothing to review"
+            );
+            assert!(
+                labels.contains(&"Theme".to_string()),
+                "run {run} came back with no Theme line at all: {:?}",
+                result.optimized
+            );
+        }
+
+        println!("\nlabels intact: {labels_held}/{RUNS}");
+        println!("fixed lines reproduced: {fixed_held}/{RUNS}");
+        println!("=== end measurement ===\n");
     }
 
     /// Protects: both texts cross the boundary with the names the frontend
