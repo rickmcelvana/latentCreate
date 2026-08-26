@@ -3,10 +3,12 @@ import {
   cancelLyrics,
   generateLyrics,
   isTauri,
+  optimizePrompt,
   subscribeLyrics,
   DEFAULT_BRIEF,
   type LyricBrief,
   type LyricEvent,
+  type PromptOptimization,
 } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
 import {
@@ -163,7 +165,32 @@ export function approvedText(doc: LyricDoc | null): string | null {
   return doc.versions.find((version) => version.number === doc.approved)?.text ?? null
 }
 
-interface LyricsState extends LyricsSnapshot {
+/**
+ * The optimizer's state, as three fields that cannot contradict each other.
+ *
+ * `optimization` is the round trip awaiting review and `proposed` is the text
+ * the user is reviewing (their edits included); both clear on Accept or Revert.
+ * `promptOverride` is the only one generation reads, and it is set **only** by
+ * Accept -- which is what makes the optimizer consent-gated rather than a
+ * rewrite that happens to be visible (ARCHITECTURE 6).
+ */
+export interface OptimizerState {
+  optimization: PromptOptimization | null
+  proposed: string
+  optimizing: boolean
+  /** The accepted prompt, sent in place of the assembled brief. */
+  promptOverride: string | null
+}
+
+/** The optimizer state as it looks with nothing proposed and nothing accepted. */
+const NO_OPTIMIZATION: OptimizerState = {
+  optimization: null,
+  proposed: '',
+  optimizing: false,
+  promptOverride: null,
+}
+
+interface LyricsState extends LyricsSnapshot, OptimizerState {
   brief: LyricBrief
   listening: boolean
   /** The working document, opened by [`loadDoc`]. */
@@ -171,6 +198,10 @@ interface LyricsState extends LyricsSnapshot {
   /** Advisory lint findings for the current draft. */
   findings: LintFinding[]
   setBrief: (patch: Partial<LyricBrief>) => void
+  optimize: (profileId: string) => Promise<void>
+  setProposed: (text: string) => void
+  acceptOptimized: () => void
+  revertOptimized: () => void
   prefillFrom: (guide: ProfileGuide | null) => void
   setDraft: (text: string) => void
   generate: (profileId: string) => Promise<void>
@@ -196,8 +227,37 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   listening: false,
   doc: null,
   findings: [],
+  ...NO_OPTIMIZATION,
 
-  setBrief: (patch) => set((state) => ({ brief: { ...state.brief, ...patch } })),
+  // Editing the brief drops any accepted prompt. The override was written
+  // against the previous brief, so keeping it would leave the form describing
+  // one song while the request describes another -- and the form is what the
+  // user believes they are sending.
+  setBrief: (patch) =>
+    set((state) => ({ brief: { ...state.brief, ...patch }, ...NO_OPTIMIZATION })),
+
+  optimize: async (profileId) => {
+    if (!isTauri() || get().optimizing) return
+    set({ optimizing: true, error: null })
+    try {
+      const optimization = await optimizePrompt(get().brief, profileId)
+      set({ optimization, proposed: optimization.optimized, optimizing: false })
+    } catch (err: unknown) {
+      set({ optimizing: false, error: String(err) })
+    }
+  },
+
+  setProposed: (text) => set({ proposed: text }),
+
+  // The one place `promptOverride` is written. A blank proposal is not an
+  // acceptance: there is nothing there to have consented to.
+  acceptOptimized: () => {
+    const proposed = get().proposed
+    if (proposed.trim() === '') return
+    set({ promptOverride: proposed, optimization: null, proposed: '' })
+  },
+
+  revertOptimized: () => set({ ...NO_OPTIMIZATION }),
 
   prefillFrom: (guide) => {
     const tags = styleTagsFromGuide(guide)
@@ -215,7 +275,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     if (!isTauri() || get().generating) return
     set({ draft: '', thinking: [], truncated: false, error: null, generating: true })
     try {
-      await generateLyrics(get().brief, profileId)
+      await generateLyrics(get().brief, profileId, get().promptOverride)
     } catch (err: unknown) {
       set({ generating: false, error: String(err) })
     }
@@ -270,7 +330,13 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     const draft = get().draft
     if (draft.trim() === '') return
     const model = useConfigStore.getState().config?.llm?.model ?? ''
-    await get().commit({ kind: 'llm', model, prompt_optimized: false })
+    // The provenance flag is the accepted override, not the fact that an
+    // optimizer ran: a rewrite the user reverted never reached the model.
+    await get().commit({
+      kind: 'llm',
+      model,
+      prompt_optimized: get().promptOverride !== null,
+    })
   },
 
   commitEdited: async () => {

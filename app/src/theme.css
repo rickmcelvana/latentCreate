@@ -757,3 +757,136 @@ body {
   display: flex;
   gap: var(--gap-sm);
 }
+
+/* --- The shared prompt diff (LyricsStudio now, audio tags in Phase 3) --- */
+
+.prompt-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  max-width: 960px;
+  margin-top: var(--gap-lg);
+}
+
+.prompt-diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.prompt-diff-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.prompt-diff-lede {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.prompt-diff-panes {
+  display: flex;
+  gap: var(--gap-md);
+  align-items: stretch;
+}
+
+.prompt-diff-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.prompt-diff-pane-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.prompt-diff-text {
+  margin: 0;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 200px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.prompt-diff-edit {
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 200px;
+  max-height: 360px;
+  resize: vertical;
+}
+
+.prompt-diff-edit:focus-visible {
+  outline: none;
+  border-color: var(--accent-hover);
+}
+
+.prompt-diff-removed {
+  background: rgba(248, 81, 73, 0.18);
+  color: var(--danger);
+  text-decoration: line-through;
+  border-radius: var(--gap-xs);
+}
+
+.prompt-diff-added {
+  background: var(--accent-glow);
+  color: var(--accent-hover);
+  border-radius: var(--gap-xs);
+}
+
+.prompt-diff-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.prompt-diff-actions {
+  display: flex;
+  gap: var(--gap-sm);
+}
+
+.lyrics-optimized {
+  max-width: 720px;
+  margin: var(--gap-md) 0 0;
+  padding: var(--gap-sm) var(--gap-md);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.lyrics-link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.lyrics-link:hover {
+  color: var(--accent-hover);
+}

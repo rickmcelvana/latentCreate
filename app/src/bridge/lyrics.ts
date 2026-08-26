@@ -70,6 +70,19 @@ export const DEFAULT_BRIEF: LyricBrief = {
   target_duration_s: 120,
 }
 
+/**
+ * One optimizer round trip. Mirrors Rust `src-tauri/src/optimize.rs`
+ * `PromptOptimization`.
+ */
+export interface PromptOptimization {
+  /** The brief as the app would otherwise have sent it. */
+  original: string
+  /** The model's rewrite, for the user to accept, edit or revert. */
+  optimized: string
+  /** True when the rewrite was cut off by the token budget. */
+  truncated: boolean
+}
+
 /** True when running inside the Tauri webview rather than a plain browser. */
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -80,9 +93,30 @@ export function isTauri(): boolean {
  *
  * Returns once the backend has accepted the generation, not when it finishes --
  * progress arrives as [`LyricEvent`]s on the subscription.
+ *
+ * `promptOverride` is the optimized prompt the user accepted, or `null` when
+ * they have not accepted one. It replaces the assembled brief and nothing else.
  */
-export async function generateLyrics(brief: LyricBrief, profileId: string): Promise<void> {
-  await invoke('lyrics_generate', { brief, profileId })
+export async function generateLyrics(
+  brief: LyricBrief,
+  profileId: string,
+  promptOverride: string | null,
+): Promise<void> {
+  await invoke('lyrics_generate', { brief, profileId, promptOverride })
+}
+
+/**
+ * Ask the configured LLM to sharpen the brief, returning both texts to diff.
+ *
+ * Rejects when there is nothing to review (no endpoint, a refusal, an empty
+ * answer). Nothing is applied by calling this -- the rewrite becomes the prompt
+ * only once the user accepts it.
+ */
+export async function optimizePrompt(
+  brief: LyricBrief,
+  profileId: string,
+): Promise<PromptOptimization> {
+  return await invoke<PromptOptimization>('lyrics_optimize', { brief, profileId })
 }
 
 /** Abort the in-flight generation, if any. */

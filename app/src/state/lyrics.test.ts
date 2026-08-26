@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { LyricBrief } from '../bridge/lyrics'
+import type { LyricBrief, PromptOptimization } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
 import type { LyricDoc, LintFinding } from '../bridge/lyricdoc'
 import { useConfigStore } from './config'
@@ -28,6 +28,7 @@ const mockDefaultBrief: LyricBrief = vi.hoisted(() => ({
 }))
 
 const mockGenerateLyrics = vi.fn()
+const mockOptimizePrompt = vi.fn()
 const mockCancelLyrics = vi.fn()
 const mockSubscribeLyrics = vi.fn()
 const mockOpenLyricDoc = vi.fn()
@@ -37,7 +38,9 @@ let mockIsTauri = true
 
 vi.mock('../bridge/lyrics', () => ({
   isTauri: () => mockIsTauri,
-  generateLyrics: (brief: unknown, profileId: string) => mockGenerateLyrics(brief, profileId),
+  generateLyrics: (brief: unknown, profileId: string, promptOverride: string | null) =>
+    mockGenerateLyrics(brief, profileId, promptOverride),
+  optimizePrompt: (brief: unknown, profileId: string) => mockOptimizePrompt(brief, profileId),
   cancelLyrics: () => mockCancelLyrics(),
   subscribeLyrics: (cb: (e: unknown) => void) => mockSubscribeLyrics(cb),
   DEFAULT_BRIEF: mockDefaultBrief,
@@ -84,9 +87,19 @@ function lyricDoc(over: Partial<LyricDoc> = {}): LyricDoc {
   }
 }
 
+function optimization(over: Partial<PromptOptimization> = {}): PromptOptimization {
+  return {
+    original: 'Theme: A night drive out of a city you are leaving for good',
+    optimized: 'Theme: A rain-slick night drive out of a coastal city you are leaving for good',
+    truncated: false,
+    ...over,
+  }
+}
+
 beforeEach(() => {
   mockIsTauri = true
   mockGenerateLyrics.mockReset()
+  mockOptimizePrompt.mockReset()
   mockCancelLyrics.mockReset()
   mockSubscribeLyrics.mockReset()
   mockOpenLyricDoc.mockReset()
@@ -102,6 +115,10 @@ beforeEach(() => {
     listening: false,
     doc: null,
     findings: [],
+    optimization: null,
+    proposed: '',
+    optimizing: false,
+    promptOverride: null,
   })
 })
 
@@ -112,7 +129,7 @@ describe('lyrics store', () => {
 
     await useLyricsStore.getState().generate('ace-step-1.5-turbo')
 
-    expect(mockGenerateLyrics).toHaveBeenCalledWith(mockDefaultBrief, 'ace-step-1.5-turbo')
+    expect(mockGenerateLyrics).toHaveBeenCalledWith(mockDefaultBrief, 'ace-step-1.5-turbo', null)
     const state = useLyricsStore.getState()
     expect(state.draft).toBe('')
     expect(state.generating).toBe(true)
@@ -437,5 +454,125 @@ describe('versioned document store', () => {
       kind: 'edited',
       from_version: 1,
     })
+  })
+  /**
+   * Protects the consent gate at its narrowest point: an optimizer that has
+   * run but not been accepted must change nothing about the request. The
+   * failure mode this guards is the one ARCHITECTURE 6 forbids outright --
+   * silently generating from a rewrite the user never approved.
+   */
+  it('test_a_reviewed_but_unaccepted_rewrite_is_not_sent', async () => {
+    mockOptimizePrompt.mockResolvedValue(optimization())
+    mockGenerateLyrics.mockResolvedValue(undefined)
+
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    expect(useLyricsStore.getState().promptOverride).toBeNull()
+
+    await useLyricsStore.getState().generate('ace-step-1.5-turbo')
+    expect(mockGenerateLyrics).toHaveBeenCalledWith(mockDefaultBrief, 'ace-step-1.5-turbo', null)
+  })
+
+  /**
+   * Protects: Accept is what sends the rewrite, and it sends the text as the
+   * user last edited it -- not the model's original proposal. Editing then
+   * accepting is the common case; sending the unedited version would discard
+   * the user's own words.
+   */
+  it('test_accept_sends_the_edited_proposal', async () => {
+    mockOptimizePrompt.mockResolvedValue(optimization())
+    mockGenerateLyrics.mockResolvedValue(undefined)
+
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    useLyricsStore.getState().setProposed('Theme: a night drive I edited myself')
+    useLyricsStore.getState().acceptOptimized()
+
+    const state = useLyricsStore.getState()
+    expect(state.promptOverride).toBe('Theme: a night drive I edited myself')
+    expect(state.optimization).toBeNull()
+
+    await useLyricsStore.getState().generate('ace-step-1.5-turbo')
+    expect(mockGenerateLyrics).toHaveBeenCalledWith(
+      mockDefaultBrief,
+      'ace-step-1.5-turbo',
+      'Theme: a night drive I edited myself',
+    )
+  })
+
+  /** Protects: a blank proposal is not something a user can have consented to. */
+  it('test_accept_ignores_a_blank_proposal', async () => {
+    mockOptimizePrompt.mockResolvedValue(optimization())
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    useLyricsStore.getState().setProposed('   \n ')
+    useLyricsStore.getState().acceptOptimized()
+
+    expect(useLyricsStore.getState().promptOverride).toBeNull()
+    expect(useLyricsStore.getState().optimization).not.toBeNull()
+  })
+
+  /** Protects: Revert puts the user back on their own brief, proposal and all. */
+  it('test_revert_clears_the_proposal_and_the_accepted_prompt', async () => {
+    mockOptimizePrompt.mockResolvedValue(optimization())
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    useLyricsStore.getState().acceptOptimized()
+    useLyricsStore.getState().revertOptimized()
+
+    const state = useLyricsStore.getState()
+    expect(state.promptOverride).toBeNull()
+    expect(state.optimization).toBeNull()
+    expect(state.proposed).toBe('')
+  })
+
+  /**
+   * Protects: an accepted prompt goes stale the moment the brief changes. It
+   * was written against the old brief, so keeping it would leave the form
+   * describing one song while Generate sends another -- and the form is what
+   * the user believes they are sending.
+   */
+  it('test_editing_the_brief_drops_an_accepted_prompt', async () => {
+    mockOptimizePrompt.mockResolvedValue(optimization())
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    useLyricsStore.getState().acceptOptimized()
+
+    useLyricsStore.getState().setBrief({ target_duration_s: 180 })
+
+    expect(useLyricsStore.getState().promptOverride).toBeNull()
+    expect(useLyricsStore.getState().brief.target_duration_s).toBe(180)
+  })
+
+  /**
+   * Protects the provenance flag: it records whether an optimized prompt was
+   * actually sent, not whether the optimizer ran. A reverted rewrite never
+   * reached the model, and a sidecar claiming otherwise is a false record of
+   * how the lyric was made.
+   */
+  it('test_prompt_optimized_records_the_accepted_prompt_not_the_optimizer_run', async () => {
+    mockOptimizePrompt.mockResolvedValue(optimization())
+    useLyricsStore.setState({ doc: { ...openDoc, versions: [] }, draft: 'generated' })
+
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    useLyricsStore.getState().revertOptimized()
+    await useLyricsStore.getState().commitGenerated()
+    expect(useLyricsStore.getState().doc?.versions[0]?.source).toMatchObject({
+      prompt_optimized: false,
+    })
+
+    useLyricsStore.setState({ doc: { ...openDoc, versions: [] }, draft: 'generated' })
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+    useLyricsStore.getState().acceptOptimized()
+    await useLyricsStore.getState().commitGenerated()
+    expect(useLyricsStore.getState().doc?.versions[0]?.source).toMatchObject({
+      prompt_optimized: true,
+    })
+  })
+
+  /** Protects: a failed optimizer call surfaces and leaves nothing half-set. */
+  it('test_a_failed_optimize_reports_and_proposes_nothing', async () => {
+    mockOptimizePrompt.mockRejectedValue(new Error('no lyric LLM configured'))
+    await useLyricsStore.getState().optimize('ace-step-1.5-turbo')
+
+    const state = useLyricsStore.getState()
+    expect(state.optimizing).toBe(false)
+    expect(state.optimization).toBeNull()
+    expect(state.error).toContain('no lyric LLM configured')
   })
 })

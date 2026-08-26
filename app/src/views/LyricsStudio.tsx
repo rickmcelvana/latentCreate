@@ -10,6 +10,7 @@ import {
 } from '../state/lyrics'
 import { getProfileGuide, DEFAULT_PROFILE_ID, type ProfileGuide } from '../bridge/profiles'
 import { isTauri, type PointOfView } from '../bridge/lyrics'
+import { PromptDiff } from '../components/PromptDiff'
 import { lintSeverity, type LintFinding, type LyricSource, type LyricVersion } from '../bridge/lyricdoc'
 
 const POINTS_OF_VIEW: PointOfView[] = ['first_person', 'second_person', 'third_person']
@@ -37,6 +38,13 @@ export function LyricsStudio() {
   const prefillFrom = useLyricsStore((state) => state.prefillFrom)
   const generate = useLyricsStore((state) => state.generate)
   const generating = useLyricsStore((state) => state.generating)
+  const optimize = useLyricsStore((state) => state.optimize)
+  const optimizing = useLyricsStore((state) => state.optimizing)
+  // One rewrite in play at a time: with a proposal on screen or a prompt
+  // already accepted, the way to another rewrite is through Revert, so the
+  // text being replaced is always the one the user can see.
+  const reviewing = useLyricsStore((state) => state.optimization !== null)
+  const accepted = useLyricsStore((state) => state.promptOverride !== null)
   const configured = useConfigStore((state) => state.config?.default_profile_id ?? null)
   const profileId = configured ?? DEFAULT_PROFILE_ID
   const [guide, setGuide] = useState<ProfileGuide | null>(null)
@@ -188,11 +196,65 @@ export function LyricsStudio() {
           <button type="submit" className="setup-button setup-button-primary" disabled={generating}>
             {generating ? 'Generating...' : 'Generate'}
           </button>
+          <button
+            type="button"
+            className="setup-button"
+            onClick={() => void optimize(profileId)}
+            disabled={generating || optimizing || reviewing || accepted}
+          >
+            {optimizing ? 'Optimizing...' : 'Optimize prompt'}
+          </button>
         </div>
       </form>
 
+      <PromptReview />
       <LyricEditor profileId={profileId} />
     </>
+  )
+}
+
+/**
+ * The optimizer's two visible states: a rewrite awaiting review, and a prompt
+ * already accepted.
+ *
+ * The accepted state is a banner rather than nothing, because an accepted
+ * override changes what Generate sends and an invisible one would make the form
+ * a liar. Editing any brief field clears it (see the store's `setBrief`).
+ */
+function PromptReview() {
+  const optimization = useLyricsStore((state) => state.optimization)
+  const proposed = useLyricsStore((state) => state.proposed)
+  const promptOverride = useLyricsStore((state) => state.promptOverride)
+  const setProposed = useLyricsStore((state) => state.setProposed)
+  const acceptOptimized = useLyricsStore((state) => state.acceptOptimized)
+  const revertOptimized = useLyricsStore((state) => state.revertOptimized)
+
+  if (optimization !== null) {
+    return (
+      <PromptDiff
+        original={optimization.original}
+        revised={proposed}
+        onRevisedChange={setProposed}
+        onAccept={acceptOptimized}
+        onRevert={revertOptimized}
+        note={
+          optimization.truncated
+            ? 'The rewrite was cut off before it finished. Check the end of it, or revert.'
+            : null
+        }
+      />
+    )
+  }
+
+  if (promptOverride === null) return null
+
+  return (
+    <p className="lyrics-optimized">
+      Generate will send your accepted prompt.{' '}
+      <button type="button" className="lyrics-link" onClick={revertOptimized}>
+        Use the brief instead
+      </button>
+    </p>
   )
 }
 
