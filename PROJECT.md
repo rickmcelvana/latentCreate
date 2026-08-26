@@ -196,7 +196,29 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   carries the measurement, and `create-core::lyrics::optimize`'s module docs say plainly that
   it is not a verified surface -- so nobody reads the confident wording as evidence.
 
+- **2026-08-26 -- the remote-model disclosure stays in the wizard only** (owner, closing the
+  question raised at T-211). Generating from the Lyrics Studio on a cloud model shows nothing
+  about where the lyrics go; the wizard's "remote" chip and "Your lyrics leave this machine"
+  at the point of choosing are judged sufficient. Recorded so a later session does not
+  re-raise it as an oversight.
+- **2026-08-26 -- the Gemma lyric recommendation is under review, and the reason is a
+  confound.** The 2026-08-23 suggestion list came from the owner's hands-on use, but that use
+  is on his music machine **with a system prompt he has tuned over hundreds of iterations** --
+  which this app does not reproduce. Against latentCreate's own assembled prompt, unaided:
+  `gemma4:12b-32k` wrote 8 lint findings on a generation where `qwen3.5:397b-cloud` wrote 0,
+  and the owner's local `qwen3.5:9b` also wrote 0. That is the metric that matters here, since
+  the app's premise is that the user does not have to tune a prompt. **The list is not changed
+  yet** -- the dev box had most models removed days ago, so the owner is pulling a set and the
+  comparison happens on real coverage. What is settled is that "Gemma is best for lyrics" was
+  measured in a setting this app does not offer, and `data/lyric-llms.json` should not be
+  treated as verified until it is re-measured. Tracked as OQ-7.
 ## Open questions (owner to decide)
+- **OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?** Open 2026-08-26.
+  Gemma 4 12B is the current preselect, from owner experience gathered with a heavily tuned
+  system prompt on another machine. Unaided against this app's own prompt, qwen produced clean
+  structure-tagged lyrics where gemma produced stray production cues. Owner is pulling a set of
+  models to compare properly. Deciding it means editing the JSON and the docs/MODELS.md table
+  that mirrors it -- no code change.
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
 - **OQ-3 Raw ComfyUI API fallback.** Build a second `ComfyBackend` impl against `/prompt`+websocket if comfy-mcp proves limiting (e.g. arbitrary node-input introspection)? Deferred until Phase 3 evidence exists.
@@ -216,16 +238,6 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   files appear to `search_models` with **no ComfyUI restart**, so the post-install re-check is
   enough.
 ## Backlog (accepted, not yet scheduled)
-- **Say in the Lyrics Studio when the configured model is remote.** The disclosure exists
-  where the model is *chosen* (the wizard shows a "remote" chip and "Your lyrics leave this
-  machine"), which is what the 2026-08-24 decision requires. But the T-211 click-through ran a
-  whole generation on `qwen3.5:397b-cloud` from the Lyrics view, where nothing says so -- the
-  app's premise is local-first generation, and an unreleased lyric going to ollama.com deserves
-  a standing indicator next to Generate rather than a fact the user has to remember from
-  another screen. Small: `is_remote` is already on the wizard's model rows, though the Lyrics
-  view would need it from config or a fresh probe. Deliberately not built during T-211 -- it is
-  new scope at a phase close, and the owner should decide whether it is a chip, a line, or a
-  confirm.
 - **Click the Install button once, on a machine missing a model.** `models_install` and
   `models_progress` are the only Tauri commands in the wizard never exercised through the UI:
   the 18.5 GiB install ran the same `download_model` calls they wrap, but the click-through
@@ -2040,3 +2052,39 @@ fixes. Nothing else is outstanding.
 the configured model is remote. The wizard does, which satisfies the 2026-08-24 decision as
 written -- but this session generated an unreleased lyric on `qwen3.5:397b-cloud` from a screen
 that never mentions it. Raised for the owner rather than decided at a phase close.
+
+### 2026-08-26 (later still) -- T-214: the approval notice, and what two false reports were really saying
+
+**Reported missing twice; rendering both times.** The document on disk carries `approved: 1`
+with version 1 present and 1765 characters of text, so `approvedText` returns a string and the
+line was on screen for both reports. Two causes, and the first is mine:
+
+1. **T-213 changed the copy and not the checklist.** The step said to look for the "ready for
+   audio" line; T-213 had reworded it to "...is what audio will use", so the phrase existed
+   nowhere in the app. A checklist and a UI that disagree turn a working feature into a failed
+   step -- and the producer was right to report it as one.
+2. **The treatment was too quiet to find.** T-213's fix was to move the line above the lint
+   findings, on the theory that eight advisories had pushed it off screen. That theory was
+   probably right and still insufficient: a small green sentence sitting among other small
+   green sentences does not register. **Twice reported missing is a fact about the design, not
+   the reader.**
+
+Approval is a property of the document, so it now renders as a `vN approved` **status pill in
+the output panel's header**, beside the generation status -- the same primitive the wizard
+uses, in the one part of the panel that is always in view. The sentence stays, reworded to the
+words the checklist actually uses.
+
+**The general fix is `approvedLabel`.** Both rounds were correct logic derived inline in a view
+no test can see. It is now a pure selector with tests, like `approvedText` and
+`generationPhase` before it. The rule this phase keeps re-teaching: **anything a view decides
+inline is a thing no test in this repo can check**, and the visible-state decisions are exactly
+the ones worth pulling into the store.
+
+**Two owner decisions recorded**, both from the same session: the remote-model disclosure stays
+in the wizard only (closing the question T-211 raised), and the Gemma lyric recommendation goes
+under review as OQ-7 -- it was measured with a hand-tuned system prompt this app does not
+reproduce, and unaided against this app's own prompt, qwen wrote clean lyrics where gemma wrote
+stray production cues.
+
+**Phase 2 status:** steps 1, 3, 4 and 5 pass. Step 2 passes except the approval notice, which
+is what this task fixes. One re-check of step 2.6 and the phase tags.
