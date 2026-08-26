@@ -275,7 +275,7 @@ Users with a working ComfyUI workflow — including LoRA wiring no shipped profi
 library/
 ├── projects/<project-slug>/
 │   ├── project.json           # name, created, lyric doc versions, track refs, album lists
-│   ├── lyrics/<v>.md
+│   ├── lyrics/<doc-id>.json   # one LyricDoc, every version inline (see below)
 │   ├── tracks/<track-id>.flac # (or wav/mp3 as produced)
 │   ├── tracks/<track-id>.json # SIDECAR = the whole Track record, incl. Provenance:
 │   │                          #   model profile+licence, template, the GenerationSpec
@@ -288,6 +288,12 @@ library/
 ```
 
 - JSON files, no database. Human-readable, git-able, trivially portable. Revisit only if scanning gets slow (thousands of tracks).
+- **One file per lyric document** (2026-08-25, Phase 2 boundary): `lyrics/<doc-id>.json`
+  holds the whole `LyricDoc` with every version inline, and `project.json` holds only the
+  ordered doc ids. The earlier sketch here was `lyrics/<v>.md` per version, written before
+  `LyricDoc` existed; it would put a version's text in one file and its `source`,
+  `created_at` and `approved` flag in another -- the same two-files-disagreeing hazard the
+  track rule below exists to prevent, for a few KB of saving.
 - **One source of truth per track** (T-003b): `project.json` holds an *ordered list of track ids* and the album lists; everything about a track — title, file, duration, provenance — lives only in its sidecar. Duplicating a title into both files would guarantee the two drift apart on the first rename.
 - **Provenance stores both levels**: the `GenerationSpec` the user chose (semantic, e.g. `duration_s = 120`) *and* the resolved slot values actually submitted (e.g. `94.duration = 120`, `98.seconds = 120`). The first powers "re-use these settings"; the second is what makes a track reproducible and is the only record of what the graph really received.
 - Track actions: play, delete (to OS trash, not hard delete), rename, add-to-album-list, export/reveal, **Send to** mixer/mastering.

@@ -12,8 +12,9 @@ Cargo workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library` stubs), Ta
 **Milestone check (live) — done 2026-08-25:** the wizard opened from cold, ComfyUI was started from the app's own button, server info rendered, the models step read Ready, and the LLM test call returned. ACE-Step 1.5 XL Turbo (18.5 GiB, four files) was downloaded through the app's install path, after which `local_check` on a freshly fetched template went to `runnable: true` with zero errors, and all 17 slot addresses the profile declares still resolved against it. `cargo test -p llm-bridge -- --ignored` and `cargo test -p app -- --ignored` both green.
 **Not exercised through the UI:** `models_install` / `models_progress` as *Tauri commands*. The download ran the same `download_model` calls they make, but by the time the wizard was clicked through the models were already installed, so the Install button was never offered. The wrappers are verified by construction and by their unit tests, not by a click.
 
-## Phase 2 — Lyrics Studio (T-201 …) — **NEXT**
+## Phase 2 — Lyrics Studio (T-201 … T-211) — **IN PROGRESS**, opened 2026-08-25 — [phase-2.md](phase-2.md)
 Brief form with prefills, system-prompt assembly from profile (ARCHITECTURE §6), streaming generation UI, versioned editor with structure-tag validation, approve → handoff store action, consent-gated prompt optimizer with diff view (shared component — reused for audio tags in Phase 3).
+**Surface verified 2026-08-25 before any brief** (LLM-SURFACE §12, MCP-SURFACE §15): a full song is 99% chain-of-thought unless `reasoning_effort: "none"` is sent (`think: false` is silently ignored), the first content delta can be 44 s into a stream, and nothing in ComfyUI publishes the structure-tag vocabulary — so the lint is advisory and numbering-tolerant.
 **Milestone check (live):** brief → lyrics stream in → edit → approve; optimizer diff accept/revert round-trips.
 
 ## Phase 3 — Audio Studio & pipeline (T-301 …)

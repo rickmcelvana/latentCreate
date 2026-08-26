@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio, T-201 onwards) is next and has no briefs yet** — they are written at the start of a phase, not ahead of it. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **Phase 2, Lyrics Studio.** Nothing is briefed. The phase covers the brief form with profile prefills, system-prompt assembly from the profile (ARCHITECTURE 6), streaming generation UI over `llm-bridge`, a versioned editor with structure-tag validation, approve-to-handoff, and the consent-gated prompt optimizer with a diff view. Start it the way every phase here has started: **read the surface before writing a wrapper**, and write the briefs only once the interfaces are known.
+- **Next up:** **T-201, the on-disk project and lyric store** — the first brief of Phase 2, and first because `LyricDoc` has existed since T-003b with nothing to persist it, and Phase 3's provenance points at a `LyricRef` that a Zustand store cannot keep. The phase's surface verification is done (LLM-SURFACE §12, MCP-SURFACE §15) and its four findings are folded into the task list; the remaining ten tasks are described in [tasks/phase-2.md](tasks/phase-2.md) and briefed one at a time.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -100,6 +100,41 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   tag named plainly `gemma4:12b`**, so equality would recommend nothing while the recommended
   model sat installed. Because two variants can match, the preselect takes the lowest id, and a
   model the user already configured always wins over any suggestion.
+- **2026-08-25 — lyric generation sends `reasoning_effort: "none"`, and only where the model
+  is known to think.** Captured live: an assembled lyric prompt to `gemma4:12b-32k` with a
+  2000-token budget returned **85 characters of lyrics and 7458 of reasoning**,
+  `finish_reason: length`, first content delta **44.08 s into a 44.65 s stream**. With
+  `reasoning_effort: "none"` the same brief is a complete song in 8.2 s and ~400 completion
+  tokens. Ollama's own `think: false` is **accepted and silently ignored** over the
+  OpenAI-compatible endpoint, and `"low"` is not honoured, so neither is a substitute. The
+  field is verified against Ollama only; it is therefore sent **only when `thinks` is true**,
+  a fact that exists only where the native enrichment layer answered (T-112). Any endpoint the
+  app cannot enrich never sees the field, which keeps the unverified path untaken rather than
+  defended. Full evidence: [docs/LLM-SURFACE.md §12](docs/LLM-SURFACE.md).
+- **2026-08-25 — the streamed reasoning is rendered, not just filtered.** T-108 typed
+  `ChatDelta::Reasoning` so it could be kept out of the user's document. The capture above
+  shows it is also the **only proof of life for 44 of 45 seconds**, so the Lyrics Studio shows
+  it as status text. A generation with nothing on screen is indistinguishable from a hang, and
+  the fix is not a spinner — it is the content the model is already sending.
+- **2026-08-25 — structure-tag validation is advisory, and matching ignores numbering.**
+  `TextEncodeAceStepAudio1.5.lyrics` is a bare STRING: empty `choices`, empty description.
+  **Nothing in the install publishes which tags ACE-Step accepts**, so a blocking rule would
+  enforce a guess against the user's own words — which the never-modify-user-text rule already
+  forbids. Matching normalises a trailing number because the shipped template writes
+  `[Verse 1]` while the profile declares `[Verse]`; a literal test would reject the model's own
+  example. The check is load-bearing all the same: with the contract stated plainly in the
+  system prompt, the recommended model put production cues (`[Vocal style: ethereal, airy]`)
+  inside the lyrics in **every** capture. Evidence: [docs/MCP-SURFACE.md §15](docs/MCP-SURFACE.md).
+- **2026-08-25 — one JSON file per lyric document.** `lyrics/<doc-id>.json` holds a whole
+  `LyricDoc`, versions inline; `project.json` holds the ordered ids only. ARCHITECTURE 8's
+  `lyrics/<v>.md` sketch predates the type and would split a version's text from its `source`,
+  `created_at` and approval — the two-files-disagreeing hazard the one-source-of-truth rule
+  exists to prevent, for a few KB. ARCHITECTURE 8 updated.
+- **2026-08-25 — the lyric brief's `language` is a writing instruction, not a slot value.**
+  The profile's `inputs.language` is `from_node_choices` and is read live from the node schema
+  by Phase 3's param panel. Keeping the brief's language a plain string is what lets the Lyrics
+  Studio render its form with **no running ComfyUI** — conflating the two would make writing
+  lyrics depend on the audio service being up.
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
@@ -1329,3 +1364,55 @@ mistakes were never executor mistakes:
 **Handoff state:** working tree clean, gate green, `phase1-done` tagged and pushed. ComfyUI is
 left **running** (the producer started it from the app); Ollama is running with 13 models.
 ACE-Step 1.5 XL Turbo and MiniMax Music 3 are both fully installed.
+
+### 2026-08-25 (later) — Phase 2 opened; the lyric surface verified before a line of it was planned
+
+**Drift check first, as the ritual requires.** One commit since the last entry
+(`3f84b1d`, the phase-1.md header reconcile), tree clean, `phase1-done` tagged. Docs and git
+agree; nothing to fix.
+
+**Then the phase-start rule: read the surface.** Phase 2's surface is not a tool catalogue —
+it is what a real model does when asked for a real song, which nobody here had measured. Four
+captures against `gemma4:12b-32k`, the model this app recommends for lyrics, with a system
+prompt assembled the way ARCHITECTURE 6 specifies.
+
+**The headline is that the phase's obvious implementation would have shipped broken.** A full
+brief with a 2000-token budget returned **85 characters of lyrics and 7458 characters of
+reasoning**, `finish_reason: length` — the song cut off eight words in — and the **first
+content delta arrived 44.08 s into a 44.65 s stream**. Written the obvious way, the Lyrics
+Studio shows an empty document for 44 seconds and then saves a truncated fragment as version 1.
+None of those three failures is visible in code review; all three are visible in one capture.
+
+**And the fix is not the one that looks right.** Ollama's own `think: false` is **accepted and
+silently ignored** over the OpenAI-compatible endpoint — byte-for-byte the baseline, no error,
+no warning — as is `reasoning_effort: "low"`. Only `reasoning_effort: "none"` works, and when
+it does the same request is 6.6x faster and actually answers: 8.2 s, `stop`, ~400 completion
+tokens, a complete `V-C-V-C-B-C` song. A client that had set `think: false` and moved on would
+have believed thinking was off while paying for every thinking token.
+
+**The limit of that finding is recorded with it.** `reasoning_effort` is verified against
+Ollama and nothing else. Rather than defend an unverified path, the field is sent **only when
+`thinks` is true** — a fact only the native enrichment can supply, which means it is only ever
+sent to the endpoint it was verified against. The Phase 1 capability flags turned out to have
+a second job.
+
+**One finding came from the other side of the app.** `TextEncodeAceStepAudio1.5.lyrics` is a
+bare STRING: empty `choices`, empty description. **Nothing in ComfyUI publishes the structure
+tags ACE-Step accepts**, and the shipped template's own example numbers its verses
+(`[Verse 1]`) while the profile declares `[Verse]` — so a literal validator would reject the
+model's own example, and any blocking validator would enforce a guess against the user's
+lyrics. Advisory, numbering-tolerant. It is still load-bearing: with the profile's
+"cues belong in tags, not lyrics" rule stated plainly in the system prompt, the model wrote
+`[Vocal style: ethereal, airy]` into the lyrics in **every single capture**.
+
+**Planned, not briefed.** [tasks/phase-2.md](tasks/phase-2.md) carries T-201 … T-211 with the
+four findings folded into the tasks they change, plus two decisions taken at the boundary: one
+JSON file per lyric document (ARCHITECTURE 8's `lyrics/<v>.md` sketch predates `LyricDoc`), and
+the brief's `language` as a writing instruction rather than a slot value, so the Lyrics Studio
+form needs no running ComfyUI. **T-201 is the store**, first because `LyricDoc` has existed
+since T-003b with nothing to persist it and Phase 3's provenance points at a `LyricRef` that a
+Zustand store cannot keep.
+
+**Handoff state:** gate green, docs committed, no brief written yet. ComfyUI is up (core is one
+release behind, v0.33.4 vs v0.34.0 — worth updating before Phase 3 touches the pipeline, it does
+not affect Phase 2). Ollama is up with 13 models.

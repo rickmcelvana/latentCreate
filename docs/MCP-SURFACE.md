@@ -872,3 +872,50 @@ Like `launch_comfyui` (section 13.2), the synthesised envelope carries **no `ok`
 ```json
 { "stopped": true, "host": "127.0.0.1", "port": 8188, "pid": 23404 }
 ```
+
+## 15. Lyric structure tags -- verified 2026-08-25
+
+Read before writing anything that validates lyric text.
+
+### 15.1 WARNING Nothing in ComfyUI publishes the tag vocabulary
+
+`nodes(action="get", name="TextEncodeAceStepAudio1.5")` returns `lyrics` as a bare required
+`STRING`:
+
+```json
+{ "name": "lyrics", "type": "STRING", "required": true, "is_link": false,
+  "section": "required", "choices": [],
+  "options": { "min": null, "max": null, "step": null, "default": null } }
+```
+
+No `choices`, no default, and the node's `description` is the empty string -- as it is for
+every input on this class. **There is no authority in the install for which structure tags
+ACE-Step accepts.** A validator cannot be checked against the model; it can only be checked
+against the profile, which is a human's claim.
+
+### 15.2 WARNING The shipped example and the profile disagree about numbering
+
+The template's own `94.lyrics` value, captured live from a fresh
+`fetch_template("audio_ace_step1_5_xl_turbo")` (`local_check: runnable: true`, 0 errors):
+
+```
+[Verse 1]
+Open up the canvas, blank slate on my screen
+...
+[Chorus]
+...
+[Verse 2]
+...
+[Bridge]
+```
+
+`profiles/ace-step-1.5-turbo.json` declares `structure_tags` as
+`["[Verse]", "[Chorus]", "[Bridge]", "[Outro]", "[inst]"]` -- **unnumbered**. A literal
+membership test would flag `[Verse 1]`, the form the model's own shipped example uses, as
+invalid.
+
+**Consequence for the Phase 2 validator:** tag matching normalises a trailing number
+(`[Verse 2]` matches `[Verse]`), and every finding is **advisory**. Nothing here may block a
+generation: with no published vocabulary (15.1), a blocking rule would be enforcing a guess
+against the user's own text -- which is also the rule that says this app never modifies
+lyrics without an explicit accept step.

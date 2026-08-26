@@ -351,3 +351,101 @@ streaming deltas use (sections 2 and 3).
 `gemma4:12b-32k` and `gemma4:12b-it-qat` -- and **neither is named `gemma4:12b`**. Matching is
 by prefix on the id, and because more than one can match, the preselect must be deterministic
 (lowest id wins) and must never override a model the user has already chosen.
+
+## 12. Lyric generation -- verified 2026-08-25
+
+Captured against the same install as section 11 (Ollama 0.32.15, `gemma4:12b-32k`), with an
+assembled system prompt of the shape ARCHITECTURE 6 specifies and a filled-in brief
+(theme, style tags, mood, `V-C-V-C-B-C`, language, POV, duration). Section 11 measured the
+*test call*; this section measures the thing the phase is actually built on.
+
+### 12.1 WARNING A full song is 99% chain-of-thought by default
+
+One generation, `max_tokens: 2000`, nothing else set:
+
+| measure | value |
+|---|---|
+| `finish_reason` | `length` |
+| `completion_tokens` | 2000 (the entire budget) |
+| content | **85 characters** |
+| reasoning | **7458 characters** |
+| first content delta | **44.08 s** into a 44.65 s stream |
+
+The song was cut off eight words in, and for **44 of the 45 seconds the document stayed
+empty**. Three consequences, none of which survive being guessed at:
+
+- **A "generous" token budget is not a budget for lyrics.** 2000 tokens bought no song. The
+  budget cannot be sized against the length of a song, because the song is not what the
+  tokens are spent on.
+- **`ChatDelta::Reasoning` is the only proof of life for most of the stream.** T-108 typed it
+  so it could be kept *out* of the document; the lyrics UI must additionally render it *as
+  status*, or a working generation is indistinguishable from a hung one for 44 seconds.
+- **`finish_reason: length` is a first-class outcome**, not a detail. Saving that 85-character
+  fragment as version 1 without saying it was truncated is the bug this section exists to
+  prevent.
+
+### 12.2 WARNING `think: false` is accepted and ignored; `reasoning_effort: "none"` works
+
+Same prompt (a four-line chorus), `max_tokens: 300`, one variable changed at a time:
+
+| request field | elapsed | `finish_reason` | content | reasoning |
+|---|---|---|---|---|
+| *(none)* | 6.30 s | `length` | 0 chars | 1039 chars |
+| `"think": false` | 6.01 s | `length` | 0 chars | 1034 chars |
+| `"reasoning_effort": "low"` | 5.97 s | `length` | 0 chars | 1034 chars |
+| `"reasoning_effort": "none"` | **0.95 s** | **`stop`** | **176 chars** | **0 chars** |
+
+`think` is Ollama's own native-API switch, and over the OpenAI-compatible endpoint it is
+**silently dropped** -- no error, no warning, byte-for-byte the baseline behaviour. A client
+that sets it believes thinking is off while paying for every thinking token. `"low"` is
+likewise not honoured by this model. Only `"none"` flips it, and when it does the same
+request is **6.6x faster and actually answers**.
+
+### 12.3 The same song with reasoning off
+
+`max_tokens: 2000`, `reasoning_effort: "none"`, two runs:
+
+| measure | run 1 | run 2 |
+|---|---|---|
+| elapsed | 8.80 s | 8.18 s |
+| first content delta | 0.40 s | 0.53 s |
+| `finish_reason` | `stop` | `stop` |
+| `completion_tokens` | 422 | 383 |
+| content | 1767 chars | 1490 chars |
+| reasoning | 0 chars | 0 chars |
+
+**A complete `V-C-V-C-B-C` song is roughly 400 completion tokens.** With reasoning on, five
+times that budget produced nothing usable.
+
+**The policy this supports, and its limit.** `reasoning_effort` is verified against Ollama
+only. Whether an arbitrary OpenAI-compatible server ignores an unknown field (as Ollama does
+with `think`) or rejects the request is **not verified** -- LM Studio, llama.cpp and vLLM were
+not tested. So the field is sent only when the model is *known* to think, and that fact has
+exactly one source: the Ollama enrichment layer's `thinks` flag, already collected by the
+wizard's LLM step (section 11.1). Against any endpoint the app cannot enrich, capabilities are
+unknown, `thinks` is null, and nothing extra is sent. The unverified path is therefore never
+taken rather than defended.
+
+### 12.4 The model breaks the profile's own lyric rule, reliably
+
+`ace-step-1.5-turbo`'s `lyrics_contract.notes` says vocal-style cues belong in tags, not
+lyrics, and the assembled system prompt said so in as many words. Every capture put them in
+the lyrics anyway:
+
+```
+[inst]
+[Driving synthwave bassline enters, heavy rever_b, 80s gated drums]
+
+[Verse]
+Packed the shadows in a cardboard box
+...
+[Bridge]
+[Vocal style: ethereal, airy]
+```
+
+Those bracketed lines are not structure tags; ACE-Step will read them as words to sing.
+One capture also dropped a Hangul character into an English lyric. **The structure-tag
+validator is therefore load-bearing, not decorative** -- the system prompt demonstrably
+does not enforce the contract, so something after generation has to notice. What it must
+notice is a bracketed token that is *not* a structure tag, which is a different check from
+"are the required sections present".
