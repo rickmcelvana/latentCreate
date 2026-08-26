@@ -110,7 +110,7 @@ A profile with no `lyrics_contract` must still assemble a valid prompt.
   and the runs carrying it averaged more of the behaviour it forbids (LLM-SURFACE 12.5). A
   test exists solely to stop it being re-added.
 
-### T-203 — `create-core::lyrics::lint`: structure-tag validation  — split in two
+### T-203 — `create-core::lyrics::lint`: structure-tag validation  — **LANDED** (split in two)
 Advisory findings over lyric text against a profile: a bracketed token that is not a
 structure tag (the failure the model actually makes), a requested section missing, `[inst]`
 handling. **T-202's live generations sized this task**, counted over all 13 that were
@@ -123,12 +123,12 @@ template numbers and the profile does not. Returns typed findings with a severit
 bool, and never a verdict that can block. Pure and heavily tested; mutation-test the guards.
 
 
-- **T-203a — the scanner and the directions** ([brief](t-203a-brief.md)). `LintSeverity`
+- **T-203a — the scanner and the directions**  LANDED ([brief](t-203a-brief.md)). `LintSeverity`
   (no `Error` variant -- nothing published by ComfyUI can make any of this authoritative),
   the complete `LintFinding`, the tag scanner, and the two rules that catch what the model
   actually writes: a bracket that is not a structure tag, and text sharing a line with one.
   Three captured generations go into `testdata/lyrics/` as fixtures, unedited.
-- **T-203b — the structure rules** ([brief](t-203b-brief.md)). Missing, out-of-order and
+- **T-203b — the structure rules**  LANDED ([brief](t-203b-brief.md)). Missing, out-of-order and
   extra sections, with the severities set by the corpus: missing and reordered are warnings
   because no real generation produced either, and an extra section is Info because 9 of 13
   added an `[Outro]`.

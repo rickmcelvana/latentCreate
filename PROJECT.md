@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store) and T-202 (brief type and prompt assembly) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly) and T-203a/b (the lyric lint: structure-tag scanner and section rules) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-203a**, then **T-203b** -- both briefed, reference code compiled, mutation-tested and swept over the whole saved corpus ([t-203a](tasks/t-203a-brief.md), [t-203b](tasks/t-203b-brief.md)). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
+- **Next up:** **T-204** (`llm-bridge`: `reasoning_effort` on `ChatRequest`, omitted from the wire when `None`, plus an ignored live test that `"none"` suppresses reasoning on a thinking model). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1596,3 +1596,35 @@ that added an outro, and no file misread as untagged.
 **Briefed in two** because the file is 663 lines. Reference implementation is in the
 session scratchpad, not the working tree; the three fixtures **are** committed, since they
 are captured data rather than executor output.
+
+### 2026-08-25 (later still) — T-203a/b landed directly; the executor produced an empty file
+
+**Both Aider runs produced nothing.** The working tree came back with a single untracked,
+**0-byte** `crates/create-core/src/lyrics/lint.rs` and no `pub mod lint;` line in `lyrics.rs`
+-- the executor created the file and wrote nothing into it, so the crate never compiled it and
+the gate passed vacuously. This is the first run to fail this way; every prior run at least
+transcribed. The producer chose to land T-203a/b directly as architect work rather than re-run
+(the same call made for T-201): the reference code in the two briefs was already compiled,
+`cargo fmt`-clean, clippy-clean, mutation-tested and swept over all 13 saved generations, so a
+retry would have been transcribing already-verified text.
+
+**What landed.** `create-core/src/lyrics/lint.rs` (653 lines): the tag scanner
+(`split_tag_line`/`scan_tag_lines`/`normalize_name`), the two direction rules
+(`UnknownTag`/`TextAfterTag`), and the three structure rules (`MissingSection`/`OutOfOrder`/
+`ExtraSection`) with severities set by the corpus -- extra section is `Info` because 9 of 13
+generations added an `[Outro]`. `LintSeverity` has no `Error` variant and nothing here edits or
+blocks, per the phase-boundary decision. `create-core` 41 -> **74 tests** (15 new, 12 + 3).
+
+**Guards re-armed against the landed tree, not just re-asserted from the brief.** Because the
+file was assembled by hand from two briefs rather than copied from one scratch file, two
+mutations were re-run: `ExtraSection` -> `Warning` fails only
+`test_an_added_outro_is_info_not_a_warning`, and gating the order check on `false` fails only
+`test_out_of_order_is_reported_when_nothing_is_missing`. Both reverts done with the edit tool,
+not regex (the T-104b lesson).
+
+**Line endings were clean this time.** The new file is LF-only on first check -- the CRLF
+phantom-rewrite that cost a round in T-202 did not recur, because the architect wrote it, not
+the executor.
+
+**Next:** T-204 (`llm-bridge::reasoning_effort`), the last piece before the Tauri streaming
+command (T-205).
