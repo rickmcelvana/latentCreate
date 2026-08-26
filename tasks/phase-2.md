@@ -139,10 +139,12 @@ be nothing but tags. One generation wrote every direction as
 `[Verse] (dreamy female vocals)` -- and that correctly structured song, one of only three
 in the corpus with no bracketed strays, came back reported as having no structure at all.
 
-### T-204 — `llm-bridge`: `reasoning_effort` on `ChatRequest`
+### T-204 — `llm-bridge`: `reasoning_effort` on `ChatRequest`  — **LANDED**
 One optional field, omitted from the wire when `None`. Plus an `--ignored` live test that
 proves `"none"` suppresses reasoning on a thinking model, since that is the whole reason the
 field exists. Small task; kept separate so the policy decision lands with its evidence.
+Landed directly as architect work (no Aider run -- the producer's standing call: a task this
+small, written and tested by the architect, is not worth an executor round trip).
 
 ### T-205 — Tauri lyric streaming command and event pump
 `lyrics_generate` / `lyrics_cancel`, modelled on `src-tauri/src/jobs.rs`: spawn, keep the
