@@ -3,8 +3,11 @@
 //! JSON files under the app data dir, no database (ARCHITECTURE.md section 8).
 //! Secrets live in the OS keychain, never in config. Populated by T-004.
 
+mod atomic;
 pub mod config;
+pub mod lyrics;
 pub mod profiles;
+pub mod projects;
 pub mod secrets;
 pub mod suggestions;
 
@@ -14,6 +17,10 @@ pub use config::Config;
 pub use config::ConfigWarning;
 /// Re-export of [`config::LoadedConfig`].
 pub use config::LoadedConfig;
+/// Re-export of [`lyrics::LyricDocSet`].
+pub use lyrics::LyricDocSet;
+/// Re-export of [`lyrics::LyricWarning`].
+pub use lyrics::LyricWarning;
 /// Re-export of [`profiles::LoadedProfile`].
 pub use profiles::LoadedProfile;
 /// Re-export of [`profiles::ProfileSet`].
@@ -22,6 +29,10 @@ pub use profiles::ProfileSet;
 pub use profiles::ProfileSource;
 /// Re-export of [`profiles::ProfileWarning`].
 pub use profiles::ProfileWarning;
+/// Re-export of [`projects::ProjectSet`].
+pub use projects::ProjectSet;
+/// Re-export of [`projects::ProjectWarning`].
+pub use projects::ProjectWarning;
 /// Re-export of [`secrets::SecretKey`].
 pub use secrets::SecretKey;
 
@@ -46,6 +57,20 @@ pub enum LibraryError {
     /// The frontend named a secret outside the whitelist.
     #[error("unknown secret name: {0}")]
     UnknownSecret(String),
+    /// A project or lyric document that is not on disk. Distinct from an I/O
+    /// failure: the caller named something that does not exist, and returning a
+    /// default instead would look like the user's work had vanished.
+    #[error("{kind} not found: {id}")]
+    NotFound {
+        /// What was looked for, e.g. `"project"`.
+        kind: &'static str,
+        /// The slug or id that was asked for.
+        id: String,
+    },
+    /// A name that cannot become a directory here -- an unsafe slug from the
+    /// frontend, or a base name with a thousand collisions.
+    #[error("unusable name: {0}")]
+    UnusableName(String),
 }
 
 #[cfg(test)]

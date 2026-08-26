@@ -69,6 +69,42 @@ impl LyricDoc {
     pub fn latest(&self) -> Option<&LyricVersion> {
         self.versions.iter().max_by_key(|v| v.number)
     }
+
+    /// Appends a version and returns its number.
+    ///
+    /// Numbers continue from the highest already present, so a restored older
+    /// version cannot collide with one that came after it. Existing versions are
+    /// never touched -- an edit produces a new version, it does not rewrite the
+    /// text it came from.
+    pub fn push_version(
+        &mut self,
+        text: impl Into<String>,
+        source: LyricSource,
+        created_at: impl Into<String>,
+    ) -> u32 {
+        let number = self.latest().map_or(1, |v| v.number + 1);
+        self.versions.push(LyricVersion {
+            number,
+            text: text.into(),
+            created_at: created_at.into(),
+            source,
+        });
+        number
+    }
+
+    /// Approves an existing version, returning `false` and changing nothing when
+    /// no version has that number.
+    ///
+    /// Approval is what makes a version available to AudioStudio, so approving a
+    /// number that does not exist must not clear the approval the user already
+    /// made.
+    pub fn approve(&mut self, number: u32) -> bool {
+        if !self.versions.iter().any(|v| v.number == number) {
+            return false;
+        }
+        self.approved = Some(number);
+        true
+    }
 }
 
 /// A named ordering of tracks -- a single, an EP, an album.
@@ -100,6 +136,37 @@ pub struct Project {
     /// Named album lists within this project.
     #[serde(default)]
     pub albums: Vec<AlbumList>,
+    /// Sequence number the next lyric document in this project will be minted from.
+    ///
+    /// Monotonic and **never reused**, even after a document is deleted. Minting from
+    /// the surviving file list instead would hand a deleted document's id to a later
+    /// one, and a track's provenance `LyricRef` would then point at unrelated lyrics.
+    #[serde(default = "default_lyric_seq")]
+    pub next_lyric_seq: u32,
+}
+
+fn default_lyric_seq() -> u32 {
+    1
+}
+
+impl Project {
+    /// A new, empty project. `created_at` is RFC 3339; the caller supplies it so
+    /// nothing here reads a clock.
+    pub fn new(
+        slug: impl Into<String>,
+        name: impl Into<String>,
+        created_at: impl Into<String>,
+    ) -> Self {
+        Self {
+            slug: slug.into(),
+            name: name.into(),
+            created_at: created_at.into(),
+            tracks: Vec::new(),
+            lyrics: Vec::new(),
+            albums: Vec::new(),
+            next_lyric_seq: default_lyric_seq(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -200,5 +267,105 @@ mod tests {
             }
             other => panic!("expected Llm variant, got {:?}", other),
         }
+    }
+
+    /// Invariant: a new version continues from the highest number present, so a
+    /// document whose latest version is 3 can never mint a second 3.
+    #[test]
+    fn test_push_version_continues_from_the_highest_number() {
+        let mut doc = LyricDoc {
+            id: LyricDocId("ld-0001".to_string()),
+            title: None,
+            versions: Vec::new(),
+            approved: None,
+        };
+        assert_eq!(
+            doc.push_version("one", LyricSource::Human, "2026-08-25T10:00:00Z"),
+            1
+        );
+        assert_eq!(
+            doc.push_version(
+                "two",
+                LyricSource::Llm {
+                    model: "gemma4:12b-32k".to_string(),
+                    prompt_optimized: false,
+                },
+                "2026-08-25T10:01:00Z",
+            ),
+            2
+        );
+        assert_eq!(
+            doc.push_version(
+                "three",
+                LyricSource::Edited { from_version: 1 },
+                "2026-08-25T10:02:00Z"
+            ),
+            3
+        );
+        assert_eq!(doc.versions.len(), 3);
+        assert_eq!(doc.versions[0].text, "one");
+    }
+
+    /// Invariant: the next number comes from the highest version present, not
+    /// from how many there are. A document that has lost a version -- or that
+    /// was written by a build which numbered differently -- must not mint a
+    /// number an existing version already holds, because a `LyricRef` in a
+    /// track's provenance points at lyrics by number.
+    #[test]
+    fn test_push_version_after_a_gap_does_not_reuse_a_number() {
+        let mut doc = LyricDoc {
+            id: LyricDocId("ld-0001".to_string()),
+            title: None,
+            versions: vec![
+                LyricVersion {
+                    number: 1,
+                    text: "first".to_string(),
+                    created_at: "2026-08-25T10:00:00Z".to_string(),
+                    source: LyricSource::Human,
+                },
+                LyricVersion {
+                    number: 5,
+                    text: "fifth".to_string(),
+                    created_at: "2026-08-25T10:05:00Z".to_string(),
+                    source: LyricSource::Human,
+                },
+            ],
+            approved: Some(5),
+        };
+        assert_eq!(
+            doc.push_version("next", LyricSource::Human, "2026-08-25T10:06:00Z"),
+            6
+        );
+        let numbers: Vec<u32> = doc.versions.iter().map(|v| v.number).collect();
+        assert_eq!(numbers, vec![1, 5, 6]);
+    }
+
+    /// Invariant: approving a number that does not exist leaves the approval the
+    /// user already made untouched. Clearing it would silently withdraw a lyric
+    /// from AudioStudio.
+    #[test]
+    fn test_approve_missing_version_keeps_the_previous_approval() {
+        let mut doc = LyricDoc {
+            id: LyricDocId("ld-0001".to_string()),
+            title: None,
+            versions: Vec::new(),
+            approved: None,
+        };
+        doc.push_version("one", LyricSource::Human, "2026-08-25T10:00:00Z");
+        assert!(doc.approve(1));
+        assert_eq!(doc.approved, Some(1));
+
+        assert!(!doc.approve(9));
+        assert_eq!(doc.approved, Some(1));
+    }
+
+    /// Invariant: a project file written before `next_lyric_seq` existed still
+    /// loads, and starts minting at 1 rather than 0.
+    #[test]
+    fn test_project_without_seq_field_defaults_to_one() {
+        let json = r#"{"slug":"demo","name":"Demo","created_at":"2026-08-25T10:00:00Z"}"#;
+        let project: Project = serde_json::from_str(json).unwrap();
+        assert_eq!(project.next_lyric_seq, 1);
+        assert!(project.lyrics.is_empty());
     }
 }

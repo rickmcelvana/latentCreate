@@ -1,4 +1,11 @@
 # T-201a: atomic writes, and the lyric/project types the store needs
+
+> **LANDED 2026-08-25 as part of T-201, without an executor run.** The reference
+> code below was already compiled, gate-green and mutation-tested when the brief was
+> written, and the producer chose to land T-201 whole rather than have it transcribed
+> (PROJECT.md session log, same date). Kept as the design record for the a/b/c split:
+> the spec and the invariants below are what the landed code implements.
+
 **Depends:** none | **Crate/dir:** crates/create-core, crates/library
 **Files to create/modify:**
 - `crates/create-core/src/project.rs` (modify)

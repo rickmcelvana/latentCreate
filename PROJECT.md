@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-201, the on-disk project and lyric store** — the first brief of Phase 2, and first because `LyricDoc` has existed since T-003b with nothing to persist it, and Phase 3's provenance points at a `LyricRef` that a Zustand store cannot keep. The phase's surface verification is done (LLM-SURFACE §12, MCP-SURFACE §15) and its four findings are folded into the task list; the remaining ten tasks are described in [tasks/phase-2.md](tasks/phase-2.md) and briefed one at a time.
+- **Next up:** **T-202, the lyric brief type and system-prompt assembly** (pure `create-core`, no I/O). T-201 landed the store; [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase, and the surface verification behind it is LLM-SURFACE section 12 and MCP-SURFACE section 15.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1416,3 +1416,43 @@ Zustand store cannot keep.
 **Handoff state:** gate green, docs committed, no brief written yet. ComfyUI is up (core is one
 release behind, v0.33.4 vs v0.34.0 — worth updating before Phase 3 touches the pipeline, it does
 not affect Phase 2). Ollama is up with 13 models.
+
+### 2026-08-25 (later still) — T-201 landed whole: the project and lyric store
+
+**Briefed as three, landed as one.** T-201a's brief was written the usual way -- reference
+code compiled, `cargo fmt` clean, clippy clean, gate green, guards mutation-tested -- and
+by the time it was finished the same was true of T-201b's and T-201c's code, because
+deriving the brief meant writing the store. The producer's call was to land T-201 whole as
+architect work rather than spend three executor runs transcribing code that was already
+verified. [tasks/t-201a-brief.md](tasks/t-201a-brief.md) stays as the design record for the
+split.
+
+**What landed.** `library::atomic` (one `write_json`, now shared with `config::save`, which
+had the only other hand-rolled rename dance in the crate), `library::projects` (slug rules,
+path safety, create/save/load/list) and `library::lyrics` (one JSON file per document).
+Plus, in `create-core`: `Project::new`, `Project::next_lyric_seq`, and
+`LyricDoc::push_version`/`approve`.
+
+**Three decisions inside it worth naming, because each prevents a specific wrong answer:**
+
+- **Lyric ids come from a counter on the project, never from the files present.** Deriving
+  the next id from the surviving documents hands a deleted document's id to a later one,
+  and Phase 3's provenance `LyricRef` then resolves to lyrics written for a different song.
+  The counter is monotonic and `#[serde(default)]`s to 1, so older project files still load.
+- **`list_docs` walks `Project::lyrics`, not the directory.** A stray file left by a failed
+  write is therefore invisible rather than appearing as a document, and an id with no file
+  behind it becomes a warning rather than a silent omission -- the user is told a document
+  is missing instead of being shown a list that quietly lost one.
+- **Slugs and doc ids are validated against a whitelist**, because both arrive from the
+  frontend and `..` or a separator would otherwise reach outside the library. A project
+  named `CON` still gets a creatable directory, which on Windows it would not otherwise
+  have.
+
+**Nine mutations, nine caught -- but only after one was rewritten.** `push_version`
+numbering from `versions.len() + 1` survived the first pass: it is indistinguishable from
+numbering off the highest version until a document has a gap, and the test had no gap in
+it. That is the same shape as the four fixtures-that-could-not-fail from T-110 and T-112,
+found the same way. The replacement test starts from versions numbered 1 and 5.
+
+**Next:** T-202, the brief type and system-prompt assembly, which is where the captured
+prompt shape from this session's verification turns into code.

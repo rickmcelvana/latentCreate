@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::LibraryError;
@@ -165,25 +164,14 @@ fn next_corrupt_path(dir: &Path) -> PathBuf {
     dir.join(format!("{CONFIG_FILE}.corrupt"))
 }
 
-/// Writes `config.json` atomically: temp file in the same directory, flushed to disk,
-/// then renamed over the target.
+/// Writes `config.json` atomically (temp sibling, flushed, renamed over the target).
 ///
-/// Same-directory temp keeps the rename on one volume, where it is atomic. A crash
-/// mid-write therefore leaves either the old file or the new one, never a half-written
-/// config that would look "corrupt" on next start.
+/// A crash mid-write leaves either the old file or the new one, never a half-written
+/// config that would look "corrupt" on next start. The mechanism is
+/// [`crate::atomic::write_json`], shared with the project store so there is one
+/// rename dance in the crate rather than two that could drift.
 pub fn save(dir: &Path, config: &Config) -> Result<(), LibraryError> {
-    fs::create_dir_all(dir)?;
-    let target = dir.join(CONFIG_FILE);
-    let tmp = dir.join(format!("{CONFIG_FILE}.tmp"));
-
-    let json = serde_json::to_string_pretty(config)?;
-    {
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(json.as_bytes())?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, &target)?;
-    Ok(())
+    crate::atomic::write_json(&dir.join(CONFIG_FILE), config)
 }
 
 #[cfg(test)]
