@@ -216,6 +216,16 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   files appear to `search_models` with **no ComfyUI restart**, so the post-install re-check is
   enough.
 ## Backlog (accepted, not yet scheduled)
+- **Say in the Lyrics Studio when the configured model is remote.** The disclosure exists
+  where the model is *chosen* (the wizard shows a "remote" chip and "Your lyrics leave this
+  machine"), which is what the 2026-08-24 decision requires. But the T-211 click-through ran a
+  whole generation on `qwen3.5:397b-cloud` from the Lyrics view, where nothing says so -- the
+  app's premise is local-first generation, and an unreleased lyric going to ollama.com deserves
+  a standing indicator next to Generate rather than a fact the user has to remember from
+  another screen. Small: `is_remote` is already on the wizard's model rows, though the Lyrics
+  view would need it from config or a fresh probe. Deliberately not built during T-211 -- it is
+  new scope at a phase close, and the owner should decide whether it is a chip, a line, or a
+  confirm.
 - **Click the Install button once, on a machine missing a model.** `models_install` and
   `models_progress` are the only Tauri commands in the wizard never exercised through the UI:
   the 18.5 GiB install ran the same `download_model` calls they wrap, but the click-through
@@ -1979,3 +1989,54 @@ cargo test -p app -- --ignored lyric_generation --nocapture
 
 **Next:** steps 2, 3 and 5 -- the producer's click-through, and the on-disk check that
 `prompt_optimized` records consent. Then `phase2-done`.
+
+### 2026-08-26 (later still) -- T-211 steps 2, 3 and 5: the click-through, and what it found
+
+**The producer ran the three steps no test can make.** Everything the phase set out to build
+works: generation, editing, versioning, the lint, approve, the optimizer diff, accept, revert,
+the brief-edit reset, and the on-disk record.
+
+**Step 5 is the one worth reading in full**, because it is the T-210 claim only a real run
+proves. The document on disk after the session:
+```
+approved: 3
+v1 {"kind":"llm","model":"gemma4:12b-32k","prompt_optimized":false}
+v2 {"kind":"edited","from_version":1}
+v3 {"kind":"llm","model":"qwen3.5:397b-cloud","prompt_optimized":true}
+```
+v1 generated before optimizing, v3 from a prompt the user accepted, and the flag records the
+difference. **`Edited` carries no `prompt_optimized` and should not** -- the producer flagged
+its absence on v2 as possibly wrong. v2's provenance is "edited from v1", and v1 carries its
+own flag; copying it onto the edit would be the two-sources-of-truth hazard the sidecar rules
+exist to prevent. The chain is the record.
+
+**The lint's hit rate is model-dependent, and the spread is large.** `gemma4:12b-32k` produced
+**8 findings** on one generation -- seven production cues written inside the lyrics plus an
+extra `[Outro]`. `qwen3.5:397b-cloud` on the same brief produced **none**. Both are healthy
+outcomes and neither is a bug: the phase-boundary measurement (10 of 13) and the T-211
+measurement (3 of 3) were both gemma4. The lint is not dead code for a well-behaved model, and
+it is not noise for a badly-behaved one -- but "the model writes production cues" is a fact
+about a model, not about models, and Phase 3's profile docs should not state it as universal.
+
+**Three UI defects, all found by clicking, all fixed in T-213.** Each is worth naming because
+none of them could have been caught any other way:
+1. **The draft textarea rendered black on the dark ground.** A textarea does not inherit the
+   page colour, and `.lyrics-draft` never set one. Every other textarea in the app happens to
+   sit on a class that does.
+2. **The approval notice was invisible in practice, while being correct in code.** It rendered,
+   `approvedText` is right and tested, and the badge proved `doc.approved` was set -- but it sat
+   at the foot of the panel *below the lint findings*, so a lyric carrying eight advisories
+   pushed it off screen. The producer reasonably concluded the feature did not exist. **A
+   correct component in the wrong place is indistinguishable from a missing one**, and no test
+   in this repo can see layout.
+3. **A check that found nothing said nothing.** Empty findings meant both "clean" and "never
+   ran". A `linted` flag separates them, and any draft change clears it -- findings carry line
+   numbers, so a stale one points at a line the user has since edited.
+
+**Still open before `phase2-done`:** the producer re-runs steps 2 and 3 against the T-213
+fixes. Nothing else is outstanding.
+
+**One thing deliberately not built, now in the backlog:** the Lyrics Studio does not say when
+the configured model is remote. The wizard does, which satisfies the 2026-08-24 decision as
+written -- but this session generated an unreleased lyric on `qwen3.5:397b-cloud` from a screen
+that never mentions it. Raised for the owner rather than decided at a phase close.

@@ -262,8 +262,11 @@ generations from the real assembled prompt, then the lint over what came back.
   **3 of 3**, against the 10-of-13 rate predicted by LLM-SURFACE 12.5. The scanner works and
   the model is not well-behaved, which is exactly why the lint exists rather than a prompt rule.
 
-**Still to run: steps 2, 3 and 5 -- the click-through and the on-disk check.** These are the
-parts no test can make (WORKFLOW 5: the review environment cannot composite frames).
+**Steps 2, 3 and 5 were run on 2026-08-26 and pass**, with three UI defects found and fixed in
+T-213 (draft textarea colour, the approval notice sitting below the lint findings and so off
+screen, and a clean check rendering nothing). **Re-run steps 2 and 3 against those fixes before
+tagging `phase2-done`.** Full results in PROJECT.md's session log; the on-disk provenance from
+step 5 is quoted there verbatim.
 
 **Step 2 -- brief to approved lyric (the ROADMAP check).**
 1. Open Lyrics. The form opens prefilled, and the subtitle names the profile being written for.
