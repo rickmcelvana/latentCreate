@@ -8,8 +8,10 @@
 //! [`project`] holds the library's project, lyric and track-id types.
 //! [`provenance`] holds the reproducible recipe for one generated asset.
 //! [`readiness`] decides whether a profile's model files are present.
+//! [`lyrics`] holds the lyric brief and the prompt assembled from it.
 
 pub mod generation;
+pub mod lyrics;
 pub mod profile;
 pub mod project;
 pub mod provenance;
@@ -17,6 +19,7 @@ pub mod readiness;
 pub mod suggestions;
 
 pub use generation::*;
+pub use lyrics::*;
 pub use profile::*;
 pub use project::*;
 pub use provenance::*;
