@@ -56,7 +56,7 @@ Four findings, each of which changes a task below rather than decorating it.
 Briefs are written one at a time, each after the previous lands. Each gets its own
 `tasks/t-2NN-brief.md` when written.
 
-### T-201 — `library::projects`: the on-disk project and lyric store
+### T-201 — `library::projects`: the on-disk project and lyric store  — split in three
 `LyricDoc`/`LyricVersion`/`LyricSource` have existed in `create-core` since T-003b with
 nothing to persist them. Everything below produces documents, and Phase 3's provenance
 records a `LyricRef { doc_id, version }` -- a doc id that lives only in a Zustand store is a
@@ -66,6 +66,24 @@ Scope: create/list/load projects under `library/projects/<slug>/`, mint `LyricDo
 a version, set `approved`, atomic writes (`config.rs`'s pattern), malformed files reported as
 warnings rather than failing the load (`profiles.rs`'s pattern). No UI for project management
 in this phase -- a default project is created on demand; Phase 4's Library view manages them.
+
+Split at ~400 lines per run, along the seams that already exist in the work:
+
+- **T-201a — atomic writes and the types** ([brief](t-201a-brief.md)). One
+  `library::atomic::write_json` shared with `config::save`, plus `Project::new`,
+  `Project::next_lyric_seq` and `LyricDoc::push_version`/`approve` in `create-core`. The
+  sequence number is monotonic and never reused: minting lyric ids from the surviving file
+  list would let a deleted document's id reach a later one, and a track's provenance would
+  then point at unrelated lyrics.
+- **T-201b — naming and path safety.** `slugify`, the Windows reserved-name guard
+  (a project called "Con" must still get a creatable directory), `is_safe_slug` as a
+  whitelist so a slug arriving from the frontend cannot escape the library root,
+  `ProjectWarning`/`ProjectSet`, and `now_rfc3339` -- the one place this crate reads a
+  clock, which is what keeps every other function's tests deterministic. Adds `chrono`.
+- **T-201c — the store.** `create_project` (suffixing a taken slug rather than opening
+  someone else's project), `save_project`, `load_project` (a missing project is
+  `NotFound`, never a default), and `list_projects`, which never fails and prefers the
+  directory name over a stale recorded slug -- what a copied project directory looks like.
 
 ### T-202 — `create-core::lyrics`: the brief type and system-prompt assembly
 Pure, no I/O, no async. `LyricBrief` (theme, style tags, mood, structure, language, POV,
