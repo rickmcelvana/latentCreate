@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useConfigStore } from '../state/config'
-import { structureOptions, useLyricsStore } from '../state/lyrics'
+import {
+  generationPhase,
+  structureOptions,
+  thinkingTail,
+  useLyricsStore,
+  type GenerationPhase,
+} from '../state/lyrics'
 import { getProfileGuide, DEFAULT_PROFILE_ID, type ProfileGuide } from '../bridge/profiles'
 import { isTauri, type PointOfView } from '../bridge/lyrics'
 
 const POINTS_OF_VIEW: PointOfView[] = ['first_person', 'second_person', 'third_person']
+
+const STATUS_LABELS: Record<GenerationPhase, string> = {
+  idle: 'Idle',
+  starting: 'Starting...',
+  thinking: 'Thinking...',
+  writing: 'Writing...',
+  failed: 'Failed',
+}
 
 /**
  * LyricsStudio: the brief form.
@@ -170,6 +184,54 @@ export function LyricsStudio() {
           </button>
         </div>
       </form>
+
+      <LyricOutput />
     </>
+  )
+}
+
+/**
+ * The generation itself: the streaming draft, the thinking status, and the
+ * terminal banner.
+ *
+ * A generation that streams nothing visible for tens of seconds is
+ * indistinguishable from a hang, so the reasoning is shown as status -- the
+ * content the model is already sending is the fix, not a spinner
+ * (LLM-SURFACE 12).
+ */
+function LyricOutput() {
+  const draft = useLyricsStore((state) => state.draft)
+  const thinking = useLyricsStore((state) => state.thinking)
+  const truncated = useLyricsStore((state) => state.truncated)
+  const generating = useLyricsStore((state) => state.generating)
+  const error = useLyricsStore((state) => state.error)
+  const cancel = useLyricsStore((state) => state.cancel)
+
+  const phase = generationPhase({ draft, thinking, truncated, generating, error })
+  if (phase === 'idle') return null
+
+  return (
+    <section className="panel lyrics-output">
+      <header className="lyrics-output-head">
+        <span className={`lyrics-status lyrics-status-${phase}`}>{STATUS_LABELS[phase]}</span>
+        {generating ? (
+          <button type="button" className="job-cancel" onClick={() => void cancel()}>
+            Cancel
+          </button>
+        ) : null}
+      </header>
+
+      {phase === 'thinking' ? <p className="lyrics-thinking">{thinkingTail(thinking)}</p> : null}
+
+      {phase === 'failed' ? <p className="lyrics-error">{error}</p> : null}
+
+      {draft !== '' ? <pre className="lyrics-draft">{draft}</pre> : null}
+
+      {truncated && !generating ? (
+        <p className="lyrics-truncation">
+          The model ran out of room and stopped early. Try a longer length, then generate again.
+        </p>
+      ) : null}
+    </section>
   )
 }

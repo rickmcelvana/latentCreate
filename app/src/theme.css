@@ -580,3 +580,71 @@ body {
   display: flex;
   gap: var(--gap-sm);
 }
+
+/* --- LyricsStudio: the generation output --- */
+
+.lyrics-output {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  max-width: 720px;
+  margin-top: var(--gap-lg);
+}
+
+.lyrics-output-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.lyrics-status {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.lyrics-status-writing {
+  color: var(--accent);
+}
+
+.lyrics-status-failed {
+  color: var(--danger);
+}
+
+.lyrics-thinking {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.lyrics-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.lyrics-draft {
+  margin: 0;
+  padding: var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.lyrics-truncation {
+  margin: 0;
+  padding: var(--gap-sm) var(--gap-md);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  color: var(--warning);
+  font-size: 13px;
+}

@@ -3,8 +3,10 @@ import type { LyricBrief } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
 import {
   applyLyricEvent,
+  generationPhase,
   structureOptions,
   styleTagsFromGuide,
+  thinkingTail,
   useLyricsStore,
   type LyricsSnapshot,
 } from './lyrics'
@@ -196,6 +198,46 @@ describe('applyLyricEvent', () => {
     expect(state.thinking.length).toBe(50)
     expect(state.thinking[0]).toBe('t70')
     expect(state.thinking[49]).toBe('t119')
+  })
+})
+
+describe('generationPhase', () => {
+  it('test_idle_when_not_generating', () => {
+    expect(generationPhase(snapshot())).toBe('idle')
+  })
+
+  /**
+   * Protects the reasoning status. A model can spend tens of seconds thinking
+   * before writing a word (LLM-SURFACE 12.1), and "thinking" is the only proof
+   * of life in that window -- collapsing it into "starting" would read as a
+   * hang.
+   */
+  it('test_starting_then_thinking_then_writing', () => {
+    expect(generationPhase(snapshot({ generating: true }))).toBe('starting')
+    expect(generationPhase(snapshot({ generating: true, thinking: ['hmm'] }))).toBe('thinking')
+    expect(generationPhase(snapshot({ generating: true, draft: 'line' }))).toBe('writing')
+  })
+
+  it('test_failed_when_error_and_not_generating', () => {
+    expect(generationPhase(snapshot({ error: 'boom' }))).toBe('failed')
+  })
+
+  it('test_writing_beats_thinking_once_content_flows', () => {
+    expect(
+      generationPhase(snapshot({ generating: true, thinking: ['hmm'], draft: 'x' })),
+    ).toBe('writing')
+  })
+})
+
+describe('thinkingTail', () => {
+  it('test_joins_the_recent_thinking', () => {
+    expect(thinkingTail([' one', ' two'])).toBe(' one two')
+  })
+
+  /** Protects: the status shows the newest reasoning, not the whole chain. */
+  it('test_truncates_to_the_most_recent', () => {
+    const tail = thinkingTail(['a'.repeat(200)])
+    expect(tail).toBe('a'.repeat(140))
   })
 })
 

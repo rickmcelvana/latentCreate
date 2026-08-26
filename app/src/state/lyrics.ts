@@ -99,6 +99,38 @@ export function applyLyricEvent(snapshot: LyricsSnapshot, event: LyricEvent): Ly
   }
 }
 
+/** What the generation is doing, for the status line. */
+export type GenerationPhase = 'idle' | 'starting' | 'thinking' | 'writing' | 'failed'
+
+/**
+ * The generation phase, derived from the snapshot.
+ *
+ * Pure so it can be tested without a store. `thinking` beats `starting` because
+ * a model can spend tens of seconds on chain-of-thought before writing a word
+ * (LLM-SURFACE 12.1) -- showing that it is thinking is what keeps a healthy
+ * generation from reading as a hang. `writing` beats `thinking` because once
+ * content is flowing, that is the useful signal.
+ */
+export function generationPhase(snapshot: LyricsSnapshot): GenerationPhase {
+  if (snapshot.error !== null && !snapshot.generating) return 'failed'
+  if (!snapshot.generating) return 'idle'
+  if (snapshot.draft.length > 0) return 'writing'
+  if (snapshot.thinking.length > 0) return 'thinking'
+  return 'starting'
+}
+
+/**
+ * The tail of the reasoning trace, for the status line.
+ *
+ * The trace is already bounded, but the status shows only the most recent
+ * reasoning -- the model's thinking scrolls past and the user needs to see the
+ * newest, not the whole chain.
+ */
+export function thinkingTail(thinking: string[]): string {
+  const joined = thinking.join('')
+  return joined.length > 140 ? joined.slice(-140) : joined
+}
+
 interface LyricsState extends LyricsSnapshot {
   brief: LyricBrief
   listening: boolean
