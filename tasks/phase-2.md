@@ -110,16 +110,34 @@ A profile with no `lyrics_contract` must still assemble a valid prompt.
   and the runs carrying it averaged more of the behaviour it forbids (LLM-SURFACE 12.5). A
   test exists solely to stop it being re-added.
 
-### T-203 — `create-core::lyrics::lint`: structure-tag validation
+### T-203 — `create-core::lyrics::lint`: structure-tag validation  — split in two
 Advisory findings over lyric text against a profile: a bracketed token that is not a
 structure tag (the failure the model actually makes), a requested section missing, `[inst]`
-handling. **T-202's 14 live generations sized this task**: no prompt variant stopped the
-stray direction blocks, most runs had several, and every single run added 2 to 4 sections
-beyond the six requested -- while never once breaking the requested order. So "the
-requested sections appear, in order" is a check a lyric can pass, and "no other sections"
-is a check no lyric passes: the second is information, never a failure. Numbering-tolerant matching -- `[Verse 2]` matches `[Verse]` -- because the shipped
+handling. **T-202's live generations sized this task**, counted over all 13 that were
+saved: no prompt variant stopped the stray direction blocks (46 of them, in 10 of the 13
+files), the requested order held in **13 of 13**, and the only section ever added beyond
+the six requested was an `[Outro]`, in 9 of 13. So "the requested sections appear, in
+order" is a check a lyric can pass, and "and nothing else" is one most lyrics fail over an
+outro the user probably wants: information, never a failure. Numbering-tolerant matching -- `[Verse 2]` matches `[Verse]` -- because the shipped
 template numbers and the profile does not. Returns typed findings with a severity, never a
 bool, and never a verdict that can block. Pure and heavily tested; mutation-test the guards.
+
+
+- **T-203a — the scanner and the directions** ([brief](t-203a-brief.md)). `LintSeverity`
+  (no `Error` variant -- nothing published by ComfyUI can make any of this authoritative),
+  the complete `LintFinding`, the tag scanner, and the two rules that catch what the model
+  actually writes: a bracket that is not a structure tag, and text sharing a line with one.
+  Three captured generations go into `testdata/lyrics/` as fixtures, unedited.
+- **T-203b — the structure rules** ([brief](t-203b-brief.md)). Missing, out-of-order and
+  extra sections, with the severities set by the corpus: missing and reordered are warnings
+  because no real generation produced either, and an extra section is Info because 9 of 13
+  added an `[Outro]`.
+
+**The corpus found a defect in the first version of the scanner**, which is the reason the
+fixtures are real output rather than hand-written. An earlier rule required a tag line to
+be nothing but tags. One generation wrote every direction as
+`[Verse] (dreamy female vocals)` -- and that correctly structured song, one of only three
+in the corpus with no bracketed strays, came back reported as having no structure at all.
 
 ### T-204 — `llm-bridge`: `reasoning_effort` on `ChatRequest`
 One optional field, omitted from the wire when `None`. Plus an `--ignored` live test that

@@ -483,11 +483,24 @@ Two conclusions, both acted on in T-202:
 One behaviour *was* stable across all 14 runs, and it is what structure linting should
 be built on:
 
-- **The requested section order was never broken.** `V-C-V-C-B-C` appeared as a
-  subsequence of the returned tags in 10 of 10 measured runs.
-- **Every run added 2 to 4 sections beyond the six requested** -- an `[Outro]`, an
-  `[inst]`, an extra `[Chorus]`. Not once did a run return exactly the requested set.
+**Counted over all 13 saved generations** (`testdata/lyrics/` holds two of them), against
+the default `V-C-V-C-B-C` brief and the ACE-Step profile:
 
-So "the requested sections appear, in order" is a check a lyric can pass, and "no other
-sections" is a check no lyric passes. The second must therefore be information, never a
-failure.
+| what | result |
+|---|---|
+| requested order correct (as a subsequence) | **13 of 13** |
+| extra song sections beyond the six requested | **1 in 9 files, 0 in the other 4** |
+| what the extra section always was | **`[Outro]`**, in every one of the 9 |
+| `[inst]` markers | 0 to 3 per file, in 7 of 13 |
+| stray direction blocks | 46 in total; 10 of 13 files had at least one, worst file 8 |
+| declared tags written in a form other than the profile's | **0 of 99** |
+
+So **"the requested sections appear, in order" is a check a lyric can pass** -- every real
+generation passed it. **"and nothing else" is a check most lyrics fail**, over one
+`[Outro]` the user very likely wants, so it is information rather than a finding.
+
+The last row is worth its own note: the model writes the profile's tags exactly as the
+prompt lists them, never numbered. **Numbering tolerance in the lint is therefore for the
+user's own text, not the model's** -- the shipped ACE-Step template writes `[Verse 1]`
+(MCP-SURFACE 15.2), so a lyric pasted from there, or typed by a songwriter out of habit,
+is the case that needs it.

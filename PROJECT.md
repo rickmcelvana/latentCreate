@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store) and T-202 (brief type and prompt assembly) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-203, the structure-tag lint** -- the only defence against the stray production directions the prompt provably cannot suppress, and already sized by T-202's 14 live runs. [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase; the surface verification behind it is LLM-SURFACE sections 12 and 12.5 and MCP-SURFACE section 15.
+- **Next up:** **T-203a**, then **T-203b** -- both briefed, reference code compiled, mutation-tested and swept over the whole saved corpus ([t-203a](tasks/t-203a-brief.md), [t-203b](tasks/t-203b-brief.md)). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -148,12 +148,25 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   on intuition. **The general rule for this repo: a prompt change is a change to a
   third-party surface, and gets measured like one.** Evidence:
   [docs/LLM-SURFACE.md 12.5](docs/LLM-SURFACE.md).
-- **2026-08-25 — the model follows the requested section order and always adds sections.**
-  Across all 14 runs the requested `V-C-V-C-B-C` appeared as a subsequence of the returned
-  tags every time, and every run added 2 to 4 sections beyond it (an `[Outro]`, an `[inst]`,
-  an extra `[Chorus]`). Consequence for T-203: "the requested sections appear, in order" is
-  a check a lyric can pass; "no other sections" is a check no lyric passes, so it is
-  information rather than a finding.
+- **2026-08-25 — the model follows the requested section order, and usually adds an
+  `[Outro]`.** Counted over all 13 saved generations: the requested `V-C-V-C-B-C` was a
+  subsequence of the returned tags in **13 of 13**, an extra song section appeared in **9 of
+  13** and was **always `[Outro]`**, and **none of the 99 declared tags** came back in a form
+  other than the one the profile lists. Consequence for T-203: "the requested sections
+  appear, in order" is a check a lyric can pass, "and nothing else" is one most lyrics fail
+  over an outro the user probably wants, and **numbering tolerance is for the user's own
+  text rather than the model's** -- the shipped template writes `[Verse 1]`, the model does
+  not. *(Corrects an earlier phrasing of this entry that said every run added 2 to 4
+  sections; that counted `[inst]` markers and tag occurrences rather than song sections.)*
+- **2026-08-25 — a lyric line counts as structure when it *opens* with a bracket, not when
+  it is only brackets.** The stricter rule was written first and looked obviously right.
+  Run over the 13 saved generations, it reported one of them -- a correctly structured song,
+  one of only three with no stray bracketed directions -- as having **no structure at all**,
+  because that generation wrote every direction as `[Verse] (dreamy female vocals)`. The
+  scanner now reads leading tags and reports the trailing text as its own finding. The
+  general point, and the reason the fixtures in `testdata/lyrics/` are unedited model
+  output: **a rule about model output has to be run against model output.** Hand-written
+  fixtures are written to agree with the code.
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
@@ -1494,10 +1507,10 @@ the forbidden thing appears to prime it. The rule is gone, and
 That is now a repo rule: **a prompt change is a change to a third-party surface and gets
 measured like one.**
 
-**The same 14 runs sized T-203.** Every run added 2 to 4 sections beyond the six the brief
-requested, and no run ever broke the requested order. So the lint can check "the requested
-sections appear, in order" and must never check "and nothing else" -- the second is a rule
-no real lyric passes.
+**The same runs sized T-203.** No run ever broke the requested order, and the additions
+were smaller and more uniform than first written: one extra `[Outro]` in 9 of the 13 saved
+generations, nothing else. So the lint can check "the requested sections appear, in order"
+and must not fail a lyric for "and nothing else".
 
 **One mutation survived, for the third time in the same shape.** The test asserting that
 structure tags come from the profile passed with the tag line deleted entirely, because
@@ -1546,3 +1559,40 @@ when it was failing every time; the case for it is now weaker, not stronger.
 
 **Next:** T-203, the lint. It is the only defence against the stray production directions,
 now that the prompt has been measured and cannot suppress them.
+
+### 2026-08-25 (later still) — T-203 briefed in two; the corpus broke my own rule
+
+**The lint had a corpus to be built against, and that changed it.** The 13 generations
+saved from T-202's prompt runs are the only real evidence anywhere of what this model puts
+in a lyric, so the lint was written, then run over all 13 before the brief was finished.
+
+**It caught a defect I had reasoned my way into.** The scanner's first rule was "a line is
+structure only if it is nothing but bracket tokens", which is tidy and wrong: one
+generation wrote every direction as `[Verse] (dreamy female vocals, ethereal synth pads)`,
+and that file -- a correctly structured song, one of only three in the corpus with no
+bracketed strays -- came back reported as having **no structure at all**. The best-behaved
+file in the corpus got the worst possible answer. The scanner now reads the leading tags
+and reports the trailing text as its own finding, `TextAfterTag`, and that generation is
+`testdata/lyrics/generated-parenthesised-directions.txt`.
+
+**The corpus also corrected something I had already written down.** Three committed
+documents said every run added 2 to 4 sections beyond the six requested. Counted properly,
+excluding `[inst]` markers and per-occurrence double counting: an extra section appeared in
+**9 of 13**, and it was **always an `[Outro]`**; the other 4 matched the brief exactly. The
+design conclusion is unchanged -- an extra section is Info, not a warning -- but it now
+rests on 9 of 13 rather than on "no lyric passes". Corrected in LLM-SURFACE 12.5, the
+decisions log and the phase file.
+
+**A fourth thing the corpus settled:** across 99 declared tags the model **never once
+numbered one**. So the lint's numbering tolerance is not for the model at all -- it is for
+the shipped ACE-Step template, which writes `[Verse 1]`, and for songwriters who number out
+of habit. That is now written on the function, because otherwise it reads as dead code.
+
+**Verification:** eight mutations, eight caught after one rewrite (the trailing-text rule
+had an untested branch), and a sweep over all 13 files whose counts matched an independent
+analysis exactly -- 46 unknown tags, order clean 13 of 13, extra section in exactly the 9
+that added an outro, and no file misread as untagged.
+
+**Briefed in two** because the file is 663 lines. Reference implementation is in the
+session scratchpad, not the working tree; the three fixtures **are** committed, since they
+are captured data rather than executor output.
