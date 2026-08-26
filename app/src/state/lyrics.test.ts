@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LyricBrief } from '../bridge/lyrics'
-import { applyLyricEvent, useLyricsStore, type LyricsSnapshot } from './lyrics'
+import type { ProfileGuide } from '../bridge/profiles'
+import {
+  applyLyricEvent,
+  structureOptions,
+  styleTagsFromGuide,
+  useLyricsStore,
+  type LyricsSnapshot,
+} from './lyrics'
 
 const mockDefaultBrief: LyricBrief = vi.hoisted(() => ({
   theme: 'A night drive out of a city you are leaving for good',
@@ -34,6 +41,17 @@ function snapshot(over: Partial<LyricsSnapshot> = {}): LyricsSnapshot {
     truncated: false,
     generating: false,
     error: null,
+    ...over,
+  }
+}
+
+function profileGuide(over: Partial<ProfileGuide> = {}): ProfileGuide {
+  return {
+    display_name: 'ACE-Step 1.5 XL Turbo',
+    tag_style: 'comma-separated short tags',
+    examples: [
+      { tags: 'synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm', lyrics: null },
+    ],
     ...over,
   }
 }
@@ -178,5 +196,58 @@ describe('applyLyricEvent', () => {
     expect(state.thinking.length).toBe(50)
     expect(state.thinking[0]).toBe('t70')
     expect(state.thinking[49]).toBe('t119')
+  })
+})
+
+describe('structureOptions', () => {
+  /** Protects: a custom structure stays selectable rather than being dropped. */
+  it('test_appends_a_custom_value_to_the_presets', () => {
+    const options = structureOptions('V-Spoken word-C')
+    expect(options).toContain('V-Spoken word-C')
+    expect(options[options.length - 1]).toBe('V-Spoken word-C')
+  })
+
+  it('test_does_not_duplicate_a_preset', () => {
+    const options = structureOptions('V-C-V-C-B-C')
+    expect(options.filter((o) => o === 'V-C-V-C-B-C')).toHaveLength(1)
+  })
+})
+
+describe('styleTagsFromGuide', () => {
+  /** Protects: the prefill is the profile's own example, not a constant. */
+  it('test_reads_the_first_example', () => {
+    expect(
+      styleTagsFromGuide(profileGuide({ examples: [{ tags: 'synthwave, dreamy', lyrics: null }] })),
+    ).toBe('synthwave, dreamy')
+  })
+
+  /** Protects: no guide and an empty example both mean "nothing to prefill". */
+  it('test_is_null_without_an_example', () => {
+    expect(styleTagsFromGuide(null)).toBeNull()
+    expect(styleTagsFromGuide(profileGuide({ examples: [] }))).toBeNull()
+    expect(styleTagsFromGuide(profileGuide({ examples: [{ tags: '  ', lyrics: null }] }))).toBeNull()
+  })
+})
+
+describe('prefillFrom', () => {
+  /**
+   * Protects the "never modify the user's words" rule: the prefill replaces only
+   * the untouched default, so an edit the user already made is left alone.
+   */
+  it('test_prefills_over_the_default_but_not_over_an_edit', () => {
+    useLyricsStore.getState().prefillFrom(profileGuide())
+    expect(useLyricsStore.getState().brief.style_tags).toBe(
+      'synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm',
+    )
+
+    useLyricsStore.setState({ brief: { ...mockDefaultBrief, style_tags: 'my own words' } })
+    useLyricsStore.getState().prefillFrom(profileGuide())
+    expect(useLyricsStore.getState().brief.style_tags).toBe('my own words')
+  })
+
+  /** Protects: a null guide changes nothing. */
+  it('test_a_null_guide_changes_nothing', () => {
+    useLyricsStore.getState().prefillFrom(null)
+    expect(useLyricsStore.getState().brief.style_tags).toBe(mockDefaultBrief.style_tags)
   })
 })

@@ -8,6 +8,7 @@ import {
   type LyricBrief,
   type LyricEvent,
 } from '../bridge/lyrics'
+import type { ProfileGuide } from '../bridge/profiles'
 
 /**
  * Cap on the reasoning trace, so a model that reasons at length cannot grow the
@@ -31,6 +32,42 @@ export interface LyricsSnapshot {
   truncated: boolean
   generating: boolean
   error: string | null
+}
+
+/**
+ * The structure strings offered in the picker.
+ *
+ * Letters expand per `create-core::lyrics::expand_structure`: V = Verse,
+ * C = Chorus, B = Bridge, I = Intro, O = Outro. A user can still type a custom
+ * structure -- the picker keeps whatever is not a preset selectable.
+ */
+export const STRUCTURE_PRESETS: readonly string[] = [
+  'V-C-V-C-B-C',
+  'V-C-V-C',
+  'I-V-C-V-C-O',
+  'V-V-C-V-C-B-C',
+]
+
+/**
+ * The options for the structure picker: the presets, plus the current value
+ * when it is not one of them, so a custom structure is never hidden.
+ */
+export function structureOptions(current: string): string[] {
+  const options = [...STRUCTURE_PRESETS]
+  if (!options.includes(current)) options.push(current)
+  return options
+}
+
+/**
+ * The style tags a profile's guide prefills, when its first example names any.
+ *
+ * `null` means "nothing to prefill": no guide, no examples, or an empty first
+ * example. The form then keeps the built-in default.
+ */
+export function styleTagsFromGuide(guide: ProfileGuide | null): string | null {
+  const first = guide?.examples[0]
+  if (first === undefined || first.tags.trim() === '') return null
+  return first.tags
 }
 
 /**
@@ -66,6 +103,7 @@ interface LyricsState extends LyricsSnapshot {
   brief: LyricBrief
   listening: boolean
   setBrief: (patch: Partial<LyricBrief>) => void
+  prefillFrom: (guide: ProfileGuide | null) => void
   generate: (profileId: string) => Promise<void>
   cancel: () => Promise<void>
   startListening: () => Promise<void>
@@ -81,6 +119,16 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   listening: false,
 
   setBrief: (patch) => set((state) => ({ brief: { ...state.brief, ...patch } })),
+
+  prefillFrom: (guide) => {
+    const tags = styleTagsFromGuide(guide)
+    if (tags === null) return
+    const brief = get().brief
+    // Never overwrite the user's own words: only the untouched default is
+    // prefilled, so an edit the user already made is left alone.
+    if (brief.style_tags !== DEFAULT_BRIEF.style_tags) return
+    set({ brief: { ...brief, style_tags: tags } })
+  },
 
   generate: async (profileId) => {
     if (!isTauri() || get().generating) return

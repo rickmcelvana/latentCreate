@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import type { ReactElement } from 'react'
 import { useNavStore } from './state/nav'
+import { useConfigStore } from './state/config'
 import { NavRail } from './components/NavRail'
 import { Setup } from './views/Setup'
 import { LyricsStudio } from './views/LyricsStudio'
@@ -16,6 +18,11 @@ import { CoverArt } from './views/CoverArt'
  */
 export function App() {
   const activeView = useNavStore((state) => state.activeView)
+  const loadConfig = useConfigStore((state) => state.load)
+
+  useEffect(() => {
+    void loadConfig()
+  }, [loadConfig])
 
   let view: ReactElement
   switch (activeView) {

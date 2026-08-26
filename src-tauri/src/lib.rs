@@ -13,6 +13,7 @@ mod jobs;
 mod llm;
 mod lyrics;
 mod models;
+mod profile;
 
 use jobs::ComfyState;
 use lyrics::LyricsState;
@@ -65,6 +66,7 @@ pub fn run() {
             models::models_status,
             llm::llm_probe,
             llm::llm_test,
+            profile::profile_guide,
             install::models_install,
             install::models_progress,
             jobs::connect_comfy,
