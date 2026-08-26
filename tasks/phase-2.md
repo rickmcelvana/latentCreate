@@ -163,9 +163,13 @@ Components never call `invoke` (ARCHITECTURE 11). Landed directly as architect w
 and the on-disk store, neither of which the streaming store holds (the backend reads the model
 from config, and `library::lyrics` has no Tauri commands yet).
 
-### T-207 — LyricsStudio: the brief form
+### T-207 — LyricsStudio: the brief form  — **LANDED**
 Prefilled from the selected profile's `prompt_guide.examples`, structure picker, plain-text
-language. One primary action.
+language. One primary action. Landed directly as architect work. Also added the
+`profile_guide` Tauri command (the profile's `prompt_guide` reached the frontend nowhere
+before), and a config `load()` at app startup in `App.tsx` -- `default_profile_id` was never
+read at runtime, so the selected-profile prefill had no source. Falls back to
+`DEFAULT_PROFILE_ID` (`ace-step-1.5-turbo`) when none is configured.
 
 ### T-208 — LyricsStudio: the generation UI
 Streaming into the draft, the thinking trace rendered as visible status (44 seconds of

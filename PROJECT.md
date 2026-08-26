@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump) and T-206 (frontend lyric bridge + streaming store) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store) and T-207 (LyricsStudio brief form) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-207** (LyricsStudio: the brief form -- prefilled from the selected profile's `prompt_guide.examples`, structure picker, plain-text language; one primary action). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
+- **Next up:** **T-208** (LyricsStudio: the generation UI -- streaming into the draft, the thinking trace as visible status, cancel, and a truncation banner on `finish_reason: "length"`). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1734,3 +1734,37 @@ because `vi.mock` hoists above it while `vi.fn()` calls are hoisted with it. And
 prefix convention (from T-104c) applies only to `vi.fn()`s and `let` flags, not to data literals.
 
 **Next:** T-207, the LyricsStudio brief form, which binds the store's `brief` to actual inputs.
+
+### 2026-08-25 (later still) — T-207 landed directly; the brief form, and two gaps it exposed
+
+**Landed directly, as with T-204-T-206.** The first UI of the phase: `LyricsStudio.tsx` is now a
+brief form over the T-206 store (`setBrief` per field), with a structure picker, a plain-text
+language field, and one primary action (Generate). vitest 64 -> **70 tests**; `app` crate 31 ->
+**33 tests**.
+
+**Two pre-existing gaps the form exposed, both fixed here rather than worked around:**
+
+1. **`default_profile_id` was never read at runtime.** `load_config` existed but no production
+   code called `load()` -- the config store was only ever exercised by tests and the wizard's
+   `save_config`. The brief form needs a selected profile to prefill from, so `App.tsx` now
+   loads config once on mount, and the form falls back to `DEFAULT_PROFILE_ID`
+   (`ace-step-1.5-turbo`) when none is configured. This is the same class of gap T-006 caught in
+   Phase 0 -- a command existed with no caller.
+2. **The profile's `prompt_guide` reached the frontend nowhere.** `models_status` returns
+   readiness rows, not the authoring guide, so a new `profile_guide` command returns
+   `display_name` + `tag_style` + `examples`, and the form prefills `style_tags` from the first
+   example. This matters because the two shipped profiles disagree about what a style tag is --
+   ACE-Step wants comma-separated short tags, MiniMax wants a structured caption -- so the
+   prefill must come from the profile, never a constant.
+
+**The prefill respects "never modify the user's words."** `prefillFrom` replaces the `style_tags`
+only when it still equals the built-in default; an edit the user already made is left alone. A
+test pins it (and the `styleTagsFromGuide`/`structureOptions` helpers are pure and tested).
+
+**The form is verified by `tsc`/`oxlint`/build and the store tests; its rendering is not.** The
+component logic is thin (store projections), and per WORKFLOW 5 the visual claims are for the
+producer's click-through, not something I can composite here. The Generate button is wired and
+disabled while `generating`, but the streaming result is T-208.
+
+**Next:** T-208, the generation UI -- streaming the draft, the thinking trace, cancel, and the
+truncation banner.
