@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store), T-207 (LyricsStudio brief form) and T-208 (LyricsStudio generation UI) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store), T-207 (LyricsStudio brief form), T-208 (LyricsStudio generation UI) and T-209 (versioned editor, lint surfacing, approve) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-209** (versioned editor, lint surfacing, approve to handoff -- and the Tauri commands wiring `library::lyrics` that nothing has exposed yet). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
+- **Next up:** **T-210** (consent-gated prompt optimizer and the shared `<PromptDiff>` component: original vs optimized side by side, Accept / Edit / Revert, never auto-applied). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1795,3 +1795,45 @@ territory. The cancel button reuses the existing `.job-cancel` style rather than
 **Next:** T-209, the versioned editor -- which also wires `library::lyrics` to Tauri commands
 (`create_doc`/`save_doc`/`list_docs` have no frontend path yet) and carries the version
 list/approve deferred from T-206.
+
+### 2026-08-25 (later still) — T-209 landed directly in three parts; the versioned editor and the lyric store wiring
+
+**The largest phase-2 task, landed in three commits** (T-209a backend, T-209b store, T-209c
+UI), each gate-green. `library::lyrics` finally has a frontend path, the version list/approve
+deferred from T-206 landed, and the LyricsStudio draft became an editor.
+
+**T-209a -- the seam.** `lyrics_open` / `lyrics_save` / `lyrics_lint`, plus a `default_project`
+helper that creates "My First Song" on first use and reuses it after -- there is exactly one
+project and one working document until Phase 4. `lyrics_save` validates the doc id against the
+whitelist before it touches a path, so a bogus id from the frontend cannot write outside the
+project. `lyrics_lint` runs `create-core`'s lint against the profile + brief and returns an empty
+vec on a missing profile -- the lint is advisory, and nothing to check against is not a fault.
+
+**T-209b -- the store.** `bridge/lyricdoc.ts` mirrors `LyricDoc`/`LyricVersion`/`LyricSource`/
+`LintFinding` (severity re-derived frontend-side, since the backend's `severity()` is not on the
+wire). The store gains `doc`, `findings`, and the version actions: `loadDoc`, `commit(source)`,
+`commitGenerated` (auto on `done`, reading the model from config), `saveDraft` (human without
+versions, edited with), `restore`, `approve`, `lint`. The handoff is `approvedText(doc)` -- a pure
+selector Phase 3's AudioStudio reads, no navigation side effect.
+
+**Two design decisions worth naming.** (1) **Generation auto-commits** on `done` with source
+`Llm`, model read from `useConfigStore` -- the alternative (an explicit "save generation" step)
+adds a click for the common case. (2) **`LyricSource::Edited` is chosen by `saveDraft`**, not by
+the component: an edit of an existing version is `edited from vN`, typing into an empty document
+is `human`, and the branch lives in the store where it is tested.
+
+**T-209c -- the UI.** The draft is now a textarea; the version list shows number, source label,
+a one-line preview, and per-version Restore/Approve; lint findings render as warning vs info
+advisories; Save and Check buttons sit under the draft. The approve handoff is a store action
+(`approve` sets `doc.approved`, `approvedText` exposes it). One layout note: `saveDraft`'s
+"human vs edited" test is the one that pins the `LyricSource` rule.
+
+**Test counts:** `app` crate 33 -> **35** (2 backend), vitest 76 -> **87** (11: version helpers,
+the document-store actions, `saveDraft`). `tempfile` added to `src-tauri` dev-dependencies -- the
+only new dependency, already in the workspace via `library`.
+
+**Rendering is producer-click-through.** The editor is thin store projections, verified by
+`tsc`/`oxlint`/build and store tests; the visual claims are WORKFLOW 5 territory. The
+end-to-end flow (generate -> edit -> approve) is exactly what T-211's live milestone checks.
+
+**Next:** T-210, the consent-gated prompt optimizer and the shared `<PromptDiff>` component.

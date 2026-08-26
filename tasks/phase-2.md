@@ -176,12 +176,18 @@ Streaming into the draft, the thinking trace rendered as visible status (44 seco
 silence is what this prevents), cancel, and a truncation banner offering a retry with more
 budget when `finish_reason` is `length`. Landed directly as architect work.
 
-### T-209 — Versioned editor, lint surfacing, approve to handoff
+### T-209 — Versioned editor, lint surfacing, approve to handoff  — **LANDED** (split in three)
 Version list with restore, edits recorded as `LyricSource::Edited`, T-203's findings shown
 inline as advisories, approve sets `LyricDoc::approved`, and the handoff to AudioStudio is a
 store action rather than navigation state. **Carries the "version list, approve" that T-206
 deferred, and therefore also the Tauri commands wiring `library::lyrics` (create/save/list
 docs) that nothing has exposed to the frontend yet.**
+Landed directly as architect work in three commits: T-209a (backend `lyrics_open`/`lyrics_save`/
+`lyrics_lint` + a default project created on demand), T-209b (frontend `bridge/lyricdoc.ts` + the
+versioned store: `loadDoc`/`commit`/`approve`/`restore`/`lint`, auto-commit on generation done),
+T-209c (the editor UI: editable draft, version list with restore/approve, lint advisories).
+Generation auto-commits as `Llm` (model read from config); an explicit Save commits `human`
+(first version) or `edited` (later). The handoff is `approvedText(doc)`, read by Phase 3.
 
 ### T-210 — Consent-gated prompt optimizer and the shared diff component
 Optimizer call over the same endpoint, original vs optimized side by side with an inline
