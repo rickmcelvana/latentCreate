@@ -277,7 +277,11 @@ step 5 is quoted there verbatim.
    model name.
 4. Edit the draft, Save. A second version appears, labelled `edited from v1`.
 5. Check. Lint findings render as advisories -- warnings and info, nothing blocking.
-6. Approve a version. The approved badge appears and the "ready for audio" line shows.
+6. Approve a version. Three things change, and all three are the check: the row gets an
+   `approved` badge, a green **`vN approved`** pill appears in the output panel's header beside
+   the generation status, and a line under the actions reads "vN is approved and ready for
+   audio". (The pill is the one to look for -- the line alone was twice reported missing while
+   rendering, because a small green sentence among other small sentences does not register.)
 
 **Step 3 -- the optimizer, accepted and reverted.**
 1. Optimize prompt. The diff appears: original left, rewrite right, changed words highlighted.

@@ -166,6 +166,21 @@ export function approvedText(doc: LyricDoc | null): string | null {
 }
 
 /**
+ * How the approved version reads as a status, or null when none is approved.
+ *
+ * Separate from [`approvedText`] because the two answer different questions:
+ * that one is the handoff to audio, this one is what the user is shown. Kept
+ * pure and tested because the alternative -- deriving it inline in the view --
+ * is how the notice ended up correct, untested, and invisible.
+ */
+export function approvedLabel(doc: LyricDoc | null): string | null {
+  if (doc === null || doc.approved === null) return null
+  // An approved number with no version behind it is not something to announce.
+  if (!doc.versions.some((version) => version.number === doc.approved)) return null
+  return `v${doc.approved} approved`
+}
+
+/**
  * The optimizer's state, as three fields that cannot contradict each other.
  *
  * `optimization` is the round trip awaiting review and `proposed` is the text

@@ -5,6 +5,7 @@ import type { LyricDoc, LintFinding } from '../bridge/lyricdoc'
 import { useConfigStore } from './config'
 import {
   applyLyricEvent,
+  approvedLabel,
   approvedText,
   generationPhase,
   nextVersionNumber,
@@ -356,6 +357,31 @@ describe('nextVersionNumber', () => {
         { number: 5, text: 'e', created_at: '', source: { kind: 'human' } },
       ]),
     ).toBe(6)
+  })
+})
+
+describe('approvedLabel', () => {
+  /**
+   * Protects the fact the user is shown. The notice was reported missing twice
+   * while rendering correctly, so the logic behind it is pinned here rather
+   * than derived inline in a view no test can see.
+   */
+  it('test_approved_label_names_the_version_and_is_null_without_one', () => {
+    const doc = lyricDoc({
+      approved: 2,
+      versions: [
+        { number: 1, text: 'first', created_at: 't1', source: { kind: 'human' } },
+        { number: 2, text: 'second', created_at: 't2', source: { kind: 'human' } },
+      ],
+    })
+    expect(approvedLabel(doc)).toBe('v2 approved')
+    expect(approvedLabel(lyricDoc())).toBeNull()
+    expect(approvedLabel(null)).toBeNull()
+  })
+
+  /** Protects: an approved number with no version behind it announces nothing. */
+  it('test_approved_label_is_null_when_the_version_is_gone', () => {
+    expect(approvedLabel(lyricDoc({ approved: 9 }))).toBeNull()
   })
 })
 

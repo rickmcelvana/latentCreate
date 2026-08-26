@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useConfigStore } from '../state/config'
 import {
+  approvedLabel,
   approvedText,
   generationPhase,
   structureOptions,
@@ -288,6 +289,13 @@ function LyricEditor({ profileId }: { profileId: string }) {
     <section className="panel lyrics-output">
       <header className="lyrics-output-head">
         <span className={`lyrics-status lyrics-status-${phase}`}>{STATUS_LABELS[phase]}</span>
+        {/* Approval is a property of the document, so it belongs in the panel
+            header beside the generation phase -- and as the same status pill
+            the rest of the app uses, not another line of small green prose. It
+            was twice reported missing while rendering correctly further down. */}
+        {approvedLabel(doc) !== null ? (
+          <span className="status-pill status-pill-ok">{approvedLabel(doc)}</span>
+        ) : null}
         {generating ? (
           <button type="button" className="job-cancel" onClick={() => void cancel()}>
             Cancel
@@ -331,7 +339,7 @@ function LyricEditor({ profileId }: { profileId: string }) {
           eight lint advisories put it off the bottom of the screen -- the user
           saw the per-version badge and concluded the notice did not exist. */}
       {doc !== null && approvedText(doc) !== null ? (
-        <p className="lyrics-approved">v{doc.approved} is approved, and is what audio will use.</p>
+        <p className="lyrics-approved">v{doc.approved} is approved and ready for audio.</p>
       ) : null}
 
       {truncated && !generating ? (
