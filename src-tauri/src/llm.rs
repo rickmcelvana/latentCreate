@@ -276,7 +276,7 @@ fn row(
 /// end in `/v1` and do not answer `/api/tags`, so the version call is the real
 /// test. A failure here is not an error -- it means "not Ollama", and the step
 /// carries on with capabilities unknown.
-async fn enrich(base_url: &str) -> Option<Vec<llm_bridge::OllamaModel>> {
+pub(crate) async fn enrich(base_url: &str) -> Option<Vec<llm_bridge::OllamaModel>> {
     let root = OllamaNative::from_openai_base_url(base_url)?;
     let native = OllamaNative::new(root).ok()?;
     native.version().await.ok()?;

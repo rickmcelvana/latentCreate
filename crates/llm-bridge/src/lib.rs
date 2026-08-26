@@ -33,6 +33,8 @@ pub use wire::ChatMessage;
 pub use wire::ChatRequest;
 /// Re-export of [`wire::Role`].
 pub use wire::Role;
+/// Re-export of [`wire::TokenUsage`].
+pub use wire::TokenUsage;
 
 #[cfg(test)]
 mod tests {

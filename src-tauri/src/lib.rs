@@ -11,9 +11,11 @@ mod comfy;
 mod install;
 mod jobs;
 mod llm;
+mod lyrics;
 mod models;
 
 use jobs::ComfyState;
+use lyrics::LyricsState;
 
 /// Resolved once at startup so every command shares one location.
 struct ConfigDir(PathBuf);
@@ -48,6 +50,7 @@ pub fn run() {
             app.manage(ProfilesDir(shipped_dir(app.handle(), "profiles")));
             app.manage(DataDir(shipped_dir(app.handle(), "data")));
             app.manage(ComfyState::default());
+            app.manage(LyricsState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -66,7 +69,9 @@ pub fn run() {
             install::models_progress,
             jobs::connect_comfy,
             jobs::run_workflow,
-            jobs::cancel_job
+            jobs::cancel_job,
+            lyrics::lyrics_generate,
+            lyrics::lyrics_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running latentCreate");
