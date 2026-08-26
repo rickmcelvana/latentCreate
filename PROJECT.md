@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store) and T-202 (brief type and prompt assembly) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-202a**, then **T-202b** -- both briefed, with reference code compiled and mutation-tested ([t-202a](tasks/t-202a-brief.md), [t-202b](tasks/t-202b-brief.md)). T-201 landed the store; [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase, and the surface verification behind it is LLM-SURFACE sections 12 and 12.5 and MCP-SURFACE section 15.
+- **Next up:** **T-203, the structure-tag lint** -- the only defence against the stray production directions the prompt provably cannot suppress, and already sized by T-202's 14 live runs. [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase; the surface verification behind it is LLM-SURFACE sections 12 and 12.5 and MCP-SURFACE section 15.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1514,3 +1514,35 @@ clippy clean, gate green.
 **Handoff state:** the reference implementation is **not** in the working tree -- it is
 saved under the session scratchpad, and the briefs carry it verbatim. Say the word if you
 would rather land T-202 directly the way T-201 went, and it comes back in one step.
+
+### 2026-08-25 (later still) — T-202a/b reviewed and landed; the first run in this phase to go through the executor
+
+**Both briefs came back faithful.** Against the reference the only content differences were
+a reflowed module doc comment, `use crate::profile` sorted before `use serde`, and the two
+tasks' tests sitting in a different order within `mod tests`. Nothing semantic. That is the
+loop working exactly as WORKFLOW describes it: the expensive thinking happened while the
+brief was being written, and the run was transcription.
+
+**One defect, fixed directly rather than re-run.** Both files arrived **CRLF** while every
+other source file in the repo is LF, which turned a faithful transcription into a 566-line
+phantom rewrite in `diff`. This is the failure WORKFLOW section 2 already documents from
+T-002, and the reason it says to check the line endings before reading a large diff as a
+rewrite -- it cost a minute here because that note exists. Normalised both files; the
+committed content is unchanged either way, since `.gitattributes` pins `eol=lf`.
+
+**The ASCII rule held with no review round.** First task in five where it did not have to be
+raised. Worth noting because the backlog item to enforce it in `npm run gate` was written
+when it was failing every time; the case for it is now weaker, not stronger.
+
+**Verified rather than assumed, on the two things that matter:**
+
+- All 14 tests present and green, and the **eight mutations from the acceptance criteria
+  re-run against the landed file** -- eight caught. Including the one added during review:
+  making whitespace a separator again in `expand_structure`, which would silently split a
+  section the user named "Spoken word" into two.
+- The assembly functions are byte-identical to the reference, so the prompt this code
+  builds is the same string that was measured over 14 live generations. No re-run needed to
+  know that; the diff is the proof.
+
+**Next:** T-203, the lint. It is the only defence against the stray production directions,
+now that the prompt has been measured and cannot suppress them.
