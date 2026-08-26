@@ -91,7 +91,7 @@ raw fallback for `redact_line`. Folds in the **transport-abort mock case** (`Rep
 noted at the T-102b review — it exercises `call`'s transport-fault branch, which was the one
 untested path in T-102b.
 
-### T-103 — templates and slots  — **split in two; six tools is over the ~400-line limit**
+### T-103 — templates and slots  — ✅ **LANDED** as T-103a/b/c (split in three; six tools is over the ~400-line limit)
 All six surfaces were captured live on 2026-08-24 before either brief: **MCP-SURFACE §9**.
 
 #### T-103a — templates  — ✅ **LANDED** `3c9ea38` ([brief](t-103a-brief.md))
@@ -138,7 +138,7 @@ subgraph `A/B.name` (MiniMax). `testdata/mcp/list_workflow_slots.minimax.json` i
 live-captured response to serve from the mock — **24 of its 25 addresses are subgraph-form**,
 so a parser handling only the flat form fails almost all of a real workflow.
 
-### T-104 — job lifecycle + event pump  — **split in two; shapes captured**
+### T-104 — job lifecycle + event pump  — ✅ **LANDED** as T-104a/b/c (split in three; shapes captured)
 `run_workflow(wait=false)`, `job(action=…)`, `fetch_outputs`. Progress re-emitted as Tauri
 events (`job://progress|done|failed`); the UI never polls Rust. Cancellable tokio tasks
 owned by managed state (CONVENTIONS).
@@ -173,7 +173,7 @@ invoke/listen wrappers mirroring the Rust event payloads, a `useJobsStore` queue
 `applyJobEvent` fold, and a `JobQueue` component mounted in AudioStudio. The run trigger stays
 empty until the §7 pipeline (T-107) — this is the plumbing, not the pipeline.
 
-### T-105 — models  — **split in two**
+### T-105 — models  — ✅ **LANDED** as T-105a/b (split in two)
 `search_models` (query and folder modes return **different shapes** — MCP-SURFACE §11) and
 `download_model` + `download(action=…)` progress. Note `download_model` refuses outright when a
 remote target is configured. Split for the ~400-line rule.
