@@ -189,14 +189,43 @@ T-209c (the editor UI: editable draft, version list with restore/approve, lint a
 Generation auto-commits as `Llm` (model read from config); an explicit Save commits `human`
 (first version) or `edited` (later). The handoff is `approvedText(doc)`, read by Phase 3.
 
-### T-210 — Consent-gated prompt optimizer and the shared diff component
+### T-210 — Consent-gated prompt optimizer and the shared diff component  — **LANDED**
 Optimizer call over the same endpoint, original vs optimized side by side with an inline
 word diff, Accept / Edit / Revert. The user-approved text is what is sent and stored, with
 `prompt_optimized` recorded on the version. Never auto-applied. `<PromptDiff>` is built to be
 reused for audio tags in Phase 3.
+
+Landed directly as architect work in two commits: T-210a (`create-core::lyrics::optimize` --
+the optimizer system prompt, the rewritable/fixed label split, `clean_optimized`; the
+`lyrics_optimize` command returning both texts plus `truncated`; `prompt_override` on
+`lyrics_generate`), T-210b (`components/wordDiff.ts`, the `<PromptDiff>` component, and the
+store's `optimization`/`proposed`/`promptOverride`).
+
+**What is optimized is the assembled brief, not the lyrics.** The user message is a list of
+labelled lines (T-202, chosen partly for this), and the optimizer is told which lines it may
+rewrite (Theme, Genre and style tags, Mood, Era and references) and which it must reproduce
+word for word (Structure, Language, Point of view, Explicit content allowed, Target duration).
+A test asserts the two lists cover every line `assemble_user_message` can emit, so a new brief
+field cannot reach the model with no rule at all.
+
+**The diff is the only enforcement, and that is the design.** A model that rewrites a settings
+line produces a highlighted change the user has to accept before it goes anywhere. Adding a
+backend check would be a second answer to a question the consent step already answers.
+
+**The optimizer prompt has not been measured.** The lyric prompt was captured working before
+it was written down (LLM-SURFACE 12.5); this one is a first draft. T-211 is where it meets a
+real model.
 
 ### T-211 — Phase 2 milestone verification (live)
 ROADMAP's check, run for real: brief -> lyrics stream in -> edit -> approve, and the
 optimizer diff accepts and reverts cleanly. Plus the two checks only a live run can make --
 that a thinking model chosen in the wizard generates a whole song, and that the lint fires on
 the production-cue lines the model actually writes.
+
+**T-210 adds a third live check, and it is a measurement rather than a click-through.** The
+optimizer prompt is unmeasured, and this repo's rule is that a prompt is a third-party surface
+(LLM-SURFACE 12.5). Over a handful of runs on the recommended model, record: does the rewrite
+come back as the same labelled lines; does it reproduce the five fixed lines word for word;
+does the rewritten brief produce a better song than the original. A prompt that fails the
+second one is not fixed by trusting it harder -- the diff already shows the user, and the
+question is whether the rule is worth keeping in the prompt at all.

@@ -257,6 +257,7 @@ Users with a working ComfyUI workflow — including LoRA wiring no shipped profi
 - **Brief form** (all prefilled with strong examples): theme/story, genre & style tags, mood, structure (e.g. V-C-V-C-B-C), language, point of view, era/references, explicit allowed y/n, target duration (constrains lyric length).
 - Output lands in a versioned editor (each generation/edit = a `LyricDoc` version; cheap full-copy versions, no diffing engine). Approve → available in AudioStudio.
 - **Prompt optimization (lyrics brief AND audio tags): opt-in per use, always consented.** The optimizer LLM call returns a rewritten prompt; UI shows original vs optimized side-by-side with an inline word-diff; user Accepts / Edits / Reverts. The *user-approved* text is what gets sent and what gets stored in provenance, flagged `optimized: true|false`. Never auto-apply.
+- **What the lyric optimizer rewrites is the assembled user message** (T-210), not the lyrics and not the form fields: the labelled lines are the prompt, so they are what the user is asked to accept. The optimizer prompt declares Theme / Genre and style tags / Mood / Era and references rewritable and Structure / Language / Point of view / Explicit content allowed / Target duration fixed, and **nothing enforces that but the diff** -- a rewritten settings line arrives as a highlighted change the user must accept. `<PromptDiff>` is provider- and domain-agnostic (two texts, Accept / Edit / Revert) and is the component Phase 3's audio tags reuse.
 
 ## 7. Audio generation pipeline
 

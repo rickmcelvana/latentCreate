@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store), T-207 (LyricsStudio brief form), T-208 (LyricsStudio generation UI) and T-209 (versioned editor, lint surfacing, approve) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store), T-207 (LyricsStudio brief form), T-208 (LyricsStudio generation UI) T-209 (versioned editor, lint surfacing, approve) and T-210 (the consent-gated prompt optimizer and the shared `<PromptDiff>`) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-210** (consent-gated prompt optimizer and the shared `<PromptDiff>` component: original vs optimized side by side, Accept / Edit / Revert, never auto-applied). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
+- **Next up:** **T-211**, the Phase 2 live milestone: brief -> stream -> edit -> approve against real services, plus the two checks only a live run can make (a thinking model writes a whole song; the lint fires on the production cues the model actually writes) and one measurement -- T-210's optimizer prompt has never met a model. [tasks/phase-2.md](tasks/phase-2.md) carries the checklist.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -167,6 +167,35 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   general point, and the reason the fixtures in `testdata/lyrics/` are unedited model
   output: **a rule about model output has to be run against model output.** Hand-written
   fixtures are written to agree with the code.
+- **2026-08-26 -- the optimizer rewrites the assembled brief, and the diff is the only
+  enforcement.** What the user accepts is the *user message* -- the labelled lines
+  `assemble_user_message` produces -- not the lyrics and not the form fields. The optimizer
+  prompt splits those lines in two: Theme, Genre and style tags, Mood and Era and references
+  may be rewritten; Structure, Language, Point of view, Explicit content allowed and Target
+  duration must come back word for word, because they are settings the form owns and two of
+  them feed the lint and the token budget. **No backend check enforces that**, deliberately: a
+  model that rewrites a settings line produces a highlighted change the user has to accept
+  before it goes anywhere, and a second gate would be a second answer to a question the
+  consent step already answers. A test does assert the two lists cover every line the brief
+  can emit, so a new field cannot reach the model with no rule at all.
+- **2026-08-26 -- an accepted prompt is dropped the moment the brief changes.** The override
+  was written against the brief as it read then; keeping it would leave the form describing
+  one song while Generate sent another, and the form is what the user believes they are
+  sending. Same reasoning as the never-modify-user-text rule, one level up: the request must
+  match the thing on screen. Consequence: `setBrief` clears the optimizer state, and the way
+  to a second rewrite is through Revert -- one rewrite in play at a time, so the text being
+  replaced is always visible.
+- **2026-08-26 -- `prompt_optimized` records the accepted prompt, not the optimizer run.** A
+  rewrite the user reverted never reached the model, and a sidecar saying otherwise is a false
+  record of how the lyric was made. The flag is therefore `promptOverride !== null` at commit
+  time, not "the optimizer was opened".
+- **2026-08-26 -- the optimizer prompt is unmeasured, and is marked as such in the code.** The
+  lyric prompt in the same module was captured working before it was written down, and this
+  repo's rule is that a prompt change is a change to a third-party surface and gets measured
+  like one (LLM-SURFACE 12.5). This one is a first draft that has never met a model. T-211
+  carries the measurement, and `create-core::lyrics::optimize`'s module docs say plainly that
+  it is not a verified surface -- so nobody reads the confident wording as evidence.
+
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
@@ -1837,3 +1866,66 @@ only new dependency, already in the workspace via `library`.
 end-to-end flow (generate -> edit -> approve) is exactly what T-211's live milestone checks.
 
 **Next:** T-210, the consent-gated prompt optimizer and the shared `<PromptDiff>` component.
+
+### 2026-08-26 -- T-210 landed directly in two parts; the consent gate is the whole feature
+
+**Landed directly, as with T-204-T-209**, in two gate-green commits: T-210a (backend),
+T-210b (the diff, the component and the store). The last piece of Phase 2 before the live
+milestone.
+
+**What is optimized is the assembled brief, not the lyrics.** T-202 chose labelled lines for
+the user message partly so this diff would read well, and this is the task that spends that:
+the optimizer is handed the assembled brief, told which four lines it may rewrite (Theme,
+Genre and style tags, Mood, Era and references) and which five it must reproduce word for
+word (Structure, Language, Point of view, Explicit content allowed, Target duration), and its
+answer comes back beside the original. `test_every_brief_label_is_classified_as_rewritable_or_fixed`
+walks the real `assemble_user_message` output and fails if a brief field ever reaches the
+model with no rule attached -- the mutation that matters, since adding a field is the way this
+quietly breaks.
+
+**No backend check enforces the fixed lines, and that is the design.** The obvious addition is
+a validator that rejects a rewrite touching Target duration. It would be a second answer to a
+question the consent step already answers: a model that rewrites a settings line produces a
+highlighted change the user has to accept before anything is sent. The diff is the gate, so
+the diff had better be honest -- which is what the one test the whole component rests on is
+for. `test_panes_reassemble_both_texts_exactly` asserts each pane's spans concatenate back to
+the exact text; a diff that renders a lossy picture of the prompt would have the user
+accepting something other than what gets sent.
+
+**A word diff, not a line diff.** The optimizer rewrites the middle of a labelled line, so a
+line diff reports every touched line as wholly replaced and shows the user nothing. LCS over
+word-and-whitespace tokens, spans merged so a rewritten phrase is one highlight, with a 1500-
+token ceiling that degrades to a whole-text replacement rather than allocating a table sized
+by a paste.
+
+**Three product rules that only look small.** (1) Editing any brief field drops an accepted
+prompt -- it was written against the old brief, and keeping it would leave the form describing
+one song while Generate sent another. (2) `prompt_optimized` records the *accepted* prompt,
+not that the optimizer ran; a reverted rewrite never reached the model and a sidecar claiming
+otherwise is a false record. (3) One rewrite in play at a time: Optimize is disabled while a
+proposal is on screen or a prompt is accepted, so the text being replaced is always the one
+the user can see. All three have tests; (1) and (2) are the ones that would have shipped
+wrong.
+
+**`<PromptDiff>` knows nothing about lyrics** -- two strings and three callbacks, plus
+optional pane labels and a note. Phase 3's audio tags use it unchanged, which is what the
+phase file asked for.
+
+**One naming collision worth remembering:** `promptDiff.ts` beside `PromptDiff.tsx` fails
+`tsc` on a case-insensitive filesystem (TS1149/TS1261) even though both files exist happily on
+disk. The pure module is `wordDiff.ts`.
+
+**The optimizer prompt has never met a model.** The lyric prompt was captured working before
+it was written down; this one is a first draft, said plainly in its module docs so the
+confident wording is not mistaken for evidence. T-211 now carries a measurement as well as a
+click-through: does the rewrite come back as the same labelled lines, does it reproduce the
+five fixed lines, and does the rewritten brief actually produce a better song.
+
+**Test counts:** `app` crate 35 -> **41** (6), `create-core` 74 -> **80** (6), vitest 87 ->
+**101** (14). No new dependencies.
+
+**Rendering is producer click-through.** The diff panes, the edit toggle and the accepted
+banner are verified by `tsc`/`oxlint`/build and the pure tests; the visual claims are
+WORKFLOW 5 territory.
+
+**Next:** T-211, the Phase 2 live milestone -- and the close of the phase.
