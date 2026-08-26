@@ -343,6 +343,7 @@ mod tests {
             }],
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
         });
         assert_eq!(body["stream"], serde_json::json!(true));
         assert_eq!(
@@ -363,10 +364,29 @@ mod tests {
             messages: Vec::new(),
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
         });
         let map = body.as_object().expect("object");
         assert!(!map.contains_key("temperature"));
         assert!(!map.contains_key("max_tokens"));
+        assert!(!map.contains_key("reasoning_effort"));
+    }
+
+    /// Protects: `reasoning_effort` reaches the wire when set. It is the only
+    /// field the lyric flow sends beyond the plain request, and the whole
+    /// reason it exists is a measured 6.6x speedup on a thinking model
+    /// (LLM-SURFACE 12.2) -- a field that silently failed to serialise would
+    /// leave every lyric generation paying for reasoning it does not want.
+    #[test]
+    fn test_reasoning_effort_is_sent_when_set() {
+        let body = stream_body(&ChatRequest {
+            model: "gemma4:12b-32k".to_string(),
+            messages: Vec::new(),
+            temperature: None,
+            max_tokens: Some(400),
+            reasoning_effort: Some("none".to_string()),
+        });
+        assert_eq!(body["reasoning_effort"], serde_json::json!("none"));
     }
 
     /// Live check against a real endpoint, excluded from CI.
@@ -399,6 +419,7 @@ mod tests {
             }],
             temperature: None,
             max_tokens: Some(300),
+            reasoning_effort: None,
         });
 
         let mut content = String::new();
@@ -419,5 +440,57 @@ mod tests {
             reasoning.chars().count()
         );
         assert_eq!(finished.as_deref(), Some("stop"));
+    }
+
+    /// Live check that `reasoning_effort: "none"` suppresses chain-of-thought,
+    /// excluded from CI.
+    ///
+    /// `cargo test -p llm-bridge -- --ignored` with Ollama running on the
+    /// default port and a thinking model (gemma4) installed. Without the field
+    /// the same request spends its budget on reasoning first and can return no
+    /// content at all (LLM-SURFACE 12.1, 12.2); this test is the proof the
+    /// field exists for, kept live because no offline test can show it.
+    #[tokio::test]
+    #[ignore = "requires a local OpenAI-compatible endpoint on 127.0.0.1:11434"]
+    async fn test_live_reasoning_effort_none_suppresses_reasoning() {
+        use futures_util::StreamExt;
+
+        let client = OpenAiCompat::new("http://127.0.0.1:11434/v1", None).expect("client");
+        let models = client.list_models().await.expect("model list");
+        let model = models
+            .iter()
+            .find(|id| id.starts_with("gemma4:"))
+            .cloned()
+            .expect("a thinking gemma4 model must be installed");
+
+        let mut stream = client.stream_chat(ChatRequest {
+            model,
+            messages: vec![crate::wire::ChatMessage {
+                role: crate::wire::Role::User,
+                content: "Reply with exactly: tulip".to_string(),
+            }],
+            temperature: None,
+            max_tokens: Some(300),
+            reasoning_effort: Some("none".to_string()),
+        });
+
+        let mut content = String::new();
+        let mut reasoning = String::new();
+        while let Some(delta) = stream.next().await {
+            match delta.expect("delta") {
+                ChatDelta::Content(text) => content.push_str(&text),
+                ChatDelta::Reasoning(text) => reasoning.push_str(&text),
+                ChatDelta::Finished { .. } | ChatDelta::Usage(_) | ChatDelta::Refusal(_) => {}
+            }
+        }
+
+        assert!(
+            content.to_lowercase().contains("tulip"),
+            "content was {content:?}"
+        );
+        assert!(
+            reasoning.is_empty(),
+            "reasoning_effort \"none\" left reasoning behind: {reasoning:?}"
+        );
     }
 }

@@ -39,6 +39,16 @@ pub struct ChatRequest {
     /// on chain-of-thought and produced no lyrics at all (LLM-SURFACE 2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Suppresses chain-of-thought on a model that emits it.
+    ///
+    /// The one value verified to work is `"none"`, and only against Ollama:
+    /// `"low"` is accepted but not honoured, and Ollama's own `think: false`
+    /// is silently dropped over the OpenAI-compatible endpoint (LLM-SURFACE
+    /// 12.2). Set this only when the model is known to think -- the caller's
+    /// `thinks` flag -- because an endpoint this app has not verified may
+    /// reject an unknown field outright rather than ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 /// Token counts, present only when the client asks for them.

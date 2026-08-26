@@ -222,6 +222,7 @@ pub async fn llm_test(base_url: String, model: String) -> Result<LlmTestResult, 
         }],
         temperature: None,
         max_tokens: Some(TEST_CALL_MAX_TOKENS),
+        reasoning_effort: None,
     };
 
     let mut stream = client.stream_chat(request);
