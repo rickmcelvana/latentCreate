@@ -155,10 +155,13 @@ truncation is an outcome the UI has to state, not an error to swallow.
 Landed directly as architect work (no Aider run), consistent with the producer's standing
 call on T-204.
 
-### T-206 — frontend bridge and `lyrics` store
+### T-206 — frontend bridge and `lyrics` store  — **LANDED**
 Typed wrappers plus the Zustand store: brief state with prefills, streaming accumulation
-(`Content` into the draft, `Reasoning` into a bounded status trace), version list, approve,
-and the truncated flag. Components never call `invoke` (ARCHITECTURE 11).
+(`Content` into the draft, `Reasoning` into a bounded status trace), and the truncated flag.
+Components never call `invoke` (ARCHITECTURE 11). Landed directly as architect work.
+**"version list, approve" moved to T-209** -- a version needs its `LyricSource::Llm { model }`
+and the on-disk store, neither of which the streaming store holds (the backend reads the model
+from config, and `library::lyrics` has no Tauri commands yet).
 
 ### T-207 — LyricsStudio: the brief form
 Prefilled from the selected profile's `prompt_guide.examples`, structure picker, plain-text
@@ -172,7 +175,9 @@ budget when `finish_reason` is `length`.
 ### T-209 — Versioned editor, lint surfacing, approve to handoff
 Version list with restore, edits recorded as `LyricSource::Edited`, T-203's findings shown
 inline as advisories, approve sets `LyricDoc::approved`, and the handoff to AudioStudio is a
-store action rather than navigation state.
+store action rather than navigation state. **Carries the "version list, approve" that T-206
+deferred, and therefore also the Tauri commands wiring `library::lyrics` (create/save/list
+docs) that nothing has exposed to the frontend yet.**
 
 ### T-210 — Consent-gated prompt optimizer and the shared diff component
 Optimizer call over the same endpoint, original vs optimized side by side with an inline

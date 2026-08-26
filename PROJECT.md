@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`) and T-205 (Tauri lyric streaming command and event pump) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump) and T-206 (frontend lyric bridge + streaming store) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-206** (frontend bridge and `lyrics` store: typed wrappers plus the Zustand store -- brief state with prefills, streaming accumulation, version list, approve, truncated flag). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
+- **Next up:** **T-207** (LyricsStudio: the brief form -- prefilled from the selected profile's `prompt_guide.examples`, structure picker, plain-text language; one primary action). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1702,3 +1702,35 @@ would have added a dependency for no behaviour.
 
 **Next:** T-206, the frontend bridge and lyrics store, which consumes these events and is where
 the event-name spelling (`lyrics://*`) first has to agree across the Rust/frontend boundary.
+
+### 2026-08-25 (later still) — T-206 landed directly; the store the events stream into
+
+**Landed directly, as with T-204/T-205.** Four new files, no changes to existing code:
+`bridge/lyrics.ts` (the typed wrappers + wire types), `state/lyrics.ts` (the store), and a test
+for each. vitest 51 -> **64 tests** across 10 files.
+
+**The two halves of the streaming state are split the way the events themselves are.** `Content`
+folds into `draft`, `Reasoning` into a bounded `thinking` trace (last 50 deltas, so a model that
+thinks for 44 seconds cannot grow memory without bound), and `done`/`failed` are terminal. The
+`truncated` flag is set from `finish_reason === "length"` and nothing else -- the signal the
+truncation banner (T-208) reads, so it is folded rather than swallowed. `applyLyricEvent` is a
+pure function of `(snapshot, event)`, the same seam `state/jobs.ts` uses, so it is tested without
+a store or a bridge.
+
+**The event-name spelling is now pinned on the frontend side.** `bridge/lyrics.test.ts` asserts
+`subscribeLyrics` registers exactly `lyrics://delta|thinking|done|failed` -- the same four names
+T-205 emits. This is the cross-boundary string T-104c warned about: pinned by a mock, not a
+shared fixture, and the only thing a producer live smoke check (T-211) can confirm end to end.
+
+**"version list, approve" moved to T-209.** The phase file listed them under T-206, but a
+version's `LyricSource::Llm { model }` needs the model name, which the backend reads from config
+(not passed back on the events), and persisting a `LyricDoc` needs Tauri commands that wrap
+`library::lyrics` -- neither exists yet. They belong with T-209's versioned editor, which now
+explicitly carries them plus that wiring. Recorded in the phase file so there is no drift.
+
+**Two test-infra facts worth keeping:** `vi.hoisted` is required for any non-`vi.fn()` value the
+`vi.mock` factory references -- a plain `const` object hit "Cannot access before initialization"
+because `vi.mock` hoists above it while `vi.fn()` calls are hoisted with it. And the `mock*`
+prefix convention (from T-104c) applies only to `vi.fn()`s and `let` flags, not to data literals.
+
+**Next:** T-207, the LyricsStudio brief form, which binds the store's `brief` to actual inputs.
