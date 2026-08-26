@@ -216,7 +216,7 @@ backend check would be a second answer to a question the consent step already an
 it was written down (LLM-SURFACE 12.5); this one is a first draft. T-211 is where it meets a
 real model.
 
-### T-211 — Phase 2 milestone verification (live)
+### T-211 — Phase 2 milestone verification (live)  — **PASSED 2026-08-26**
 
 Producer-run, per WORKFLOW 5: this is the check nothing offline can make. **Lyrics need no
 ComfyUI** -- only the LLM endpoint -- so a failure here is never about the audio service.
@@ -302,6 +302,18 @@ make about provenance:
   This is the one T-210 claim that only a real run proves, and the flag is the record of the
   user's consent.
 
-**Recording the result.** Results go in PROJECT.md's session log, pass or fail, with the
-measurement report pasted verbatim. A step that fails becomes a T-212 fix-up brief rather than
-a silent retry; the phase closes and tags `phase2-done` only when steps 1-5 all pass.
+**Result: all five steps pass**, 2026-08-26, tagged `phase2-done`. Full record in PROJECT.md's
+session log. Four fix-ups came out of the run and each is a task in its own right:
+
+- **T-212** -- the wizard never persisted the lyric model, so the whole studio reported "no
+  lyric LLM configured". Found in step 2, before a single lyric was written.
+- **T-213** -- the draft textarea rendered black on the dark ground; the approval notice sat
+  below the lint findings; a check that found nothing said nothing.
+- **T-214** -- the approval notice, reported missing twice while rendering correctly.
+
+**What the run is worth remembering for.** Steps 1 and 4 were automated and both passed first
+time; they found nothing. Every defect above came from a person clicking, and three of the four
+were invisible to the type checker, the linter and 109 frontend tests, because they were about
+**where something was on screen and whether config had been written** -- neither of which
+anything in this repo can assert. That is the argument for the click-through, stated in
+evidence rather than principle.

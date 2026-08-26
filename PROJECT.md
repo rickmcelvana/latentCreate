@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store), T-207 (LyricsStudio brief form), T-208 (LyricsStudio generation UI) T-209 (versioned editor, lint surfacing, approve) and T-210 (the consent-gated prompt optimizer and the shared `<PromptDiff>`) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0, 1 and 2 complete**, tagged `phase0-done` (2026-08-23), **`phase1-done` (2026-08-25)** and **`phase2-done` (2026-08-26)**. Phase 2 (Lyrics Studio) shipped T-201 … T-210 plus the T-211 live milestone and its fix-ups (T-212 … T-214): a user fills in a brief, watches lyrics stream from their own LLM, edits across versions, runs an advisory structure lint, optionally accepts a consent-gated optimized prompt, and approves a version for audio. **Verified live on 2026-08-26** against a real Ollama -- a whole song in 6.9-9.2 s with reasoning suppressed (against a 44 s / 85-character baseline), the optimizer preserving its five fixed lines 5/5, and the approved lyric on disk with its `prompt_optimized` consent flag. `mcp-bridge` (88 offline tests) covers the verified comfy-mcp surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Audio generation is Phase 3** -- nothing is wired to a pipeline yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-211**, the Phase 2 live milestone: brief -> stream -> edit -> approve against real services, plus the two checks only a live run can make (a thinking model writes a whole song; the lint fires on the production cues the model actually writes) and one measurement -- T-210's optimizer prompt has never met a model. [tasks/phase-2.md](tasks/phase-2.md) carries the checklist.
+- **Next up:** **Phase 3, Audio Studio and the generation pipeline** ([ROADMAP](tasks/ROADMAP.md)). No briefs written yet -- they are authored at the start of the phase. **Do the surface verification first**: re-check the comfy-mcp tool surface against the live server (docs/MCP-SURFACE.md is the authority, and the open `SaveAudioAdvanced.format` dynamic-combo question sits directly in the pipeline's path), and re-read ARCHITECTURE 5a/5b/7 before writing T-301. The lyric handoff Phase 3 consumes is `approvedText(doc)` -- a pure store selector, no navigation side effect.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -2088,3 +2088,46 @@ stray production cues.
 
 **Phase 2 status:** steps 1, 3, 4 and 5 pass. Step 2 passes except the approval notice, which
 is what this task fixes. One re-check of step 2.6 and the phase tags.
+
+### 2026-08-26 (session close) -- Phase 2 complete, tagged `phase2-done`
+
+**The milestone passed on the re-check.** The approval pill was found where T-214 put it; the
+producer confirms the earlier line had been on screen and they were looking for different
+words. All five T-211 steps pass. Phase 2 is closed and tagged.
+
+**What Phase 2 shipped:** a brief form with profile-driven prefills, streaming generation that
+shows the model's reasoning as proof of life, a versioned editor with restore and approve, an
+advisory structure-tag lint, a consent-gated prompt optimizer with a shared `<PromptDiff>` that
+Phase 3 reuses for audio tags, and one JSON file per lyric document carrying every version and
+its provenance. Test counts across the phase: `create-core` to **84**, `app` crate to **41**
+plus 2 live measurements, vitest to **109**.
+
+**The lesson of the milestone, stated once so Phase 3 inherits it.** Steps 1 and 4 were
+automated, passed first time, and found nothing. **Every defect came from a person clicking**,
+and three of the four were invisible to `tsc`, `oxlint` and 109 tests because they were about
+where something sat on screen and whether config had ever been written:
+- **T-212**: the wizard let a model be picked and tested while never writing `config.json`. The
+  test call could not catch it -- `llm_test` takes the endpoint as an argument, so it passed
+  against a config that did not exist. Third instance in this repo of a command with no caller.
+- **T-213**: a textarea rendering black on the dark ground; the approval notice below eight
+  lint advisories; a clean check saying nothing.
+- **T-214**: that notice again, reported missing while rendering, half of it caused by a
+  checklist I reworded the UI out from under.
+
+The recurring shape is **correct logic derived inline in a view**. `approvedLabel` was the
+answer, as `generationPhase` and `approvedText` were before it: pull the decision into the
+store where a test can reach it. Phase 3's param panel and LoRA stack are far more stateful
+than anything here, so this is the habit to carry, not the exception.
+
+**Open for Phase 3, in the order they will bite:**
+1. **Re-verify the comfy-mcp surface against the live server before writing T-301.** It has
+   moved once already, and the pipeline touches more of it than Phase 1 did.
+2. **`SaveAudioAdvanced.format` is a V3 dynamic combo** and unresolved (MCP-SURFACE 5). The
+   lossless save-node swap is a correctness requirement, not a nicety, so this blocks the
+   pipeline rather than decorating it.
+3. **OQ-7**: which model `data/lyric-llms.json` should suggest. Not a Phase 3 blocker -- a JSON
+   and docs edit whenever the owner's comparison is done.
+4. **`default_profile_id` is still never persisted**, the same class as T-212 but degrading
+   silently to `ace-step-1.5-turbo`. Phase 3 owns the profile picker and should fix it there.
+
+**Session ends here.** Working tree clean, gate green, everything pushed.
