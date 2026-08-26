@@ -31,4 +31,5 @@ mcp-bridge = { path = "../crates/mcp-bridge" }
 llm-bridge = { path = "../crates/llm-bridge" }
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1.53", features = ["macros", "rt"] }

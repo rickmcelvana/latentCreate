@@ -11,6 +11,7 @@ mod comfy;
 mod install;
 mod jobs;
 mod llm;
+mod lyricdoc;
 mod lyrics;
 mod models;
 mod profile;
@@ -73,7 +74,10 @@ pub fn run() {
             jobs::run_workflow,
             jobs::cancel_job,
             lyrics::lyrics_generate,
-            lyrics::lyrics_cancel
+            lyrics::lyrics_cancel,
+            lyricdoc::lyrics_open,
+            lyricdoc::lyrics_save,
+            lyricdoc::lyrics_lint
         ])
         .run(tauri::generate_context!())
         .expect("error while running latentCreate");
