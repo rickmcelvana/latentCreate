@@ -14,6 +14,7 @@ mod llm;
 mod lyricdoc;
 mod lyrics;
 mod models;
+mod optimize;
 mod profile;
 
 use jobs::ComfyState;
@@ -75,6 +76,7 @@ pub fn run() {
             jobs::cancel_job,
             lyrics::lyrics_generate,
             lyrics::lyrics_cancel,
+            optimize::lyrics_optimize,
             lyricdoc::lyrics_open,
             lyricdoc::lyrics_save,
             lyricdoc::lyrics_lint

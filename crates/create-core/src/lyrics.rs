@@ -16,6 +16,7 @@ use crate::profile::{InputSpec, ModelProfile};
 use serde::{Deserialize, Serialize};
 
 pub mod lint;
+pub mod optimize;
 
 /// Whose voice the lyric is written in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

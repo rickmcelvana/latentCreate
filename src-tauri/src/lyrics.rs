@@ -7,11 +7,13 @@
 //! known to think, because the field is verified against Ollama and nothing
 //! else.
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use create_core::lyrics::{
     assemble_system_prompt, assemble_user_message, token_budget, LyricBrief,
 };
+use create_core::profile::ModelProfile;
 use futures_util::StreamExt;
 use llm_bridge::{ChatDelta, ChatMessage, ChatRequest, LlmError, OpenAiCompat, Role, TokenUsage};
 use serde::Serialize;
@@ -68,7 +70,7 @@ pub struct LyricsState {
 /// The field is verified against Ollama only, so it is sent only when the model
 /// is *known* to think -- `Some(true)` from the native enrichment. Unknown
 /// (`None`) means "could not check", and the unverified path is never taken.
-fn reasoning_effort_for(thinks: Option<bool>) -> Option<String> {
+pub(crate) fn reasoning_effort_for(thinks: Option<bool>) -> Option<String> {
     match thinks {
         Some(true) => Some("none".to_string()),
         _ => None,
@@ -79,33 +81,20 @@ fn reasoning_effort_for(thinks: Option<bool>) -> Option<String> {
 ///
 /// `None` means either the endpoint is not Ollama or the model was not found,
 /// both of which leave the field unset -- never guessed.
-async fn model_thinks(base_url: &str, model: &str) -> Option<bool> {
+pub(crate) async fn model_thinks(base_url: &str, model: &str) -> Option<bool> {
     let native = enrich(base_url).await?;
     native.iter().find(|m| m.name == model).map(|m| m.thinks())
 }
 
-/// Stream a lyric for `brief` against `profile_id`, re-emitting it as
-/// `lyrics://delta|thinking|done|failed` events.
+/// The configured lyric endpoint and model, as `(base_url, model)`.
 ///
-/// The brief and the profile are the inputs; the LLM is whatever `config.json`
-/// has configured. Returns once the generation has been submitted, not when it
-/// finishes -- the events carry the progress.
-#[tauri::command]
-pub async fn lyrics_generate(
-    app: AppHandle,
-    state: State<'_, LyricsState>,
-    config_dir: State<'_, ConfigDir>,
-    profiles_dir: State<'_, ProfilesDir>,
-    brief: LyricBrief,
-    profile_id: String,
-) -> Result<(), String> {
-    let current = Arc::clone(&state.current);
-    if let Some(previous) = current.lock().expect("lyrics state poisoned").take() {
-        previous.abort();
-    }
-
-    let config = library::config::load(&config_dir.0).config;
-    let llm = config
+/// Shared with the optimizer, which talks to the same endpoint by definition
+/// (ARCHITECTURE 6). Each missing piece names itself, because "no lyric LLM
+/// configured" and "no model chosen" send the user to different parts of the
+/// wizard.
+pub(crate) fn configured_llm(config_dir: &Path) -> Result<(String, String), String> {
+    let llm = library::config::load(config_dir)
+        .config
         .llm
         .ok_or_else(|| "no lyric LLM configured".to_string())?;
     let base_url = llm
@@ -114,15 +103,68 @@ pub async fn lyrics_generate(
     let model = llm
         .model
         .ok_or_else(|| "no lyric model configured".to_string())?;
+    Ok((base_url, model))
+}
 
-    let profile = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"))
+/// The model profile the studio is writing for.
+pub(crate) fn load_profile(
+    profiles_dir: &Path,
+    config_dir: &Path,
+    profile_id: &str,
+) -> Result<ModelProfile, String> {
+    library::profiles::load(profiles_dir, &config_dir.join("profiles"))
         .profiles
-        .get(&profile_id)
+        .get(profile_id)
         .map(|loaded| loaded.profile.clone())
-        .ok_or_else(|| format!("no profile named {profile_id}"))?;
+        .ok_or_else(|| format!("no profile named {profile_id}"))
+}
+
+/// The user message actually sent: the text the user approved, when there is
+/// one, else the brief as assembled from the form.
+///
+/// **The override is the whole point of the optimizer** (ARCHITECTURE 6): what
+/// gets sent is what the user accepted, not what the model proposed. A blank
+/// override falls back to the assembled brief rather than sending an empty
+/// message -- the brief is still the user's own words, and an empty prompt is
+/// not something they could have meant to approve.
+pub(crate) fn user_message(brief: &LyricBrief, approved: Option<&str>) -> String {
+    match approved {
+        Some(text) if !text.trim().is_empty() => text.to_string(),
+        _ => assemble_user_message(brief),
+    }
+}
+
+/// Stream a lyric for `brief` against `profile_id`, re-emitting it as
+/// `lyrics://delta|thinking|done|failed` events.
+///
+/// The brief and the profile are the inputs; the LLM is whatever `config.json`
+/// has configured. Returns once the generation has been submitted, not when it
+/// finishes -- the events carry the progress.
+///
+/// `prompt_override` is the optimized brief the user accepted, when they
+/// accepted one. It replaces the assembled brief and nothing else: the system
+/// prompt still comes from the profile, and the token budget still comes from
+/// the brief, because neither is user text the optimizer was shown.
+#[tauri::command]
+pub async fn lyrics_generate(
+    app: AppHandle,
+    state: State<'_, LyricsState>,
+    config_dir: State<'_, ConfigDir>,
+    profiles_dir: State<'_, ProfilesDir>,
+    brief: LyricBrief,
+    profile_id: String,
+    prompt_override: Option<String>,
+) -> Result<(), String> {
+    let current = Arc::clone(&state.current);
+    if let Some(previous) = current.lock().expect("lyrics state poisoned").take() {
+        previous.abort();
+    }
+
+    let (base_url, model) = configured_llm(&config_dir.0)?;
+    let profile = load_profile(&profiles_dir.0, &config_dir.0, &profile_id)?;
 
     let system = assemble_system_prompt(&profile, &brief);
-    let user = assemble_user_message(&brief);
+    let user = user_message(&brief, prompt_override.as_deref());
 
     let key = library::secrets::get_secret(library::SecretKey::LlmApiKey).ok();
     let client = OpenAiCompat::new(base_url.clone(), key).map_err(|e| e.to_string())?;
@@ -286,6 +328,24 @@ mod tests {
         assert_eq!(reasoning_effort_for(Some(true)).as_deref(), Some("none"));
         assert_eq!(reasoning_effort_for(Some(false)), None);
         assert_eq!(reasoning_effort_for(None), None);
+    }
+
+    /// Protects: the consent gate. What is sent is what the user approved --
+    /// an accepted optimized brief replaces the assembled one verbatim, and
+    /// with nothing approved the form's own brief is what goes. A blank
+    /// override falls back rather than sending an empty message, which is not
+    /// something a user could have meant to accept.
+    #[test]
+    fn test_user_message_sends_the_approved_text_and_falls_back_to_the_brief() {
+        let brief = LyricBrief::default();
+        let assembled = assemble_user_message(&brief);
+
+        assert_eq!(
+            user_message(&brief, Some("Theme: a sharpened night drive")),
+            "Theme: a sharpened night drive"
+        );
+        assert_eq!(user_message(&brief, None), assembled);
+        assert_eq!(user_message(&brief, Some("   \n ")), assembled);
     }
 
     /// Protects: content and reasoning are split into the right events, in
