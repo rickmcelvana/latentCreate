@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useConfigStore } from '../state/config'
 import {
+  approvedText,
   generationPhase,
   structureOptions,
   thinkingTail,
@@ -9,6 +10,7 @@ import {
 } from '../state/lyrics'
 import { getProfileGuide, DEFAULT_PROFILE_ID, type ProfileGuide } from '../bridge/profiles'
 import { isTauri, type PointOfView } from '../bridge/lyrics'
+import { lintSeverity, type LintFinding, type LyricSource, type LyricVersion } from '../bridge/lyricdoc'
 
 const POINTS_OF_VIEW: PointOfView[] = ['first_person', 'second_person', 'third_person']
 
@@ -42,6 +44,10 @@ export function LyricsStudio() {
   useEffect(() => {
     void startListening()
   }, [startListening])
+
+  useEffect(() => {
+    void useLyricsStore.getState().loadDoc()
+  }, [])
 
   useEffect(() => {
     if (!isTauri()) return
@@ -185,7 +191,7 @@ export function LyricsStudio() {
         </div>
       </form>
 
-      <LyricOutput />
+      <LyricEditor profileId={profileId} />
     </>
   )
 }
@@ -199,16 +205,21 @@ export function LyricsStudio() {
  * content the model is already sending is the fix, not a spinner
  * (LLM-SURFACE 12).
  */
-function LyricOutput() {
+function LyricEditor({ profileId }: { profileId: string }) {
   const draft = useLyricsStore((state) => state.draft)
+  const setDraft = useLyricsStore((state) => state.setDraft)
   const thinking = useLyricsStore((state) => state.thinking)
   const truncated = useLyricsStore((state) => state.truncated)
   const generating = useLyricsStore((state) => state.generating)
   const error = useLyricsStore((state) => state.error)
   const cancel = useLyricsStore((state) => state.cancel)
+  const doc = useLyricsStore((state) => state.doc)
+  const findings = useLyricsStore((state) => state.findings)
+  const saveDraft = useLyricsStore((state) => state.saveDraft)
+  const lint = useLyricsStore((state) => state.lint)
 
   const phase = generationPhase({ draft, thinking, truncated, generating, error })
-  if (phase === 'idle') return null
+  if (phase === 'idle' && doc === null) return null
 
   return (
     <section className="panel lyrics-output">
@@ -225,13 +236,150 @@ function LyricOutput() {
 
       {phase === 'failed' ? <p className="lyrics-error">{error}</p> : null}
 
-      {draft !== '' ? <pre className="lyrics-draft">{draft}</pre> : null}
+      {doc !== null ? (
+        <textarea
+          className="lyrics-draft"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      ) : null}
+
+      <div className="lyrics-actions">
+        <button
+          type="button"
+          className="setup-button"
+          onClick={() => void saveDraft()}
+          disabled={generating || draft.trim() === ''}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          className="setup-button"
+          onClick={() => void lint(profileId)}
+          disabled={generating}
+        >
+          Check
+        </button>
+      </div>
 
       {truncated && !generating ? (
         <p className="lyrics-truncation">
           The model ran out of room and stopped early. Try a longer length, then generate again.
         </p>
       ) : null}
+
+      {findings.length > 0 ? <Findings findings={findings} /> : null}
+
+      {doc !== null && doc.versions.length > 0 ? <VersionList /> : null}
     </section>
   )
+}
+
+/** The lint findings, as advisories rather than blockers. */
+function Findings({ findings }: { findings: LintFinding[] }) {
+  return (
+    <ul className="lyrics-findings">
+      {findings.map((finding, index) => (
+        <li
+          key={`${finding.kind}-${index}`}
+          className={`lyrics-finding lyrics-finding-${lintSeverity(finding)}`}
+        >
+          {findingText(finding)}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** The versions, with restore and approve. */
+function VersionList() {
+  const doc = useLyricsStore((state) => state.doc)
+  const restore = useLyricsStore((state) => state.restore)
+  const approve = useLyricsStore((state) => state.approve)
+  const approved = approvedText(doc)
+
+  return (
+    <div className="lyrics-versions">
+      <h2 className="lyrics-versions-title">Versions</h2>
+      {approved !== null ? <p className="lyrics-approved">Approved version is ready for audio.</p> : null}
+      <ol className="lyrics-version-list">
+        {doc?.versions.map((version) => (
+          <VersionRow
+            key={version.number}
+            version={version}
+            isApproved={doc.approved === version.number}
+            onRestore={() => restore(version.number)}
+            onApprove={() => void approve(version.number)}
+          />
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function VersionRow({
+  version,
+  isApproved,
+  onRestore,
+  onApprove,
+}: {
+  version: LyricVersion
+  isApproved: boolean
+  onRestore: () => void
+  onApprove: () => void
+}) {
+  return (
+    <li className={`lyrics-version ${isApproved ? 'lyrics-version-approved' : ''}`}>
+      <div className="lyrics-version-head">
+        <span className="lyrics-version-number">v{version.number}</span>
+        <span className="lyrics-version-source">{sourceLabel(version.source)}</span>
+        {isApproved ? <span className="lyrics-version-approved-badge">approved</span> : null}
+      </div>
+      <p className="lyrics-version-preview">{preview(version.text)}</p>
+      <div className="lyrics-version-actions">
+        <button type="button" className="setup-button" onClick={onRestore}>
+          Restore
+        </button>
+        {!isApproved ? (
+          <button type="button" className="setup-button setup-button-primary" onClick={onApprove}>
+            Approve
+          </button>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+function sourceLabel(source: LyricSource): string {
+  switch (source.kind) {
+    case 'human':
+      return 'typed'
+    case 'llm':
+      return source.model === '' ? 'generated' : source.model
+    case 'edited':
+      return `edited from v${source.from_version}`
+  }
+}
+
+function findingText(finding: LintFinding): string {
+  switch (finding.kind) {
+    case 'unknown_tag':
+      return `Line ${finding.line}: "${finding.tag}" is not a structure tag.`
+    case 'missing_section':
+      return `Missing section [${finding.section}].`
+    case 'out_of_order':
+      return 'Sections are out of the requested order.'
+    case 'extra_section':
+      return `Line ${finding.line}: extra section "${finding.tag}".`
+    case 'text_after_tag':
+      return `Line ${finding.line}: text after a tag ("${finding.text}").`
+    case 'no_structure_tags':
+      return 'No structure tags found.'
+  }
+}
+
+function preview(text: string): string {
+  const first = text.split('\n').find((line) => line.trim() !== '') ?? ''
+  return first.length > 60 ? `${first.slice(0, 60)}...` : first
 }

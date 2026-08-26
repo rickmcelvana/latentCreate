@@ -636,8 +636,10 @@ body {
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
+  min-height: 180px;
   max-height: 360px;
   overflow-y: auto;
+  resize: vertical;
 }
 
 .lyrics-truncation {
@@ -647,4 +649,111 @@ body {
   border-radius: var(--radius);
   color: var(--warning);
   font-size: 13px;
+}
+
+/* --- LyricsStudio: lint findings and the version list --- */
+
+.lyrics-findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.lyrics-finding {
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: var(--gap-sm);
+  border-left: 2px solid var(--border);
+}
+
+.lyrics-finding-warning {
+  color: var(--warning);
+  border-left-color: var(--warning);
+}
+
+.lyrics-finding-info {
+  color: var(--text-muted);
+}
+
+.lyrics-versions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  border-top: 1px solid var(--border);
+  padding-top: var(--gap-md);
+}
+
+.lyrics-versions-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lyrics-approved {
+  margin: 0;
+  color: var(--success);
+  font-size: 13px;
+}
+
+.lyrics-version-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.lyrics-version {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding: var(--gap-sm) var(--gap-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.lyrics-version-approved {
+  border-color: var(--success);
+}
+
+.lyrics-version-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.lyrics-version-number {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lyrics-version-source {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lyrics-version-approved-badge {
+  font-size: 11px;
+  color: var(--success);
+  border: 1px solid var(--success);
+  border-radius: 999px;
+  padding: 0 var(--gap-sm);
+}
+
+.lyrics-version-preview {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lyrics-version-actions {
+  display: flex;
+  gap: var(--gap-sm);
 }

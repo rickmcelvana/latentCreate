@@ -421,4 +421,21 @@ describe('versioned document store', () => {
     await useLyricsStore.getState().lint('ace-step-1.5-turbo')
     expect(useLyricsStore.getState().findings).toEqual(findings)
   })
+
+  /**
+   * Protects the source choice: typing into an empty document is `human`, and
+   * editing an existing version is `edited` from the latest version.
+   */
+  it('test_save_draft_commits_human_without_versions_and_edited_with', async () => {
+    useLyricsStore.setState({ doc: { ...openDoc, versions: [] }, draft: 'typed' })
+    await useLyricsStore.getState().saveDraft()
+    expect(useLyricsStore.getState().doc?.versions[0]?.source).toEqual({ kind: 'human' })
+
+    useLyricsStore.setState({ doc: openDoc, draft: 'revised' })
+    await useLyricsStore.getState().saveDraft()
+    expect(useLyricsStore.getState().doc?.versions[1]?.source).toEqual({
+      kind: 'edited',
+      from_version: 1,
+    })
+  })
 })

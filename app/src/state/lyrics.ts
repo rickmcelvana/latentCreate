@@ -180,6 +180,7 @@ interface LyricsState extends LyricsSnapshot {
   commit: (source: LyricSource) => Promise<void>
   commitGenerated: () => Promise<void>
   commitEdited: () => Promise<void>
+  saveDraft: () => Promise<void>
   restore: (number: number) => void
   approve: (number: number) => Promise<void>
   lint: (profileId: string) => Promise<void>
@@ -277,6 +278,16 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     if (doc === null || doc.versions.length === 0) return
     const from_version = nextVersionNumber(doc.versions) - 1
     await get().commit({ kind: 'edited', from_version })
+  },
+
+  saveDraft: async () => {
+    const doc = get().doc
+    if (doc === null) return
+    if (doc.versions.length === 0) {
+      await get().commit({ kind: 'human' })
+    } else {
+      await get().commitEdited()
+    }
   },
 
   restore: (number) => {
