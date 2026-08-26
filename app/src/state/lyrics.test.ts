@@ -1,0 +1,182 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LyricBrief } from '../bridge/lyrics'
+import { applyLyricEvent, useLyricsStore, type LyricsSnapshot } from './lyrics'
+
+const mockDefaultBrief: LyricBrief = vi.hoisted(() => ({
+  theme: 'A night drive out of a city you are leaving for good',
+  style_tags: 'synthwave, retro, 80s, dreamy, female vocal, driving beat',
+  mood: 'bittersweet, hopeful',
+  structure: 'V-C-V-C-B-C',
+  language: 'English',
+  point_of_view: 'first_person',
+  era_refs: null,
+  explicit_allowed: false,
+  target_duration_s: 120,
+}))
+
+const mockGenerateLyrics = vi.fn()
+const mockCancelLyrics = vi.fn()
+const mockSubscribeLyrics = vi.fn()
+let mockIsTauri = true
+
+vi.mock('../bridge/lyrics', () => ({
+  isTauri: () => mockIsTauri,
+  generateLyrics: (brief: unknown, profileId: string) => mockGenerateLyrics(brief, profileId),
+  cancelLyrics: () => mockCancelLyrics(),
+  subscribeLyrics: (cb: (e: unknown) => void) => mockSubscribeLyrics(cb),
+  DEFAULT_BRIEF: mockDefaultBrief,
+}))
+
+function snapshot(over: Partial<LyricsSnapshot> = {}): LyricsSnapshot {
+  return {
+    draft: '',
+    thinking: [],
+    truncated: false,
+    generating: false,
+    error: null,
+    ...over,
+  }
+}
+
+beforeEach(() => {
+  mockIsTauri = true
+  mockGenerateLyrics.mockReset()
+  mockCancelLyrics.mockReset()
+  mockSubscribeLyrics.mockReset()
+  useLyricsStore.setState({
+    brief: mockDefaultBrief,
+    draft: '',
+    thinking: [],
+    truncated: false,
+    generating: false,
+    error: null,
+    listening: false,
+  })
+})
+
+describe('lyrics store', () => {
+  it('test_generate_resets_and_submits_the_brief', async () => {
+    mockGenerateLyrics.mockResolvedValue(undefined)
+    useLyricsStore.setState({ draft: 'old', generating: false })
+
+    await useLyricsStore.getState().generate('ace-step-1.5-turbo')
+
+    expect(mockGenerateLyrics).toHaveBeenCalledWith(mockDefaultBrief, 'ace-step-1.5-turbo')
+    const state = useLyricsStore.getState()
+    expect(state.draft).toBe('')
+    expect(state.generating).toBe(true)
+    expect(state.truncated).toBe(false)
+  })
+
+  it('test_generate_is_skipped_outside_tauri', async () => {
+    mockIsTauri = false
+    await useLyricsStore.getState().generate('ace-step-1.5-turbo')
+    expect(mockGenerateLyrics).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Protects: a rejected command must not leave the store stuck "generating".
+   * The backend returns an error for "no LLM configured", and the UI has to be
+   * able to show it and let the user retry.
+   */
+  it('test_generate_recovers_when_the_backend_rejects', async () => {
+    mockGenerateLyrics.mockRejectedValue(new Error('no lyric LLM configured'))
+    await useLyricsStore.getState().generate('ace-step-1.5-turbo')
+    const state = useLyricsStore.getState()
+    expect(state.generating).toBe(false)
+    expect(state.error).toBe('Error: no lyric LLM configured')
+  })
+
+  it('test_cancel_calls_the_backend', async () => {
+    mockCancelLyrics.mockResolvedValue(undefined)
+    await useLyricsStore.getState().cancel()
+    expect(mockCancelLyrics).toHaveBeenCalledTimes(1)
+  })
+
+  it('test_start_listening_subscribes_once', async () => {
+    mockSubscribeLyrics.mockResolvedValue(() => {})
+    await useLyricsStore.getState().startListening()
+    await useLyricsStore.getState().startListening()
+    expect(mockSubscribeLyrics).toHaveBeenCalledTimes(1)
+  })
+
+  it('test_start_listening_is_skipped_outside_tauri', async () => {
+    mockIsTauri = false
+    await useLyricsStore.getState().startListening()
+    expect(mockSubscribeLyrics).not.toHaveBeenCalled()
+  })
+
+  it('test_set_brief_merges_over_the_prefills', () => {
+    useLyricsStore.getState().setBrief({ mood: 'somber' })
+    const brief = useLyricsStore.getState().brief
+    expect(brief.mood).toBe('somber')
+    expect(brief.structure).toBe('V-C-V-C-B-C')
+  })
+})
+
+describe('applyLyricEvent', () => {
+  it('test_folds_delta_thinking_done_failed', () => {
+    const deltas = applyLyricEvent(snapshot(), {
+      kind: 'delta',
+      payload: { text: 'line one\n' },
+    })
+    expect(deltas.draft).toBe('line one\n')
+
+    const thinking = applyLyricEvent(deltas, {
+      kind: 'thinking',
+      payload: { text: 'weighing it up' },
+    })
+    expect(thinking.thinking).toEqual(['weighing it up'])
+
+    const done = applyLyricEvent(thinking, {
+      kind: 'done',
+      payload: { finish_reason: 'length', usage: null },
+    })
+    expect(done.truncated).toBe(true)
+    expect(done.generating).toBe(false)
+    expect(done.draft).toBe('line one\n')
+
+    const failed = applyLyricEvent(snapshot({ draft: 'partial' }), {
+      kind: 'failed',
+      payload: { error: 'boom' },
+    })
+    expect(failed.error).toBe('boom')
+    expect(failed.generating).toBe(false)
+    expect(failed.draft).toBe('partial')
+  })
+
+  /**
+   * Protects: `finish_reason` is read as the `truncated` flag, and only
+   * `length` sets it. A clean `stop` is not a truncation, and the distinction
+   * is what decides whether the UI offers a retry with more budget.
+   */
+  it('test_truncated_is_set_only_on_a_length_finish', () => {
+    const stop = applyLyricEvent(snapshot({ generating: true }), {
+      kind: 'done',
+      payload: { finish_reason: 'stop', usage: null },
+    })
+    expect(stop.truncated).toBe(false)
+
+    const length = applyLyricEvent(snapshot({ generating: true }), {
+      kind: 'done',
+      payload: { finish_reason: 'length', usage: null },
+    })
+    expect(length.truncated).toBe(true)
+  })
+
+  /**
+   * Protects: the reasoning trace is bounded. A model can emit thousands of
+   * characters of chain-of-thought (LLM-SURFACE 12.1), and storing all of it
+   * would grow the store without bound for a status line that only shows the
+   * most recent thinking.
+   */
+  it('test_thinking_trace_is_bounded', () => {
+    let state = snapshot()
+    for (let i = 0; i < 120; i += 1) {
+      state = applyLyricEvent(state, { kind: 'thinking', payload: { text: `t${i}` } })
+    }
+    expect(state.thinking.length).toBe(50)
+    expect(state.thinking[0]).toBe('t70')
+    expect(state.thinking[49]).toBe('t119')
+  })
+})
