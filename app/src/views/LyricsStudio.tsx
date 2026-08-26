@@ -279,6 +279,7 @@ function LyricEditor({ profileId }: { profileId: string }) {
   const findings = useLyricsStore((state) => state.findings)
   const saveDraft = useLyricsStore((state) => state.saveDraft)
   const lint = useLyricsStore((state) => state.lint)
+  const linted = useLyricsStore((state) => state.linted)
 
   const phase = generationPhase({ draft, thinking, truncated, generating, error })
   if (phase === 'idle' && doc === null) return null
@@ -325,10 +326,25 @@ function LyricEditor({ profileId }: { profileId: string }) {
         </button>
       </div>
 
+      {/* The approval notice sits with the actions, not at the foot of the
+          panel. It shipped below the version list, which on a lyric carrying
+          eight lint advisories put it off the bottom of the screen -- the user
+          saw the per-version badge and concluded the notice did not exist. */}
+      {doc !== null && approvedText(doc) !== null ? (
+        <p className="lyrics-approved">v{doc.approved} is approved, and is what audio will use.</p>
+      ) : null}
+
       {truncated && !generating ? (
         <p className="lyrics-truncation">
           The model ran out of room and stopped early. Try a longer length, then generate again.
         </p>
+      ) : null}
+
+      {/* A check that finds nothing must say so. Rendering nothing leaves the
+          user unable to tell a clean lyric from a button that did not fire --
+          and with a well-behaved model, clean is the common case. */}
+      {linted && findings.length === 0 ? (
+        <p className="lyrics-clean">Checked: no structure problems found.</p>
       ) : null}
 
       {findings.length > 0 ? <Findings findings={findings} /> : null}
@@ -359,12 +375,10 @@ function VersionList() {
   const doc = useLyricsStore((state) => state.doc)
   const restore = useLyricsStore((state) => state.restore)
   const approve = useLyricsStore((state) => state.approve)
-  const approved = approvedText(doc)
 
   return (
     <div className="lyrics-versions">
       <h2 className="lyrics-versions-title">Versions</h2>
-      {approved !== null ? <p className="lyrics-approved">Approved version is ready for audio.</p> : null}
       <ol className="lyrics-version-list">
         {doc?.versions.map((version) => (
           <VersionRow

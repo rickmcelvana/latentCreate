@@ -182,6 +182,9 @@ export interface OptimizerState {
   promptOverride: string | null
 }
 
+/** Lint state as it looks before a check, and after the draft changes under one. */
+const NO_LINT = { findings: [] as LintFinding[], linted: false }
+
 /** The optimizer state as it looks with nothing proposed and nothing accepted. */
 const NO_OPTIMIZATION: OptimizerState = {
   optimization: null,
@@ -197,6 +200,14 @@ interface LyricsState extends LyricsSnapshot, OptimizerState {
   doc: LyricDoc | null
   /** Advisory lint findings for the current draft. */
   findings: LintFinding[]
+  /**
+   * Whether [`lint`] has run against the draft as it now reads.
+   *
+   * Distinguishes "checked, nothing to say" from "not checked yet", which an
+   * empty `findings` alone cannot. Any change to the draft clears it, because
+   * findings about text the user has since edited are worse than none.
+   */
+  linted: boolean
   setBrief: (patch: Partial<LyricBrief>) => void
   optimize: (profileId: string) => Promise<void>
   setProposed: (text: string) => void
@@ -227,6 +238,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   listening: false,
   doc: null,
   findings: [],
+  linted: false,
   ...NO_OPTIMIZATION,
 
   // Editing the brief drops any accepted prompt. The override was written
@@ -269,11 +281,18 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     set({ brief: { ...brief, style_tags: tags } })
   },
 
-  setDraft: (text) => set({ draft: text }),
+  setDraft: (text) => set({ draft: text, ...NO_LINT }),
 
   generate: async (profileId) => {
     if (!isTauri() || get().generating) return
-    set({ draft: '', thinking: [], truncated: false, error: null, generating: true })
+    set({
+      draft: '',
+      thinking: [],
+      truncated: false,
+      error: null,
+      generating: true,
+      ...NO_LINT,
+    })
     try {
       await generateLyrics(get().brief, profileId, get().promptOverride)
     } catch (err: unknown) {
@@ -358,7 +377,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
 
   restore: (number) => {
     const version = get().doc?.versions.find((v) => v.number === number)
-    if (version !== undefined) set({ draft: version.text })
+    if (version !== undefined) set({ draft: version.text, ...NO_LINT })
   },
 
   approve: async (number) => {
@@ -376,7 +395,7 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   lint: async (profileId) => {
     try {
       const findings = await lintLyrics(profileId, get().brief, get().draft)
-      set({ findings })
+      set({ findings, linted: true })
     } catch (err: unknown) {
       set({ error: String(err) })
     }

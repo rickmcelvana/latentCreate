@@ -632,6 +632,9 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  /* A textarea does not inherit the page colour: without this it renders in
+     the UA's black on the app's dark ground, which is what shipped. */
+  color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -695,6 +698,12 @@ body {
 .lyrics-approved {
   margin: 0;
   color: var(--success);
+  font-size: 13px;
+}
+
+.lyrics-clean {
+  margin: 0;
+  color: var(--text-muted);
   font-size: 13px;
 }
 

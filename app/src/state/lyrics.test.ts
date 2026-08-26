@@ -115,6 +115,7 @@ beforeEach(() => {
     listening: false,
     doc: null,
     findings: [],
+    linted: false,
     optimization: null,
     proposed: '',
     optimizing: false,
@@ -437,6 +438,42 @@ describe('versioned document store', () => {
     mockLintLyrics.mockResolvedValue(findings)
     await useLyricsStore.getState().lint('ace-step-1.5-turbo')
     expect(useLyricsStore.getState().findings).toEqual(findings)
+  })
+
+  /**
+   * Protects: a clean check is distinguishable from no check. Empty findings
+   * alone cannot say which, and the UI rendered nothing for both -- leaving a
+   * user who checked a clean lyric unable to tell the button had fired.
+   */
+  it('test_lint_records_that_it_ran_even_with_nothing_to_report', async () => {
+    mockLintLyrics.mockResolvedValue([])
+    expect(useLyricsStore.getState().linted).toBe(false)
+
+    await useLyricsStore.getState().lint('ace-step-1.5-turbo')
+
+    expect(useLyricsStore.getState().findings).toEqual([])
+    expect(useLyricsStore.getState().linted).toBe(true)
+  })
+
+  /**
+   * Protects: findings never outlive the text they describe. They carry line
+   * numbers, so a stale finding points at a line the user has since changed --
+   * worse than showing nothing.
+   */
+  it('test_changing_the_draft_clears_a_stale_check', async () => {
+    mockLintLyrics.mockResolvedValue([{ kind: 'no_structure_tags' }] as LintFinding[])
+    await useLyricsStore.getState().lint('ace-step-1.5-turbo')
+    expect(useLyricsStore.getState().linted).toBe(true)
+
+    useLyricsStore.getState().setDraft('rewritten by hand')
+    expect(useLyricsStore.getState().findings).toEqual([])
+    expect(useLyricsStore.getState().linted).toBe(false)
+
+    // Restoring an older version replaces the draft too, and must clear it.
+    await useLyricsStore.getState().lint('ace-step-1.5-turbo')
+    useLyricsStore.setState({ doc: openDoc })
+    useLyricsStore.getState().restore(1)
+    expect(useLyricsStore.getState().linted).toBe(false)
   })
 
   /**
