@@ -146,12 +146,14 @@ field exists. Small task; kept separate so the policy decision lands with its ev
 Landed directly as architect work (no Aider run -- the producer's standing call: a task this
 small, written and tested by the architect, is not worth an executor round trip).
 
-### T-205 — Tauri lyric streaming command and event pump
+### T-205 — Tauri lyric streaming command and event pump  — **LANDED**
 `lyrics_generate` / `lyrics_cancel`, modelled on `src-tauri/src/jobs.rs`: spawn, keep the
 abort handle, emit `lyrics://delta` (content only), `lyrics://thinking` (reasoning), and
 terminal `lyrics://done { finish_reason, usage }` / `lyrics://failed`. Applies the
 `reasoning_effort` policy from finding 2. **`finish_reason` reaches the frontend intact** --
 truncation is an outcome the UI has to state, not an error to swallow.
+Landed directly as architect work (no Aider run), consistent with the producer's standing
+call on T-204.
 
 ### T-206 — frontend bridge and `lyrics` store
 Typed wrappers plus the Zustand store: brief state with prefills, streaming accumulation
