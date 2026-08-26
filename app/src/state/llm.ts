@@ -7,6 +7,7 @@ import {
   type LlmStatus,
   type LlmTestResult,
 } from '../bridge/llm'
+import { useConfigStore } from './config'
 
 /** How one model should read in the picker. */
 export interface ModelView {
@@ -83,7 +84,7 @@ interface LlmState {
   /** The model the user has chosen, or the preselected one. */
   model: string | null
   probe: (baseUrl: string | null, configuredModel: string | null) => Promise<void>
-  choose: (model: string) => void
+  choose: (baseUrl: string, model: string) => Promise<void>
   test: (baseUrl: string) => Promise<void>
 }
 
@@ -107,7 +108,19 @@ export const useLlmStore = create<LlmState>((set, get) => ({
     }
   },
 
-  choose: (model: string) => set({ model, result: null }),
+  // Choosing a model **persists it**. Everything downstream -- the Lyrics
+  // Studio's generate and optimize -- reads the endpoint from `config.json`,
+  // not from this store, so a selection that lived only here left the app
+  // reporting "no lyric LLM configured" against a picker showing a model
+  // selected and a test call that passed. The test call proves nothing about
+  // persistence: `llm_test` takes the endpoint and model as arguments.
+  choose: async (baseUrl: string, model: string) => {
+    set({ model, result: null })
+    if (!isTauri()) return
+    await useConfigStore
+      .getState()
+      .save({ llm: { provider: 'open_ai_compat', base_url: baseUrl, model } })
+  },
 
   test: async (baseUrl: string) => {
     const model = get().model

@@ -1,6 +1,43 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LlmModelRow, LlmStatus, LlmTestResult } from '../bridge/llm'
-import { canTest, modelView, testSummary } from './llm'
+import type { Config } from '../bridge/config'
+import { canTest, modelView, testSummary, useLlmStore } from './llm'
+import { useConfigStore } from './config'
+
+const mockLlmProbe = vi.fn()
+const mockLlmTest = vi.fn()
+const mockSaveConfig = vi.fn()
+const mockLoadConfig = vi.fn()
+let mockIsTauri = true
+
+vi.mock('../bridge/comfy', () => ({
+  isTauri: () => mockIsTauri,
+}))
+
+vi.mock('../bridge/llm', () => ({
+  llmProbe: (baseUrl: string | null, configuredModel: string | null) =>
+    mockLlmProbe(baseUrl, configuredModel),
+  llmTest: (baseUrl: string, model: string) => mockLlmTest(baseUrl, model),
+}))
+
+vi.mock('../bridge/config', () => ({
+  isTauri: () => mockIsTauri,
+  loadConfig: () => mockLoadConfig(),
+  saveConfig: (config: unknown) => mockSaveConfig(config),
+  hasSecret: vi.fn(),
+  setSecret: vi.fn(),
+  deleteSecret: vi.fn(),
+}))
+
+function baseConfig(over: Partial<Config> = {}): Config {
+  return {
+    schema_version: 1,
+    comfy: { mode: 'local', url: null, comfy_bin: null },
+    llm: null,
+    default_profile_id: null,
+    ...over,
+  }
+}
 
 function row(over: Partial<LlmModelRow>): LlmModelRow {
   return {
@@ -128,5 +165,80 @@ describe('canTest', () => {
     expect(canTest(ready, '')).toBe(false)
     expect(canTest({ state: 'not_configured' }, 'gemma4:12b-32k')).toBe(false)
     expect(canTest(null, 'gemma4:12b-32k')).toBe(false)
+  })
+})
+
+describe('llm store', () => {
+  beforeEach(() => {
+    mockIsTauri = true
+    mockLlmProbe.mockReset()
+    mockLlmTest.mockReset()
+    mockSaveConfig.mockReset()
+    mockLoadConfig.mockReset()
+    useLlmStore.setState({ status: null, busy: false, testing: false, result: null, model: null })
+    useConfigStore.setState({ config: baseConfig(), warnings: [], status: 'ready', error: null })
+  })
+
+  /**
+   * The regression test for the bug the T-211 click-through found: the wizard
+   * let a model be picked and tested, and the Lyrics Studio then reported "no
+   * lyric LLM configured" because nothing had ever written `config.json`.
+   *
+   * The test call could not have caught it -- `llm_test` takes the endpoint and
+   * model as arguments, so it passes against a config that does not exist. The
+   * thing to assert is the write.
+   */
+  it('test_choose_persists_the_endpoint_and_model', async () => {
+    await useLlmStore.getState().choose('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
+
+    expect(useLlmStore.getState().model).toBe('gemma4:12b-32k')
+    expect(mockSaveConfig).toHaveBeenCalledTimes(1)
+    expect(mockSaveConfig.mock.calls[0]![0]).toMatchObject({
+      llm: {
+        provider: 'open_ai_compat',
+        base_url: 'http://127.0.0.1:11434/v1',
+        model: 'gemma4:12b-32k',
+      },
+    })
+  })
+
+  /**
+   * Protects: what generation reads is what the picker wrote. `configured_llm`
+   * needs all three of provider, base URL and model, and returns a different
+   * error for each -- a saved block missing one is the same failure wearing a
+   * different message.
+   */
+  it('test_choose_writes_every_field_generation_requires', async () => {
+    await useLlmStore.getState().choose('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
+
+    const saved = mockSaveConfig.mock.calls[0]![0] as Config
+    expect(saved.llm?.provider).not.toBeNull()
+    expect(saved.llm?.base_url).not.toBeNull()
+    expect(saved.llm?.model).not.toBeNull()
+    // The rest of the config survives the patch.
+    expect(saved.comfy).toEqual(baseConfig().comfy)
+    expect(saved.schema_version).toBe(1)
+  })
+
+  /** Protects: choosing still selects in a plain browser, where nothing persists. */
+  it('test_choose_selects_without_saving_outside_tauri', async () => {
+    mockIsTauri = false
+    await useLlmStore.getState().choose('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
+
+    expect(useLlmStore.getState().model).toBe('gemma4:12b-32k')
+    expect(mockSaveConfig).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Protects: the probe is told what is already configured. The backend's
+   * preselect exists so a configured model wins over any suggestion, and
+   * passing null makes that rule unreachable -- the second half of the same
+   * bug, which would have shown as the wizard forgetting the choice on reopen.
+   */
+  it('test_probe_forwards_the_configured_model', async () => {
+    mockLlmProbe.mockResolvedValue({ state: 'not_configured' })
+    await useLlmStore.getState().probe('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
+
+    expect(mockLlmProbe).toHaveBeenCalledWith('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
   })
 })

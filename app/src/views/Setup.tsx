@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
 import { curatedFirst, formatBytes, installView, rowFor, useModelsStore } from '../state/models'
 import { canTest, modelView, testSummary, useLlmStore } from '../state/llm'
+import { useConfigStore } from '../state/config'
 
 /**
  * Setup wizard, ComfyUI step.
@@ -90,10 +91,21 @@ function LlmStep() {
   const probe = useLlmStore((state) => state.probe)
   const choose = useLlmStore((state) => state.choose)
   const test = useLlmStore((state) => state.test)
+  const configStatus = useConfigStore((state) => state.status)
+  const configuredModel = useConfigStore((state) => state.config?.llm?.model ?? null)
+  const probed = useRef(false)
 
   useEffect(() => {
-    void probe(DEFAULT_BASE_URL, null)
-  }, [probe])
+    // Probe once, and not before config has been read. Passing null while it
+    // loads would throw away the model the user already configured and
+    // preselect a suggestion over it, which the backend's `preselect` exists
+    // to prevent. Re-probing whenever config changes is the other wrong
+    // answer: `probe` resets `model` from `preselect`, so it would stomp the
+    // selection the user just made and saved.
+    if (probed.current || configStatus === 'idle' || configStatus === 'loading') return
+    probed.current = true
+    void probe(DEFAULT_BASE_URL, configuredModel)
+  }, [probe, configStatus, configuredModel])
 
   return (
     <section className="panel setup-step">
@@ -143,7 +155,7 @@ function LlmStep() {
                       value={view.id}
                       checked={model === view.id}
                       disabled={!view.selectable}
-                      onChange={() => choose(view.id)}
+                      onChange={() => void choose(DEFAULT_BASE_URL, view.id)}
                     />
                     <code>{view.id}</code>
                   </label>
