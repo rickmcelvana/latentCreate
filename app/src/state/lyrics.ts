@@ -9,6 +9,16 @@ import {
   type LyricEvent,
 } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
+import {
+  lintLyrics,
+  openLyricDoc,
+  saveLyricDoc,
+  type LintFinding,
+  type LyricDoc,
+  type LyricSource,
+  type LyricVersion,
+} from '../bridge/lyricdoc'
+import { useConfigStore } from './config'
 
 /**
  * Cap on the reasoning trace, so a model that reasons at length cannot grow the
@@ -131,14 +141,48 @@ export function thinkingTail(thinking: string[]): string {
   return joined.length > 140 ? joined.slice(-140) : joined
 }
 
+/**
+ * The number a new version gets: one past the highest present.
+ *
+ * Mirrors `LyricDoc::push_version`'s "continue from the highest, never reuse a
+ * number" rule, so a restored older version cannot collide with a later one.
+ */
+export function nextVersionNumber(versions: LyricVersion[]): number {
+  return versions.reduce((max, version) => Math.max(max, version.number), 0) + 1
+}
+
+/**
+ * The text of the approved version, when one is approved.
+ *
+ * This is the handoff to AudioStudio (Phase 3): approving a version is what
+ * makes it available, and this selector is how the audio side reads it. It is a
+ * pure store projection, not a navigation side effect.
+ */
+export function approvedText(doc: LyricDoc | null): string | null {
+  if (doc === null || doc.approved === null) return null
+  return doc.versions.find((version) => version.number === doc.approved)?.text ?? null
+}
+
 interface LyricsState extends LyricsSnapshot {
   brief: LyricBrief
   listening: boolean
+  /** The working document, opened by [`loadDoc`]. */
+  doc: LyricDoc | null
+  /** Advisory lint findings for the current draft. */
+  findings: LintFinding[]
   setBrief: (patch: Partial<LyricBrief>) => void
   prefillFrom: (guide: ProfileGuide | null) => void
+  setDraft: (text: string) => void
   generate: (profileId: string) => Promise<void>
   cancel: () => Promise<void>
   startListening: () => Promise<void>
+  loadDoc: () => Promise<void>
+  commit: (source: LyricSource) => Promise<void>
+  commitGenerated: () => Promise<void>
+  commitEdited: () => Promise<void>
+  restore: (number: number) => void
+  approve: (number: number) => Promise<void>
+  lint: (profileId: string) => Promise<void>
 }
 
 export const useLyricsStore = create<LyricsState>((set, get) => ({
@@ -149,6 +193,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   generating: false,
   error: null,
   listening: false,
+  doc: null,
+  findings: [],
 
   setBrief: (patch) => set((state) => ({ brief: { ...state.brief, ...patch } })),
 
@@ -161,6 +207,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     if (brief.style_tags !== DEFAULT_BRIEF.style_tags) return
     set({ brief: { ...brief, style_tags: tags } })
   },
+
+  setDraft: (text) => set({ draft: text }),
 
   generate: async (profileId) => {
     if (!isTauri() || get().generating) return
@@ -181,6 +229,79 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     if (get().listening) return
     if (!isTauri()) return
     set({ listening: true })
-    await subscribeLyrics((event) => set((state) => applyLyricEvent(state, event)))
+    await subscribeLyrics((event) => {
+      set((state) => applyLyricEvent(state, event))
+      if (event.kind === 'done') void get().commitGenerated()
+    })
+  },
+
+  loadDoc: async () => {
+    if (!isTauri()) return
+    try {
+      const doc = await openLyricDoc()
+      const latest = doc.versions[doc.versions.length - 1]
+      set({ doc, draft: latest?.text ?? '' })
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
+  },
+
+  commit: async (source) => {
+    const doc = get().doc
+    const draft = get().draft
+    if (doc === null || draft.trim() === '') return
+    const version: LyricVersion = {
+      number: nextVersionNumber(doc.versions),
+      text: draft,
+      created_at: new Date().toISOString(),
+      source,
+    }
+    const next: LyricDoc = { ...doc, versions: [...doc.versions, version] }
+    set({ doc: next })
+    try {
+      await saveLyricDoc(next)
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
+  },
+
+  commitGenerated: async () => {
+    const draft = get().draft
+    if (draft.trim() === '') return
+    const model = useConfigStore.getState().config?.llm?.model ?? ''
+    await get().commit({ kind: 'llm', model, prompt_optimized: false })
+  },
+
+  commitEdited: async () => {
+    const doc = get().doc
+    if (doc === null || doc.versions.length === 0) return
+    const from_version = nextVersionNumber(doc.versions) - 1
+    await get().commit({ kind: 'edited', from_version })
+  },
+
+  restore: (number) => {
+    const version = get().doc?.versions.find((v) => v.number === number)
+    if (version !== undefined) set({ draft: version.text })
+  },
+
+  approve: async (number) => {
+    const doc = get().doc
+    if (doc === null) return
+    const next: LyricDoc = { ...doc, approved: number }
+    set({ doc: next })
+    try {
+      await saveLyricDoc(next)
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
+  },
+
+  lint: async (profileId) => {
+    try {
+      const findings = await lintLyrics(profileId, get().brief, get().draft)
+      set({ findings })
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
   },
 }))

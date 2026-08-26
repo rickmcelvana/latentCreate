@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LyricBrief } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
+import type { LyricDoc, LintFinding } from '../bridge/lyricdoc'
+import { useConfigStore } from './config'
 import {
   applyLyricEvent,
+  approvedText,
   generationPhase,
+  nextVersionNumber,
   structureOptions,
   styleTagsFromGuide,
   thinkingTail,
@@ -26,6 +30,9 @@ const mockDefaultBrief: LyricBrief = vi.hoisted(() => ({
 const mockGenerateLyrics = vi.fn()
 const mockCancelLyrics = vi.fn()
 const mockSubscribeLyrics = vi.fn()
+const mockOpenLyricDoc = vi.fn()
+const mockSaveLyricDoc = vi.fn()
+const mockLintLyrics = vi.fn()
 let mockIsTauri = true
 
 vi.mock('../bridge/lyrics', () => ({
@@ -34,6 +41,13 @@ vi.mock('../bridge/lyrics', () => ({
   cancelLyrics: () => mockCancelLyrics(),
   subscribeLyrics: (cb: (e: unknown) => void) => mockSubscribeLyrics(cb),
   DEFAULT_BRIEF: mockDefaultBrief,
+}))
+
+vi.mock('../bridge/lyricdoc', () => ({
+  openLyricDoc: () => mockOpenLyricDoc(),
+  saveLyricDoc: (doc: unknown) => mockSaveLyricDoc(doc),
+  lintLyrics: (profileId: string, brief: unknown, text: string) =>
+    mockLintLyrics(profileId, brief, text),
 }))
 
 function snapshot(over: Partial<LyricsSnapshot> = {}): LyricsSnapshot {
@@ -58,11 +72,26 @@ function profileGuide(over: Partial<ProfileGuide> = {}): ProfileGuide {
   }
 }
 
+function lyricDoc(over: Partial<LyricDoc> = {}): LyricDoc {
+  return {
+    id: 'ld-0001',
+    title: null,
+    versions: [
+      { number: 1, text: 'first draft', created_at: 't1', source: { kind: 'human' } },
+    ],
+    approved: null,
+    ...over,
+  }
+}
+
 beforeEach(() => {
   mockIsTauri = true
   mockGenerateLyrics.mockReset()
   mockCancelLyrics.mockReset()
   mockSubscribeLyrics.mockReset()
+  mockOpenLyricDoc.mockReset()
+  mockSaveLyricDoc.mockReset()
+  mockLintLyrics.mockReset()
   useLyricsStore.setState({
     brief: mockDefaultBrief,
     draft: '',
@@ -71,6 +100,8 @@ beforeEach(() => {
     generating: false,
     error: null,
     listening: false,
+    doc: null,
+    findings: [],
   })
 })
 
@@ -291,5 +322,103 @@ describe('prefillFrom', () => {
   it('test_a_null_guide_changes_nothing', () => {
     useLyricsStore.getState().prefillFrom(null)
     expect(useLyricsStore.getState().brief.style_tags).toBe(mockDefaultBrief.style_tags)
+  })
+})
+
+describe('nextVersionNumber', () => {
+  it('test_starts_at_one', () => {
+    expect(nextVersionNumber([])).toBe(1)
+  })
+
+  /** Protects: numbers continue from the highest, so a restore never collides. */
+  it('test_continues_from_the_highest_number', () => {
+    expect(
+      nextVersionNumber([
+        { number: 1, text: 'a', created_at: '', source: { kind: 'human' } },
+        { number: 5, text: 'e', created_at: '', source: { kind: 'human' } },
+      ]),
+    ).toBe(6)
+  })
+})
+
+describe('approvedText', () => {
+  /** Protects: the handoff is the approved version's text, nothing else. */
+  it('test_returns_the_approved_versions_text', () => {
+    expect(approvedText(lyricDoc({ approved: 2, versions: [
+      { number: 1, text: 'first', created_at: '', source: { kind: 'human' } },
+      { number: 2, text: 'second', created_at: '', source: { kind: 'human' } },
+    ] }))).toBe('second')
+    expect(approvedText(lyricDoc())).toBeNull()
+    expect(approvedText(null)).toBeNull()
+  })
+})
+
+describe('versioned document store', () => {
+  const openDoc = lyricDoc()
+
+  it('test_load_doc_restores_the_latest_version_as_draft', async () => {
+    mockOpenLyricDoc.mockResolvedValue(openDoc)
+    await useLyricsStore.getState().loadDoc()
+    expect(useLyricsStore.getState().doc?.id).toBe('ld-0001')
+    expect(useLyricsStore.getState().draft).toBe('first draft')
+  })
+
+  it('test_commit_pushes_the_draft_and_saves', async () => {
+    useLyricsStore.setState({ doc: openDoc, draft: 'edited' })
+    await useLyricsStore.getState().commit({ kind: 'edited', from_version: 1 })
+
+    const doc = useLyricsStore.getState().doc
+    expect(doc?.versions.length).toBe(2)
+    expect(doc?.versions[1]).toMatchObject({
+      number: 2,
+      text: 'edited',
+      source: { kind: 'edited', from_version: 1 },
+    })
+    expect(mockSaveLyricDoc).toHaveBeenCalledWith(doc)
+  })
+
+  it('test_commit_is_a_noop_without_a_doc', async () => {
+    await useLyricsStore.getState().commit({ kind: 'human' })
+    expect(mockSaveLyricDoc).not.toHaveBeenCalled()
+  })
+
+  it('test_commit_generated_records_the_model_from_config', async () => {
+    useConfigStore.setState({
+      config: {
+        schema_version: 1,
+        comfy: { mode: 'local', url: null, comfy_bin: null },
+        llm: { provider: 'open_ai_compat', base_url: null, model: 'gemma4:12b-32k' },
+        default_profile_id: null,
+      },
+    })
+    useLyricsStore.setState({ doc: { ...openDoc, versions: [] }, draft: 'generated' })
+    await useLyricsStore.getState().commitGenerated()
+
+    const doc = useLyricsStore.getState().doc
+    expect(doc?.versions[0]?.source).toEqual({
+      kind: 'llm',
+      model: 'gemma4:12b-32k',
+      prompt_optimized: false,
+    })
+  })
+
+  it('test_approve_sets_and_saves_the_approved_version', async () => {
+    useLyricsStore.setState({ doc: openDoc })
+    await useLyricsStore.getState().approve(1)
+    expect(useLyricsStore.getState().doc?.approved).toBe(1)
+    expect(mockSaveLyricDoc).toHaveBeenCalled()
+  })
+
+  it('test_restore_sets_the_draft_from_a_version', () => {
+    useLyricsStore.setState({ doc: openDoc, draft: 'unrelated' })
+    useLyricsStore.getState().restore(1)
+    expect(useLyricsStore.getState().draft).toBe('first draft')
+  })
+
+  it('test_lint_sets_the_findings', async () => {
+    const findings: LintFinding[] = [{ kind: 'no_structure_tags' }]
+    mockLintLyrics.mockResolvedValue(findings)
+    await useLyricsStore.getState().lint('ace-step-1.5-turbo')
+    expect(useLyricsStore.getState().findings).toEqual(findings)
   })
 })
