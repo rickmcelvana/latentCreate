@@ -5,9 +5,9 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store) and T-207 (LyricsStudio brief form) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
+- **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** -- T-201 (project and lyric store), T-202 (brief type and prompt assembly), T-203a/b (the lyric lint: structure-tag scanner and section rules), T-204 (`reasoning_effort` on `ChatRequest`), T-205 (Tauri lyric streaming command and event pump), T-206 (frontend lyric bridge + streaming store), T-207 (LyricsStudio brief form) and T-208 (LyricsStudio generation UI) have landed — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md). The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-208** (LyricsStudio: the generation UI -- streaming into the draft, the thinking trace as visible status, cancel, and a truncation banner on `finish_reason: "length"`). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
+- **Next up:** **T-209** (versioned editor, lint surfacing, approve to handoff -- and the Tauri commands wiring `library::lyrics` that nothing has exposed yet). [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -1768,3 +1768,30 @@ disabled while `generating`, but the streaming result is T-208.
 
 **Next:** T-208, the generation UI -- streaming the draft, the thinking trace, cancel, and the
 truncation banner.
+
+### 2026-08-25 (later still) — T-208 landed directly; the generation UI renders what the model is already sending
+
+**Landed directly, as with T-204-T-207.** Frontend-only: a `LyricOutput` section in the
+LyricsStudio below the brief form, plus two pure helpers in the store. vitest 70 -> **76 tests**.
+
+**The one idea this task exists for: reasoning is proof of life.** `generationPhase` derives
+`starting -> thinking -> writing` from the snapshot, with `thinking` (reasoning flowing, no
+content yet) taking precedence over `starting` because that window is the 44 seconds during
+which an otherwise-healthy generation shows nothing (LLM-SURFACE 12.1). `thinkingTail` shows the
+newest reasoning on the status line -- the fix is the content the model is already sending, not
+a spinner. The `thinking`-beats-`starting` guard is armed by mutation (collapsing it fails
+`test_starting_then_thinking_then_writing` and nothing else).
+
+**The truncation banner is a suggestion, not a second action.** The frontend cannot raise
+`max_tokens` (the backend computes it from the brief via `token_budget`), so the banner says
+"try a longer length, then generate again" and the retry is the existing Generate button plus
+the Length field. This is the honest shape of "retry with more budget" given where the budget
+actually lives.
+
+**Rendering is producer-click-through, as always.** The draft, status, cancel button and banner
+are thin store projections verified by `tsc`/`oxlint`/build; the visual claims are WORKFLOW 5
+territory. The cancel button reuses the existing `.job-cancel` style rather than a new token.
+
+**Next:** T-209, the versioned editor -- which also wires `library::lyrics` to Tauri commands
+(`create_doc`/`save_doc`/`list_docs` have no frontend path yet) and carries the version
+list/approve deferred from T-206.

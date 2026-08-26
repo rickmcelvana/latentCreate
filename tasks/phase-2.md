@@ -171,10 +171,10 @@ before), and a config `load()` at app startup in `App.tsx` -- `default_profile_i
 read at runtime, so the selected-profile prefill had no source. Falls back to
 `DEFAULT_PROFILE_ID` (`ace-step-1.5-turbo`) when none is configured.
 
-### T-208 — LyricsStudio: the generation UI
+### T-208 — LyricsStudio: the generation UI  — **LANDED**
 Streaming into the draft, the thinking trace rendered as visible status (44 seconds of
 silence is what this prevents), cancel, and a truncation banner offering a retry with more
-budget when `finish_reason` is `length`.
+budget when `finish_reason` is `length`. Landed directly as architect work.
 
 ### T-209 — Versioned editor, lint surfacing, approve to handoff
 Version list with restore, edits recorded as `LyricSource::Edited`, T-203's findings shown
