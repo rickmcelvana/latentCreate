@@ -449,3 +449,45 @@ validator is therefore load-bearing, not decorative** -- the system prompt demon
 does not enforce the contract, so something after generation has to notice. What it must
 notice is a bracketed token that is *not* a structure tag, which is a different check from
 "are the required sections present".
+
+### 12.5 WARNING Forbidding a behaviour in the prompt does not stop it
+
+The assembled prompt of section 12 was run against `gemma4:12b-32k` **14 times** while
+writing T-202, with `reasoning_effort: "none"` and the default brief, counting the
+bracketed blocks that are *not* one of the profile's declared structure tags -- the
+production and vocal-style directions the profile's own `lyrics_contract` says do not
+belong in lyrics (section 12.4).
+
+Three prompt variants, same brief, same budget, same model:
+
+| variant | worked example | "do not write production directions" rule | runs | stray direction blocks (mean) |
+|---|---|---|---|---|
+| A | yes | **no** | 8 | **3.4** |
+| B | no | **no** | 8 | 5.0 |
+| C | yes/no | **yes** | 6 | 5.7 |
+
+**The rule that forbids the behaviour is followed by the runs with the most of it.**
+Per-run counts ranged 0 to 10 on identical prompts, so the ordering between A and B is
+inside the noise -- but the rule never helped in any grouping, and adding it moved the
+mean the wrong way. Naming the forbidden thing appears to prime it.
+
+Two conclusions, both acted on in T-202:
+
+- **The prompt does not carry an anti-direction rule**, and `create-core::lyrics` has a
+  test whose only job is to stop one being re-added on intuition. The profile's own
+  `lyrics_contract` note stays, because it is the profile author's words about their
+  model rather than an instruction this app invented.
+- **The lint is the only defence that works** (T-203). No prompt variant got stray
+  directions to zero, and most runs had several.
+
+One behaviour *was* stable across all 14 runs, and it is what structure linting should
+be built on:
+
+- **The requested section order was never broken.** `V-C-V-C-B-C` appeared as a
+  subsequence of the returned tags in 10 of 10 measured runs.
+- **Every run added 2 to 4 sections beyond the six requested** -- an `[Outro]`, an
+  `[inst]`, an extra `[Chorus]`. Not once did a run return exactly the requested set.
+
+So "the requested sections appear, in order" is a check a lyric can pass, and "no other
+sections" is a check no lyric passes. The second must therefore be information, never a
+failure.

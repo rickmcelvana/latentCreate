@@ -91,17 +91,33 @@ bought nothing (producer's call, 2026-08-25). The split is still the shape of th
   counter and never from the surviving files, and `list_docs` driven by `Project::lyrics`
   so a stray file is ignored while a listed id with no file becomes a warning.
 
-### T-202 — `create-core::lyrics`: the brief type and system-prompt assembly
+### T-202 — `create-core::lyrics`: the brief type and system-prompt assembly  — split in two
 Pure, no I/O, no async. `LyricBrief` (theme, style tags, mood, structure, language, POV,
 era/references, explicit allowed, target duration) with the strong prefills ARCHITECTURE 6
 requires, plus `assemble_system_prompt(&ModelProfile, &LyricBrief)` -- role line, the
 profile's `lyrics_contract` and `prompt_guide`, then the hard rules -- and the user message.
 A profile with no `lyrics_contract` must still assemble a valid prompt.
 
+- **T-202a — the brief and the two numbers derived from it** ([brief](t-202a-brief.md)).
+  `LyricBrief` with filled-in defaults, `PointOfView`, `expand_structure` (an unrecognised
+  token is passed through, never dropped; whitespace is not a separator, or "Spoken word"
+  becomes two sections) and `token_budget`, which returns 1260 for the default brief
+  against a measured cost of 383 and 422 completion tokens.
+- **T-202b — prompt assembly** ([brief](t-202b-brief.md)). Everything model-specific is
+  read from the profile, because the two shipped profiles disagree about the capitalisation
+  of their own structure tags. **The prompt carries no rule against production or
+  vocal-style directions in the lyrics**: adding one was measured over 14 live generations
+  and the runs carrying it averaged more of the behaviour it forbids (LLM-SURFACE 12.5). A
+  test exists solely to stop it being re-added.
+
 ### T-203 — `create-core::lyrics::lint`: structure-tag validation
 Advisory findings over lyric text against a profile: a bracketed token that is not a
 structure tag (the failure the model actually makes), a requested section missing, `[inst]`
-handling. Numbering-tolerant matching -- `[Verse 2]` matches `[Verse]` -- because the shipped
+handling. **T-202's 14 live generations sized this task**: no prompt variant stopped the
+stray direction blocks, most runs had several, and every single run added 2 to 4 sections
+beyond the six requested -- while never once breaking the requested order. So "the
+requested sections appear, in order" is a check a lyric can pass, and "no other sections"
+is a check no lyric passes: the second is information, never a failure. Numbering-tolerant matching -- `[Verse 2]` matches `[Verse]` -- because the shipped
 template numbers and the profile does not. Returns typed findings with a severity, never a
 bool, and never a verdict that can block. Pure and heavily tested; mutation-test the guards.
 

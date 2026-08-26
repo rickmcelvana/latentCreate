@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0 and 1 complete**, tagged `phase0-done` (2026-08-23) and **`phase1-done` (2026-08-25)**. **Phase 2 (Lyrics Studio) is open** — the lyric surface was verified live on 2026-08-25 and the phase is planned as T-201 … T-211 in [tasks/phase-2.md](tasks/phase-2.md); no task brief is written yet. The app builds, runs, and has a **working three-step setup wizard**: it detects and can **start** the user's ComfyUI, checks their installed models against shipped profiles and installs what is missing, and configures a lyric LLM with a live test call. `mcp-bridge` (88 offline tests) covers the whole verified comfy-mcp tool surface; `llm-bridge` (34 + 3 live) covers OpenAI-compatible streaming plus Ollama's native API. **Nothing is wired to a generation pipeline yet** — the app proves it *could* make music, which is exactly what Phase 1 set out to do.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **T-202, the lyric brief type and system-prompt assembly** (pure `create-core`, no I/O). T-201 landed the store; [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase, and the surface verification behind it is LLM-SURFACE section 12 and MCP-SURFACE section 15.
+- **Next up:** **T-202a**, then **T-202b** -- both briefed, with reference code compiled and mutation-tested ([t-202a](tasks/t-202a-brief.md), [t-202b](tasks/t-202b-brief.md)). T-201 landed the store; [tasks/phase-2.md](tasks/phase-2.md) carries the rest of the phase, and the surface verification behind it is LLM-SURFACE sections 12 and 12.5 and MCP-SURFACE section 15.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -135,6 +135,25 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   by Phase 3's param panel. Keeping the brief's language a plain string is what lets the Lyrics
   Studio render its form with **no running ComfyUI** — conflating the two would make writing
   lyrics depend on the audio service being up.
+- **2026-08-25 — a prompt rule against a behaviour does not stop the behaviour, and the
+  lyric prompt carries none.** The obvious fix for the model writing production cues into
+  the lyrics (LLM-SURFACE 12.4) is a hard rule forbidding it. It was written, then measured
+  over **14 live generations**: the runs carrying the rule averaged **more** stray direction
+  blocks than the runs without it. Per-run counts ranged 0 to 10 on identical prompts, so
+  the exact ordering is inside the noise -- but the rule never helped in any grouping, and
+  naming the forbidden thing appears to prime it. The assembled prompt therefore stays the
+  shape that was captured working, the profile's own `lyrics_contract` note stays (those are
+  the profile author's words, not an instruction this app invented), and
+  `test_no_rule_against_production_directions` exists purely to stop the rule being re-added
+  on intuition. **The general rule for this repo: a prompt change is a change to a
+  third-party surface, and gets measured like one.** Evidence:
+  [docs/LLM-SURFACE.md 12.5](docs/LLM-SURFACE.md).
+- **2026-08-25 — the model follows the requested section order and always adds sections.**
+  Across all 14 runs the requested `V-C-V-C-B-C` appeared as a subsequence of the returned
+  tags every time, and every run added 2 to 4 sections beyond it (an `[Outro]`, an `[inst]`,
+  an extra `[Chorus]`). Consequence for T-203: "the requested sections appear, in order" is
+  a check a lyric can pass; "no other sections" is a check no lyric passes, so it is
+  information rather than a finding.
 ## Open questions (owner to decide)
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
@@ -1456,3 +1475,42 @@ found the same way. The replacement test starts from versions numbered 1 and 5.
 
 **Next:** T-202, the brief type and system-prompt assembly, which is where the captured
 prompt shape from this session's verification turns into code.
+
+### 2026-08-25 (later still) — T-202 briefed in two, after the prompt was measured rather than argued about
+
+**The brief needed a prompt, and a prompt is a third-party surface.** ARCHITECTURE 6 says
+what goes in the system prompt; it does not say whether any of it works. So the assembled
+prompt was run against `gemma4:12b-32k` before the brief was written -- and the run that
+mattered was the one testing the line I had added myself.
+
+**The obvious fix made it worse.** The model writes production and vocal-style cues into
+the lyrics, which the profile's own contract forbids, so the prompt gained a hard rule
+against it. Over **14 live generations** across three prompt variants, the runs carrying
+that rule averaged **more** stray direction blocks than the runs without it -- 5.7 against
+3.4. Per-run counts swung 0 to 10 on identical prompts, so the ordering is inside the
+noise; what is not inside the noise is that the rule never helped in any grouping. Naming
+the forbidden thing appears to prime it. The rule is gone, and
+`test_no_rule_against_production_directions` exists so it cannot come back on intuition.
+That is now a repo rule: **a prompt change is a change to a third-party surface and gets
+measured like one.**
+
+**The same 14 runs sized T-203.** Every run added 2 to 4 sections beyond the six the brief
+requested, and no run ever broke the requested order. So the lint can check "the requested
+sections appear, in order" and must never check "and nothing else" -- the second is a rule
+no real lyric passes.
+
+**One mutation survived, for the third time in the same shape.** The test asserting that
+structure tags come from the profile passed with the tag line deleted entirely, because
+both shipped profiles carry a worked example that already contains their tags -- the
+fixture was already in the state that made the rule invisible. Same failure as T-110's
+freshness block, T-112's sorted model list and T-201's contiguous version numbers. The
+test now pulls out the tags line and asserts on that.
+
+**Briefed in two** because the file is 567 lines: [T-202a](tasks/t-202a-brief.md) is the
+brief type, `expand_structure` and `token_budget`; [T-202b](tasks/t-202b-brief.md) is the
+assembly. Seven mutations, seven caught after the fix. Reference code compiled, fmt and
+clippy clean, gate green.
+
+**Handoff state:** the reference implementation is **not** in the working tree -- it is
+saved under the session scratchpad, and the briefs carry it verbatim. Say the word if you
+would rather land T-202 directly the way T-201 went, and it comes back in one step.
