@@ -227,25 +227,43 @@ ComfyUI** -- only the LLM endpoint -- so a failure here is never about the audio
   one, since it is the `reasoning_effort` policy being exercised.
 - `npm run gate` green on the commit under test.
 
-**Step 1 -- the measurement (automated; run this first, it is the cheapest).**
+**Steps 1 and 4 are automated, and were run on 2026-08-26 -- both pass.** Re-run either after
+any change to a prompt, the lint, or the `reasoning_effort` policy; the numbers below are the
+baseline to compare against.
+
 ```
 cargo test -p app -- --ignored optimizer --nocapture
+cargo test -p app -- --ignored lyric_generation --nocapture
 ```
-Five optimizer round trips against the real model. Prints, per run, whether the rewrite came
-back as the same labelled lines and which of the five fixed lines it altered, plus run 1's
-rewrite in full. **Paste the whole report into PROJECT.md's session log.** What the numbers
-mean:
-- *labels intact 5/5, fixed lines 5/5* -- the prompt's rules hold; record it and move on.
-- *fixed lines held only sometimes* -- the diff already shows the user, so the question is
-  whether the rule earns its place in the prompt. Consider surfacing "this rewrite also
-  changed: Target duration" under the diff, which informs consent without gating it.
-  `create-core::lyrics::optimize::altered_fixed_lines` already computes that list.
-- *labels mangled, or commentary in the answer* -- the rewrite is not diffable against the
-  brief, which is the one thing the prompt has to deliver. That is a prompt change, and by
-  this repo's rule it gets re-measured, not reasoned about.
-- Also judge, by eye, the one thing no assertion can: **does run 1's rewrite describe a better
-  song than the brief did?** An optimizer that reliably preserves structure and reliably makes
-  the song worse is not a feature.
+
+**Step 1 -- the optimizer measurement.** Five round trips; reports whether the rewrite came
+back as a well-formed brief and which of the five fixed lines it altered, plus run 1's rewrite
+in full. **Result 2026-08-26, `gemma4:12b-32k`: brief intact 5/5, fixed lines reproduced 5/5,
+no truncation, 3.4-3.6 s per call.** The prompt's rules hold and are kept as written.
+
+*What the first run of this harness found:* the model **adds** an `Era and references` line
+when the brief leaves that field empty, in 5 of 5 runs. The check's first version tested the
+label list for equality and called all five runs a failure. It was the check that was wrong --
+Era is a rewritable label, the added line is well-formed, and it reaches the user as an added
+line in the diff. `LabelReport` now reports dropped, invented and shuffled labels separately,
+and stays quiet about an added rewritable one. A rule about model output has to be run against
+model output; this is the second time in this phase that lesson has been paid for.
+
+**Step 4 -- the lyric measurement (the two checks only a live run can make).** Three
+generations from the real assembled prompt, then the lint over what came back.
+**Result 2026-08-26, `gemma4:12b-32k`:**
+- *A thinking model writes a whole song.* 1333 / 1726 / 1592 characters, `finish_reason: stop`
+  every run, **0 characters of reasoning**, first content delta at **0.19-0.43 s**. The
+  baseline without `reasoning_effort: "none"` was 85 characters and 44.08 s (LLM-SURFACE 12.1),
+  so the policy is reaching the request end to end. Whole generation 6.9-9.2 s.
+- *The lint fires on what the model actually writes.* 4 / 6 / 1 findings, all stray production
+  cues the model put inside the lyrics -- `[dreamy female vocals]`, `[driving beat]`,
+  `[slow build]`, `[fade out]` -- plus an `ExtraSection` for `[Outro]`. Stray directions in
+  **3 of 3**, against the 10-of-13 rate predicted by LLM-SURFACE 12.5. The scanner works and
+  the model is not well-behaved, which is exactly why the lint exists rather than a prompt rule.
+
+**Still to run: steps 2, 3 and 5 -- the click-through and the on-disk check.** These are the
+parts no test can make (WORKFLOW 5: the review environment cannot composite frames).
 
 **Step 2 -- brief to approved lyric (the ROADMAP check).**
 1. Open Lyrics. The form opens prefilled, and the subtitle names the profile being written for.
@@ -267,14 +285,6 @@ mean:
 5. Change any brief field. **The banner must disappear** -- an accepted prompt does not
    survive the brief it was written against.
 6. Optimize, Accept, Generate. The lyric that comes back was written from the accepted prompt.
-
-**Step 4 -- the two checks only a live run can make.**
-- A thinking model generates a **whole song**, not 85 characters and a truncation banner. This
-  is `reasoning_effort: "none"` working end to end (LLM-SURFACE 12.2); if the truncation banner
-  appears on a default brief, the policy is not reaching the request.
-- The lint **fires on the production cues the model actually writes** -- `[Vocal style: ...]`
-  and friends appeared in 10 of 13 captured generations. A clean lint on every run is more
-  likely a broken scanner than a well-behaved model. Record the finding counts.
 
 **Step 5 -- what landed on disk.** Open the lyric document under the app config dir
 (`library/projects/my-first-song/lyrics/<doc-id>.json`) and confirm the claims T-209 and T-210

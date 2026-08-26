@@ -320,6 +320,125 @@ mod tests {
         }))
     }
 
+    /// **T-211's lyric measurement**, excluded from CI.
+    ///
+    /// `cargo test -p app -- --ignored lyric_generation --nocapture` with
+    /// Ollama running on the default port and a gemma4 model installed.
+    ///
+    /// Two things only a live run can show, both with prior evidence to check
+    /// against:
+    /// 1. **A thinking model writes a whole song.** The same brief with no
+    ///    `reasoning_effort` returned 85 characters of lyric and 7458 of
+    ///    reasoning, `finish_reason: length`, first content delta 44.08 s into
+    ///    a 44.65 s stream (LLM-SURFACE 12.1). Time to first content is
+    ///    therefore printed: it is the number that moved.
+    /// 2. **The lint fires on what the model actually writes.** Stray
+    ///    production directions appeared in 10 of 13 captured generations
+    ///    (LLM-SURFACE 12.5), so a clean lint on every run is likelier a broken
+    ///    scanner than a well-behaved model.
+    ///
+    /// Asserts the plumbing -- a complete song arrives -- and prints the rest.
+    #[tokio::test]
+    #[ignore = "T-211 live measurement: requires a local endpoint on 127.0.0.1:11434"]
+    async fn test_live_lyric_generation_writes_a_whole_song_and_the_lint_reads_it() {
+        use create_core::lyrics::lint::lint_lyrics;
+        use create_core::profile::ModelProfile;
+
+        const RUNS: usize = 3;
+
+        let profile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../profiles/ace-step-1.5-turbo.json");
+        let profile: ModelProfile = serde_json::from_str(
+            &std::fs::read_to_string(&profile_path).expect("shipped profile is readable"),
+        )
+        .expect("shipped profile parses");
+
+        let base_url = "http://127.0.0.1:11434/v1";
+        let client = OpenAiCompat::new(base_url, None).expect("client");
+        let models = client.list_models().await.expect("model list");
+        let model = models
+            .iter()
+            .find(|id| id.starts_with("gemma4:"))
+            .cloned()
+            .unwrap_or_else(|| models.first().cloned().expect("endpoint offers no models"));
+        let thinks = model_thinks(base_url, &model).await;
+
+        let brief = LyricBrief::default();
+        let budget = token_budget(&brief);
+
+        println!("\n=== T-211 lyric measurement ===");
+        println!("model: {model}  thinks: {thinks:?}  budget: {budget}  runs: {RUNS}");
+        println!(
+            "baseline to beat (LLM-SURFACE 12.1, no reasoning_effort): 85 chars, first content 44.08s\n"
+        );
+
+        for run in 1..=RUNS {
+            let request = ChatRequest {
+                model: model.clone(),
+                messages: vec![
+                    ChatMessage {
+                        role: Role::System,
+                        content: assemble_system_prompt(&profile, &brief),
+                    },
+                    ChatMessage {
+                        role: Role::User,
+                        content: assemble_user_message(&brief),
+                    },
+                ],
+                temperature: None,
+                max_tokens: Some(budget),
+                reasoning_effort: reasoning_effort_for(thinks),
+            };
+
+            let started = std::time::Instant::now();
+            let mut lyric = String::new();
+            let mut reasoning_chars = 0usize;
+            let mut first_content: Option<std::time::Duration> = None;
+
+            let outcome = stream_lyrics(client.stream_chat(request), |event| match event {
+                LyricEvent::Delta(text) => {
+                    if first_content.is_none() {
+                        first_content = Some(started.elapsed());
+                    }
+                    lyric.push_str(&text);
+                }
+                LyricEvent::Thinking(text) => reasoning_chars += text.chars().count(),
+            })
+            .await;
+
+            let elapsed = started.elapsed();
+            let finish_reason = match outcome {
+                LyricsOutcome::Done { finish_reason, .. } => finish_reason,
+                LyricsOutcome::Failed { error } => panic!("run {run} failed: {error}"),
+            };
+
+            let findings = lint_lyrics(&profile, &brief, &lyric);
+            println!(
+                "run {run}: {:.1}s  first content {:.2}s  {} chars lyric, {reasoning_chars} chars reasoning  finish={:?}",
+                elapsed.as_secs_f32(),
+                first_content.map(|d| d.as_secs_f32()).unwrap_or(f32::NAN),
+                lyric.chars().count(),
+                finish_reason,
+            );
+            println!("  lint findings ({}): {findings:?}", findings.len());
+            if run == 1 {
+                println!("--- run 1 lyric ---\n{lyric}\n---");
+            }
+
+            assert_ne!(
+                finish_reason.as_deref(),
+                Some("length"),
+                "run {run} was truncated -- the reasoning_effort policy is not reaching the request"
+            );
+            assert!(
+                lyric.chars().count() > 200,
+                "run {run} wrote {} chars, which is not a song",
+                lyric.chars().count()
+            );
+        }
+        println!("=== end measurement ===\n");
+    }
+
     /// Protects: the policy itself. `reasoning_effort` is sent only when the
     /// model is known to think; unknown (`None`) is treated as "do not send",
     /// because the field is verified against Ollama and nothing else.

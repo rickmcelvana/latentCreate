@@ -1929,3 +1929,53 @@ banner are verified by `tsc`/`oxlint`/build and the pure tests; the visual claim
 WORKFLOW 5 territory.
 
 **Next:** T-211, the Phase 2 live milestone -- and the close of the phase.
+
+### 2026-08-26 (later) -- T-211 part one: both automated measurements run, both pass
+
+**The two halves of the milestone that could be automated were, and they were run against
+`gemma4:12b-32k` on the local Ollama.** Steps 2, 3 and 5 -- the click-through and the on-disk
+check -- remain for the producer; the checklist is in [tasks/phase-2.md](tasks/phase-2.md).
+
+**The optimizer prompt is now a measured surface.** Five round trips: the rewrite came back as
+a well-formed brief in **5 of 5**, and the five fixed lines (Structure, Language, Point of
+view, Explicit content allowed, Target duration) were reproduced word for word in **5 of 5**.
+No truncation, no commentary, no fences, 3.4-3.6 s per call. `OPTIMIZER_MAX_TOKENS = 1024` was
+a guess and is now measured adequate. The module docs no longer say the prompt is unverified,
+because it no longer is -- leaving that caveat in would have been as misleading as the
+overconfidence it was written to prevent.
+
+**The first run of that harness failed, and the harness was what was wrong.** It reported
+"labels intact 0/5". The cause: the model **adds** an `Era and references` line when the brief
+leaves that field empty, in 5 of 5 runs -- and the check tested the label list for equality.
+Era is on the rewritable list, the added line is well-formed, and it reaches the user as an
+added line in the diff, so that is the optimizer doing its job on a field the user left blank.
+`LabelReport` now separates the three failures that actually make a rewrite undiffable
+(dropped, invented, shuffled) from the one that does not. **Second time this phase that a rule
+about model output had to be run against model output before it was right** -- the lint
+scanner was the first. The lesson is not "write better checks", it is that this class of check
+cannot be finished offline.
+
+**The `reasoning_effort` policy works end to end, and the numbers are not close.** Three live
+lyric generations from the real assembled prompt: 1333 / 1726 / 1592 characters,
+`finish_reason: stop` every time, **0 characters of reasoning**, first content delta at
+**0.19-0.43 s**. The baseline this replaces was 85 characters and a first delta 44.08 s into a
+44.65 s stream (LLM-SURFACE 12.1). Whole generation 6.9-9.2 s, consistent with the 8.2 s
+recorded at the phase boundary.
+
+**The lint earns its place.** Over those three generations it made 4, 6 and 1 findings, every
+one a production cue the model wrote inside the lyrics -- `[dreamy female vocals]`,
+`[driving beat]`, `[slow build]`, `[fade out]` -- plus an `ExtraSection` for `[Outro]`. Stray
+directions in **3 of 3**, against the 10-of-13 rate measured at the phase boundary. The model
+is still breaking the profile's own contract with the contract stated plainly in its system
+prompt, which is exactly why T-202b's decision to catch this after generation rather than
+forbid it in the prompt stands.
+
+**Both measurements are ignored tests, not scripts**, so they live with the code they measure
+and are re-runnable after any prompt, lint or policy change:
+```
+cargo test -p app -- --ignored optimizer --nocapture
+cargo test -p app -- --ignored lyric_generation --nocapture
+```
+
+**Next:** steps 2, 3 and 5 -- the producer's click-through, and the on-disk check that
+`prompt_optimized` records consent. Then `phase2-done`.

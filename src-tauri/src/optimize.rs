@@ -244,7 +244,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "T-211 live measurement: requires a local endpoint on 127.0.0.1:11434"]
     async fn test_live_optimizer_returns_a_brief_and_reports_what_it_altered() {
-        use create_core::lyrics::optimize::{altered_fixed_lines, labels_in_order};
+        use create_core::lyrics::optimize::{altered_fixed_lines, label_report, labels_in_order};
 
         const RUNS: usize = 5;
 
@@ -283,8 +283,9 @@ mod tests {
             let elapsed = started.elapsed();
 
             let labels = labels_in_order(&result.optimized);
+            let report = label_report(&result.original, &result.optimized);
             let altered = altered_fixed_lines(&result.original, &result.optimized);
-            if labels == expected_labels {
+            if report.is_clean() {
                 labels_held += 1;
             }
             if altered.is_empty() {
@@ -292,13 +293,14 @@ mod tests {
             }
 
             println!(
-                "run {run}: {:.1}s  truncated={}  labels_match={}  altered_fixed={:?}",
+                "run {run}: {:.1}s  truncated={}  brief_intact={}  altered_fixed={:?}",
                 elapsed.as_secs_f32(),
                 result.truncated,
-                labels == expected_labels,
+                report.is_clean(),
                 altered
             );
-            if labels != expected_labels {
+            if !report.is_clean() {
+                println!("  {report:?}");
                 println!("  labels were: {labels:?}");
             }
             if run == 1 {
@@ -316,7 +318,7 @@ mod tests {
             );
         }
 
-        println!("\nlabels intact: {labels_held}/{RUNS}");
+        println!("\nbrief intact (nothing dropped, invented or shuffled): {labels_held}/{RUNS}");
         println!("fixed lines reproduced: {fixed_held}/{RUNS}");
         println!("=== end measurement ===\n");
     }

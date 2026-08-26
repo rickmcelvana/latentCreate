@@ -13,11 +13,20 @@
 //! produces a visible, highlighted change the user has to accept before it goes
 //! anywhere.
 //!
-//! **This prompt has not been measured live.** The lyric prompt in the parent
-//! module was captured working before it was written down, and the repo's rule
-//! is that a prompt change is a change to a third-party surface and gets
-//! measured like one (LLM-SURFACE 12.5). T-211 is where this one meets a real
-//! model; until then it is a first draft, not a verified surface.
+//! **Measured 2026-08-26 (T-211), and it holds.** Five runs against
+//! `gemma4:12b-32k`, the model this app recommends for lyrics: the rewrite came
+//! back as a well-formed brief in **5 of 5**, and the five [`FIXED_LABELS`]
+//! lines were reproduced word for word in **5 of 5**. No truncation at
+//! [`OPTIMIZER_MAX_TOKENS`], no commentary, no fences, 3.4-3.6 s per call. The
+//! rules below are therefore kept as written, and changing them means measuring
+//! again -- a prompt is a third-party surface in this repo (LLM-SURFACE 12.5).
+//! The harness is `test_live_optimizer_returns_a_brief_and_reports_what_it_altered`
+//! in `src-tauri/src/optimize.rs`.
+//!
+//! One behaviour the measurement found and this module accepts: the model
+//! **adds** an `Era and references` line when the brief leaves that field
+//! empty, in 5 of 5 runs. It is a rewritable label, the line is well-formed,
+//! and it reaches the user as an added line in the diff. See [`LabelReport`].
 
 use crate::profile::ModelProfile;
 
@@ -28,6 +37,8 @@ use crate::profile::ModelProfile;
 /// `reasoning_effort` is deliberately not sent and the model may think first
 /// (LLM-SURFACE 12.2). Truncation is reported rather than hidden -- see
 /// `src-tauri/src/optimize.rs`.
+///
+/// Measured adequate: no truncation across 5 live runs (T-211).
 pub const OPTIMIZER_MAX_TOKENS: u32 = 1024;
 
 /// The brief lines the optimizer may rewrite: the creative half.
@@ -126,6 +137,69 @@ pub fn labels_in_order(text: &str) -> Vec<String> {
         .filter_map(|line| line.split_once(':'))
         .map(|(label, _)| label.trim().to_string())
         .collect()
+}
+
+/// How a rewrite's labelled lines differ from the brief's.
+///
+/// **A label the rewrite added is deliberately not a finding**, as long as the
+/// brief could have carried it. Measured 2026-08-26: `gemma4:12b-32k` added an
+/// `Era and references` line in **5 of 5** runs on the default brief, which
+/// leaves that field empty. Era is on [`REWRITABLE_LABELS`], the added line is
+/// well-formed, and it appears in the diff as an added line the user accepts or
+/// reverts -- that is the optimizer adding specificity to a field the user left
+/// blank, which is what it is for. The first version of this check tested the
+/// label list for equality and called all five runs a failure.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LabelReport {
+    /// Labels the brief carried that the rewrite dropped.
+    pub missing: Vec<String>,
+    /// Labels the rewrite invented that no brief can carry. These are the ones
+    /// that make an answer undiffable against the original.
+    pub unknown: Vec<String>,
+    /// Whether the labels present in both appear in a different relative order.
+    pub reordered: bool,
+}
+
+impl LabelReport {
+    /// True when the rewrite came back as a brief: nothing dropped, nothing
+    /// invented, nothing shuffled.
+    pub fn is_clean(&self) -> bool {
+        self.missing.is_empty() && self.unknown.is_empty() && !self.reordered
+    }
+}
+
+/// Compare a rewrite's labelled lines with the brief's.
+///
+/// A measurement, like [`altered_fixed_lines`] -- nothing rejects a rewrite on
+/// its findings.
+pub fn label_report(original: &str, optimized: &str) -> LabelReport {
+    let before = labels_in_order(original);
+    let after = labels_in_order(optimized);
+    let known = |label: &String| {
+        REWRITABLE_LABELS.contains(&label.as_str()) || FIXED_LABELS.contains(&label.as_str())
+    };
+
+    let missing: Vec<String> = before
+        .iter()
+        .filter(|label| !after.contains(label))
+        .cloned()
+        .collect();
+    let unknown: Vec<String> = after
+        .iter()
+        .filter(|label| !known(label))
+        .cloned()
+        .collect();
+
+    // Order is judged only on the labels both texts carry, so an added line
+    // does not read as a shuffle.
+    let shared_before: Vec<&String> = before.iter().filter(|l| after.contains(l)).collect();
+    let shared_after: Vec<&String> = after.iter().filter(|l| before.contains(l)).collect();
+
+    LabelReport {
+        missing,
+        unknown,
+        reordered: shared_before != shared_after,
+    }
 }
 
 /// Which [`FIXED_LABELS`] lines the rewrite failed to reproduce.
@@ -303,6 +377,50 @@ mod tests {
 
         let dropped = original.replace("Point of view: first person\n", "");
         assert_eq!(altered_fixed_lines(original, &dropped), ["Point of view"]);
+    }
+
+    /// Invariant: the report is quiet about the one thing the live run actually
+    /// does. `gemma4:12b-32k` added an `Era and references` line in 5 of 5 runs
+    /// on the default brief; that is a rewritable label on a field the user left
+    /// blank, and calling it a failure -- which the first version of this check
+    /// did -- turns the measurement into noise.
+    #[test]
+    fn test_label_report_allows_an_added_rewritable_line() {
+        let brief = assemble_user_message(&LyricBrief::default());
+        assert!(!brief.contains("Era and references"), "{brief}");
+
+        let with_era = brief.replace(
+            "Structure:",
+            "Era and references: 1980s midnight aesthetic\nStructure:",
+        );
+        assert_eq!(label_report(&brief, &with_era), LabelReport::default());
+        assert!(label_report(&brief, &with_era).is_clean());
+    }
+
+    /// Invariant: the three failures that do make a rewrite undiffable are each
+    /// reported, and reported separately -- a dropped line, an invented label,
+    /// and a shuffle are different problems with different answers.
+    #[test]
+    fn test_label_report_names_dropped_invented_and_shuffled_labels() {
+        let brief = assemble_user_message(&LyricBrief::default());
+
+        let dropped = brief.replace("Language: English\n", "");
+        assert_eq!(label_report(&brief, &dropped).missing, ["Language"]);
+
+        let invented = format!("{brief}Bpm: 105\n");
+        let report = label_report(&brief, &invented);
+        assert_eq!(report.unknown, ["Bpm"]);
+        assert!(report.missing.is_empty(), "nothing was dropped");
+
+        let shuffled = format!(
+            "Mood: bittersweet, hopeful\nTheme: a night drive\n{}",
+            brief
+                .lines()
+                .filter(|l| !l.starts_with("Theme:") && !l.starts_with("Mood:"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        assert!(label_report(&brief, &shuffled).reordered);
     }
 
     /// Invariant: the labels come back in the order they appear, and prose the
