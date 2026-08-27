@@ -2521,3 +2521,30 @@ Three decisions the brief settles, each recorded because the opposite is defensi
   serde-only with no error type at all; `ResolveError` is its first. Noted in the brief rather
   than done quietly, because "create-core has one dependency" was a property worth noticing
   before it stopped being true.
+
+### 2026-08-27 (later still) -- T-304 landed; mutation testing found the guard that mattered
+
+`ModelProfile::resolve_slots` exists: the fan-out from semantic choices to the slot values
+actually submitted. `create-core` 77 -> 94 tests, and it gained `thiserror` as its second
+dependency ever (`Cargo.lock` grew exactly one line -- an edge to a package already in the
+tree, as briefed).
+
+The executor's run was faithful and its tests were **not** vacuous: the two fan-out tests
+assert both addresses with non-default values, so mutating `resolve_slots` to write only the
+first address failed both immediately.
+
+**Then a second mutation found a real hole.** Loosening the seed arm so an
+`InputValue::Int` is accepted where a `Seed` belongs -- the precise demotion that makes a
+track unreproducible, and the reason `InputValue` is adjacently tagged at all (T-003) --
+**passed all 22 tests**. `test_type_mismatch_errors` existed, but it exercised a *float*
+control; nothing guarded the seed. Two tests added, both re-checked by re-running the
+mutation.
+
+Second time in this repo that mutation testing has found guards written and never armed
+(T-110 was the first), and the shape is identical both times: a test named for a *mechanism*
+covers one instance and reads as if it covers the class. **The habit to keep: after a task
+whose whole point is a correctness rule, mutate the rule and watch the suite fail.** A green
+suite is evidence only against the mutations someone tried.
+
+Also this run: the seventh `cargo fmt` miss, and an unused `BTreeSet` import that was unused
+in the lib and used in a test -- it belonged inside `mod tests`.

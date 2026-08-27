@@ -180,7 +180,7 @@ Scope: persist the selection, load it, and a picker in AudioStudio that lists th
 profiles with their licence terms (the per-model licence rule from T-111 applies here too —
 users ship these tracks commercially).
 
-### T-304 — `create-core`: semantic-to-slot resolution  *(pure)*  ([brief](t-304-brief.md))
+### T-304 — `create-core`: semantic-to-slot resolution  *(pure)*  — **LANDED** ([brief](t-304-brief.md))
 The type Phase 3 revolves around and the provenance sidecar records. **`GenerationSpec`,
 `InputValue`, `LoraRef`, `LyricRef` and the `ResolvedSlots` alias already exist** (T-003,
 found while briefing) -- what has never existed is `resolve_slots`, which turns the spec
