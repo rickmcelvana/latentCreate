@@ -135,7 +135,7 @@ back** — the value must not cross the boundary, only `has_key` (T-004) — bot
 URL rather than the constant. The `unreachable` hint that recognises a base URL missing `/v1`
 (LLM-SURFACE 11.3) becomes considerably more valuable once users are typing URLs.
 
-### T-302 — `reasoning_effort` where the app cannot enrich  *(verification)*
+### T-302 — `reasoning_effort` where the app cannot enrich  — **MEASURED 2026-08-27**
 The direct consequence of T-301, and the reason it is second. `reasoning_effort: "none"` — the
 fix for a whole song arriving as 99% chain-of-thought — is sent **only where `thinks` is
 true**, and `thinks` exists only where Ollama's native enrichment answered (LLM-SURFACE 12.3).
@@ -149,6 +149,24 @@ write the finding into LLM-SURFACE before changing the rule. The repo's standing
 a parameter change against a third-party surface gets measured like one — and the owner has
 said testing another API is not a blocker. Outcome is a decision entry plus, if warranted, a
 small change to when the field is sent. **Not a Phase 3 blocker; it blocks nothing below it.**
+
+### T-302b — discover whether an endpoint accepts `reasoning_effort`, per endpoint
+T-302's measurement (LLM-SURFACE 13.1) found **QwenCloud honours the field**: 33.12 s -> 1.13 s
+to first content and **2771 -> 235 completion tokens**, for a song no worse. The app never
+sends it there, because `thinks` only exists where Ollama's native enrichment answered -- so
+on a paid endpoint the current rule bills **11.8x** the tokens on every generation.
+
+**The fix is not "send it everywhere".** Two providers honouring it is not evidence a third
+will not reject it, and an unsupported parameter sent blindly turns lyric generation into an
+error for whoever's endpoint is strict. That is the guess the current rule exists to avoid.
+
+Instead, **discover it where the app already makes a call for exactly this purpose**: the
+wizard's test call (`llm_test`). Probe once at configuration time, persist the answer beside
+the endpoint, and send the field wherever it is known-accepted -- turning an inference from
+enrichment into a verified per-endpoint fact, which is this repo's whole method. Open design
+questions the brief must settle: what a "rejected" response actually looks like (nobody has
+seen one), whether the probe costs a second test call or rides on the existing one, and where
+the answer lives given `config.json` holds one endpoint today.
 
 ### T-303 — `default_profile_id` persistence and the profile picker
 The same class as T-212 — a value the wizard never writes, degrading silently to

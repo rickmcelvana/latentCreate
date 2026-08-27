@@ -31,5 +31,9 @@ mcp-bridge = { path = "../crates/mcp-bridge" }
 llm-bridge = { path = "../crates/llm-bridge" }
 
 [dev-dependencies]
+# T-302's live measurement reads raw SSE to record which reasoning field name
+# an endpoint uses. Dev-only: nothing in the app talks HTTP directly, and the
+# crate is already in the tree via llm-bridge.
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tempfile = "3"
 tokio = { version = "1.53", features = ["macros", "rt"] }

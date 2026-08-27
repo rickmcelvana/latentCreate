@@ -530,26 +530,58 @@ a rule justified by one vendor's wire format. A different vendor's stream fed th
 path and the user's document received only content. **Which spelling this endpoint used was
 not captured** -- it works either way, which is the point, but 13.1 should record it.
 
-### 13.1 What this does NOT answer, and what to measure
+### 13.1 MEASURED 2026-08-27 -- QwenCloud honours `reasoning_effort: "none"`
 
-`reasoning_effort: "none"` is sent **only where `thinks` is true**, and `thinks` exists only
-where Ollama's native enrichment answered (12.2). This endpoint cannot be enriched, so **the
-field was never sent** -- the long think the producer sat through is the unsuppressed default,
-which is exactly the behaviour section 12.1 measured at 44 seconds before the first content
-delta on Ollama.
+Provider: **QwenCloud** (Alibaba DashScope international,
+`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`), model `qwen3.8-flash`. Same
+assembled lyric brief, same 1260-token budget, one run each, back to back. Harness:
+`cargo test -p app -- --ignored reasoning_effort --nocapture`.
 
-So this run confirms the **premise** of the open question and answers none of it. The
-measurement still to take, now that a reachable endpoint exists:
+| | A: no field (**what the app sends today**) | B: `reasoning_effort: "none"` |
+|---|---|---|
+| Total | **35.03 s** | **4.37 s** |
+| First content delta | **33.12 s** | **1.13 s** |
+| Lyric characters | 1031 | 910 |
+| Reasoning characters | **9419** | **0** |
+| Completion tokens | **2771** | **235** |
+| `finish_reason` | `stop` | `stop` |
 
-1. Send `reasoning_effort: "none"` to this endpoint. Is it **honoured** (the Ollama result),
-   **ignored** (like Ollama's own `think: false`, 12.2), or an **error** the app must not
-   provoke? All three are live possibilities and they imply different rules.
-2. Capture which spelling -- `reasoning` or `reasoning_content` -- the stream uses, and
-   whether a usage frame arrives (section 5).
-3. Time the first content delta with and without the field, the way 12.1 and 12.3 did, so the
-   numbers are comparable rather than impressionistic.
+**It is honoured** -- the first of the three possibilities 13.1 previously listed, and the
+consequential one. **29x faster to the first character, 8x faster overall, and 11.8x fewer
+completion tokens.**
 
-Until that is done the current rule stands unchanged: **the field goes only to endpoints the
-app has enriched**, which keeps the unverified path untaken rather than defended. The cost of
-that conservatism is now known and visible -- a user on a hosted reasoning model waits, and
-watches the model think while they do.
+⚠ **On a hosted endpoint the current rule costs money, not just time.** Every lyric
+generation against QwenCloud bills 2771 completion tokens where 235 would do, and produces a
+song no worse for it. On Ollama the same rule cost only patience (12.1). That is a different
+argument than the one the rule was written against.
+
+Both runs returned a complete, structured song, so this is not a quality trade -- B's lyric
+is 910 characters against A's 1031, and both stopped cleanly.
+
+*Unexplained, recorded rather than theorised:* `prompt_tokens` differed between the two runs
+(334 for A, 298 for B) on identical messages. Something server-side varies with the field;
+nothing in this app changed.
+
+### 13.2 The spelling is `reasoning_content`, and that rule just earned its keep
+
+The raw SSE carries **`reasoning_content`**, never `reasoning`. Usage frame present, as
+section 5 describes.
+
+`reasoning_content` is the DeepSeek/older-vLLM spelling; every capture before today used
+Ollama's `reasoning`. **A client reading only `reasoning` would have decoded none of those
+9419 characters** -- not as an error, but as 33 seconds of a stream that appears to carry
+nothing, which is precisely the "indistinguishable from a hang" failure the 2026-08-25
+proof-of-life decision named. The 2026-08-24 rule to read both spellings was written from
+documentation, defensively, with no provider in hand that needed it. **The first hosted
+endpoint this app ever connected to needed it.**
+
+### 13.3 What is still not known
+
+- **Whether any endpoint rejects the field.** Two providers now: Ollama honours it,
+  QwenCloud honours it. An endpoint that 400s on an unsupported parameter is still
+  hypothetical -- and is the entire reason the current rule exists. Sending the field
+  everywhere on two data points would be the same class of move this repo keeps refusing.
+- **Whether QwenCloud's Anthropic-compatible endpoint behaves the same.** It exists (owner,
+  2026-08-27) and is the second wire format `LlmProvider` has been waiting for since T-109.
+- Nothing here was run more than once. The effect is far too large to be noise, but the
+  exact figures are single samples.

@@ -85,6 +85,7 @@ dependencies = [
  "llm-bridge",
  "log",
  "mcp-bridge",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",

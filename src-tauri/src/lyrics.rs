@@ -557,4 +557,179 @@ mod tests {
             LyricsOutcome::Failed { error } if error == "I can't write that"
         ));
     }
+
+    /// **T-302's measurement**, excluded from CI. **Spends the user's API credits.**
+    ///
+    /// `cargo test -p app -- --ignored reasoning_effort --nocapture`, with a
+    /// hosted endpoint configured in `config.json` and its key in the keychain.
+    ///
+    /// The question (LLM-SURFACE 13.1): `reasoning_effort: "none"` is sent only
+    /// where `thinks` is true, and `thinks` exists only where Ollama's native
+    /// enrichment answered. Against an endpoint the app cannot enrich the field
+    /// is never sent, so the user waits through the whole chain-of-thought --
+    /// 44 s before the first content delta, when that was measured on Ollama
+    /// (LLM-SURFACE 12.1). Whether sending it anyway would help is unknown, and
+    /// the three possibilities imply different rules:
+    ///
+    /// 1. **honoured** -- the field should go to every endpoint, not just
+    ///    enriched ones;
+    /// 2. **ignored** -- like Ollama's own `think: false` (12.2), so the
+    ///    current rule costs nothing and stays;
+    /// 3. **an error** -- the current rule is load-bearing and must stay.
+    ///
+    /// Prints rather than asserts, except for the premise: this endpoint must
+    /// be one the app cannot enrich, or the measurement is of something else.
+    /// The API key is read from the keychain and never printed.
+    #[tokio::test]
+    #[ignore = "T-302 live measurement: hosted endpoint + stored key; spends API credits"]
+    async fn test_live_reasoning_effort_on_an_endpoint_the_app_cannot_enrich() {
+        use create_core::profile::ModelProfile;
+        use library::SecretKey;
+
+        let config_dir = std::path::PathBuf::from(std::env::var("APPDATA").expect("APPDATA"))
+            .join("com.latentbeats.create");
+        let (base_url, model) = configured_llm(&config_dir).expect("an endpoint is configured");
+        let key = library::secrets::get_secret(SecretKey::LlmApiKey).ok();
+
+        let thinks = model_thinks(&base_url, &model).await;
+        assert_eq!(
+            thinks, None,
+            "this measurement is about endpoints the app CANNOT enrich; \
+             {base_url} answered the native API, so it is the wrong subject"
+        );
+
+        let profile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../profiles/ace-step-1.5-turbo.json");
+        let profile: ModelProfile = serde_json::from_str(
+            &std::fs::read_to_string(&profile_path).expect("shipped profile is readable"),
+        )
+        .expect("shipped profile parses");
+        let brief = LyricBrief::default();
+        let budget = token_budget(&brief);
+
+        println!("\n=== T-302: reasoning_effort on an unenrichable endpoint ===");
+        println!("endpoint: {base_url}");
+        println!(
+            "model: {model}  key stored: {}  budget: {budget}",
+            key.is_some()
+        );
+        println!(
+            "app-computed reasoning_effort for this model: {:?}",
+            reasoning_effort_for(thinks)
+        );
+        println!("baseline (LLM-SURFACE 12.1, Ollama, no field): first content 44.08s, 85 chars\n");
+
+        for (label, effort) in [
+            ("A: no reasoning_effort (what the app sends today)", None),
+            ("B: reasoning_effort = none", Some("none".to_string())),
+        ] {
+            let client = OpenAiCompat::new(base_url.clone(), key.clone()).expect("client");
+            let request = ChatRequest {
+                model: model.clone(),
+                messages: vec![
+                    ChatMessage {
+                        role: Role::System,
+                        content: assemble_system_prompt(&profile, &brief),
+                    },
+                    ChatMessage {
+                        role: Role::User,
+                        content: assemble_user_message(&brief),
+                    },
+                ],
+                temperature: None,
+                max_tokens: Some(budget),
+                reasoning_effort: effort,
+            };
+
+            let started = std::time::Instant::now();
+            let mut lyric = String::new();
+            let mut reasoning_chars = 0usize;
+            let mut first_content: Option<std::time::Duration> = None;
+
+            let outcome = stream_lyrics(client.stream_chat(request), |event| match event {
+                LyricEvent::Delta(text) => {
+                    if first_content.is_none() {
+                        first_content = Some(started.elapsed());
+                    }
+                    lyric.push_str(&text);
+                }
+                LyricEvent::Thinking(text) => reasoning_chars += text.chars().count(),
+            })
+            .await;
+
+            println!("--- {label} ---");
+            println!("  total: {:.2?}", started.elapsed());
+            match first_content {
+                Some(at) => println!("  first content delta: {at:.2?}"),
+                None => println!("  first content delta: NONE -- no lyric arrived"),
+            }
+            println!(
+                "  lyric chars: {}  reasoning chars: {reasoning_chars}",
+                lyric.chars().count()
+            );
+            match &outcome {
+                LyricsOutcome::Done {
+                    finish_reason,
+                    usage,
+                } => println!("  finish_reason: {finish_reason:?}  usage: {usage:?}"),
+                LyricsOutcome::Failed { error } => {
+                    println!("  FAILED: {error}");
+                    println!("  ^ if this is B, the endpoint REJECTS the field and the rule stays");
+                }
+            }
+            println!();
+        }
+
+        // Which spelling the stream uses, and whether a usage frame arrives.
+        // Raw SSE, because `ChatDelta::Reasoning` deliberately does not say
+        // which field it decoded (LLM-SURFACE 3). A tiny prompt: this is about
+        // field names, not about lyrics, and it spends the user's credits.
+        let body = serde_json::json!({
+            "model": model,
+            "messages": [{ "role": "user", "content": "Say hi." }],
+            "max_tokens": 64,
+            "stream": true,
+            "stream_options": { "include_usage": true },
+        });
+        let http = reqwest::Client::new();
+        let mut req = http
+            .post(format!(
+                "{}/chat/completions",
+                base_url.trim_end_matches('/')
+            ))
+            .json(&body);
+        if let Some(k) = key.as_deref() {
+            req = req.bearer_auth(k);
+        }
+        let raw = req
+            .send()
+            .await
+            .expect("raw request")
+            .text()
+            .await
+            .expect("raw body");
+
+        let mut saw_reasoning = false;
+        let mut saw_reasoning_content = false;
+        let mut saw_usage = false;
+        for line in raw.lines().filter(|l| l.starts_with("data: ")) {
+            if line.contains("\"reasoning\"") {
+                saw_reasoning = true;
+            }
+            if line.contains("\"reasoning_content\"") {
+                saw_reasoning_content = true;
+            }
+            if line.contains("\"usage\"") && !line.contains("\"usage\":null") {
+                saw_usage = true;
+            }
+        }
+        println!("--- raw SSE field names ---");
+        println!(
+            "  \"reasoning\": {saw_reasoning}   \"reasoning_content\": {saw_reasoning_content}"
+        );
+        println!("  usage frame present: {saw_usage}");
+        println!(
+            "  (both spellings are read either way -- LLM-SURFACE 3 -- this is for the record)"
+        );
+    }
 }

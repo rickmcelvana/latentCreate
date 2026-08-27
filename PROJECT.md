@@ -268,6 +268,27 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   runtime dependency -- but it is the first entry in the evidence column, and the pipeline
   should be written knowing `/object_info` is available when the MCP surface cannot answer.
 
+- **2026-08-27 -- `reasoning_effort: "none"` is honoured by a second, hosted provider, and
+  the current rule is now measurably expensive.** T-302's measurement against **QwenCloud**
+  (DashScope international, `qwen3.8-flash`), an endpoint the app cannot enrich and therefore
+  never sends the field to: **first content 33.12 s -> 1.13 s, total 35.03 s -> 4.37 s,
+  completion tokens 2771 -> 235**, both runs a complete song stopping cleanly. **On a hosted
+  endpoint the rule costs credits, not only patience** -- 11.8x the billed completion tokens
+  per generation, for a song no better. That is a different argument from the one the rule was
+  written against on Ollama. **The rule is not changed yet**: two providers both honouring the
+  field is not evidence that a third will not reject it, and sending an unsupported parameter
+  everywhere would break lyric generation outright for that user. What the evidence supports
+  is *discovering* acceptance per endpoint rather than inferring it from enrichment --
+  proposed as T-302b. Evidence: [docs/LLM-SURFACE.md 13.1](docs/LLM-SURFACE.md).
+- **2026-08-27 -- the both-spellings rule earned its keep on the first hosted endpoint.**
+  QwenCloud streams **`reasoning_content`**, never `reasoning`. Every capture before today
+  used Ollama's `reasoning`, so the 2026-08-24 decision to read both was written from
+  documentation with no provider in hand that needed it. A client reading only `reasoning`
+  would have decoded **none** of that run's 9419 reasoning characters -- not as an error, but
+  as 33 seconds of an apparently empty stream, which is exactly the hang-versus-thinking
+  confusion the proof-of-life decision exists to prevent. Recorded because this repo's habit
+  is to delete defensive code that never fires; this one fired the first time it could.
+
 ## Open questions (owner to decide)
 - ~~**OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?**~~ **RESOLVED
   2026-08-27 -- the question is withdrawn, not answered.** The owner's decision is that the
@@ -308,6 +329,10 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   and a sweep at T-111 found five pre-existing violations that earlier reviews had missed. The
   rule is "ASCII in code and comments; UI strings may use Unicode", so the check must exempt
   rendered strings — `app/src/views/CoverArt.tsx` holds a legitimate one.
+- **Style the streamed-reasoning panel so a long think reads as reassuring**, not as the app
+  being stuck. It already caps and scrolls (producer, 2026-08-27), so this is presentation
+  rather than behaviour -- and it matters most on hosted reasoning models, where a user can
+  wait 33 s before the first lyric character (LLM-SURFACE 13.1).
 - Album lists → bulk send-to-mastering once mastering's bulk import lands (owner-stated future feature).
 - latentPlayer integration (library hand-off) once player matures.
 - Audio-to-audio flows (cover/remix/extend) for models that support it — profiles already leave room via `inputs`.
@@ -2397,3 +2422,40 @@ Open and small: the streamed reasoning renders between the approval badge and th
 which is where T-208 put it. With a model that thinks *a lot* that block can be long, and
 nobody has yet looked at whether it should cap or scroll. Not reported as a problem -- noted
 so it is looked at deliberately rather than discovered.
+
+### 2026-08-27 (later still) -- T-302 measured: the conservative rule is costing real money
+
+Ran against the endpoint T-301b made reachable. Harness committed as an `--ignored` test
+beside T-211's (`cargo test -p app -- --ignored reasoning_effort --nocapture`); it reads the
+endpoint from `config.json` and the key from the keychain, and **never prints the key**.
+`reqwest` added as a **dev-dependency** of `src-tauri` for the raw-SSE half -- dev-only,
+already in the tree via `llm-bridge`, nothing in the app talks HTTP directly.
+
+**The answer is possibility 1 of the three: QwenCloud honours the field.** 33.12 s -> 1.13 s
+to first content, 2771 -> 235 completion tokens, both runs a complete song. The rule that
+sends `reasoning_effort` only to endpoints the app can enrich was written when the cost was
+patience on a local model. On a paid endpoint it is **11.8x the billed tokens on every
+generation**, and the user watches a model think for half a minute first.
+
+**I did not change the rule, and the reason is the rule's own logic.** Two providers honour
+the field; that is not evidence a third will not reject it, and an unsupported parameter sent
+blindly turns lyric generation into an error for whoever's endpoint is strict. The move the
+evidence actually supports is **discovering acceptance per endpoint instead of inferring it
+from enrichment** -- and the app already makes exactly the right call to discover it in, the
+wizard's test call. Proposed as **T-302b**, not taken unilaterally: it trades robustness
+against cost, and the cost is the owner's.
+
+**The second finding was not on the list.** QwenCloud streams **`reasoning_content`**, never
+`reasoning`. Every prior capture was Ollama's `reasoning`. The 2026-08-24 rule to read both
+spellings was written from documentation, defensively, with no provider in hand that needed
+it -- and the first hosted endpoint this app ever reached needed it. Had it read only
+`reasoning`, the producer's qwen run would have shown a blank panel for 33 seconds rather
+than the thinking text they described. Worth recording in a repo whose habit is to delete
+defensive code that never fires.
+
+Also from the producer: the streamed reasoning **is already capped and scrolls**, so the
+long-think case does not swamp the editor. Styling to make that reassuring rather than merely
+tolerable goes to the backlog rather than a task. And QwenCloud publishes an
+**Anthropic-compatible** endpoint alongside the OpenAI-compatible one -- which is the second
+wire format `LlmProvider` has been deferred against since T-109, now available whenever that
+question is picked up.
