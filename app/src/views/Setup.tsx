@@ -1,9 +1,17 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
 import { curatedFirst, formatBytes, installView, rowFor, useModelsStore } from '../state/models'
-import { canTest, modelView, testSummary, useLlmStore } from '../state/llm'
+import {
+  canTest,
+  DEFAULT_BASE_URL,
+  effectiveBaseUrl,
+  keyField,
+  modelView,
+  testSummary,
+  useLlmStore,
+} from '../state/llm'
 import { useConfigStore } from '../state/config'
 
 /**
@@ -71,9 +79,6 @@ export function Setup() {
   )
 }
 
-/** Where the lyric LLM lives. Ollama's default, and the commonest case. */
-const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1'
-
 /**
  * Setup wizard, lyric-LLM step.
  *
@@ -81,6 +86,9 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1'
  * also the step's only keychain read -- `has_key` rides on the status, so
  * nothing here calls `has_secret`, whose answer requires reading the secret
  * and on macOS can raise a prompt (T-004).
+ *
+ * The endpoint and API key are editable here. The key is write-only: it is
+ * stored through the config store and never read back into the input.
  */
 function LlmStep() {
   const status = useLlmStore((state) => state.status)
@@ -91,9 +99,20 @@ function LlmStep() {
   const probe = useLlmStore((state) => state.probe)
   const choose = useLlmStore((state) => state.choose)
   const test = useLlmStore((state) => state.test)
+  const saveEndpoint = useLlmStore((state) => state.saveEndpoint)
+  const config = useConfigStore((state) => state.config)
   const configStatus = useConfigStore((state) => state.status)
   const configuredModel = useConfigStore((state) => state.config?.llm?.model ?? null)
+  const storeSecret = useConfigStore((state) => state.storeSecret)
+  const removeSecret = useConfigStore((state) => state.removeSecret)
+  const effective = effectiveBaseUrl(config)
+  const [draftUrl, setDraftUrl] = useState(effective)
+  const [draftKey, setDraftKey] = useState('')
   const probed = useRef(false)
+
+  useEffect(() => {
+    setDraftUrl(effective)
+  }, [effective])
 
   useEffect(() => {
     // Probe once, and not before config has been read. Passing null while it
@@ -104,8 +123,32 @@ function LlmStep() {
     // made and saved.
     if (probed.current || configStatus === 'idle' || configStatus === 'loading') return
     probed.current = true
-    void probe(DEFAULT_BASE_URL, configuredModel)
-  }, [probe, configStatus, configuredModel])
+    void probe(effective, configuredModel)
+  }, [probe, configStatus, configuredModel, effective])
+
+  // Blank means "use the default", not "no endpoint": the prefill is the app's
+  // baseline and there is no useful state where the step points at nothing.
+  // Storing null is what lets `effectiveBaseUrl` resolve it back to the
+  // default, so the field and the probe never disagree about the address.
+  const applyEndpoint = async () => {
+    const trimmed = draftUrl.trim()
+    const next = trimmed === '' ? DEFAULT_BASE_URL : trimmed
+    await saveEndpoint(trimmed === '' ? null : trimmed)
+    void probe(next, configuredModel)
+  }
+
+  const storeKey = async () => {
+    await storeSecret('llm_api_key', draftKey)
+    setDraftKey('')
+    void probe(effective, model)
+  }
+
+  const removeKey = async () => {
+    await removeSecret('llm_api_key')
+    void probe(effective, model)
+  }
+
+  const keyView = keyField(status)
 
   return (
     <section className="panel setup-step">
@@ -114,22 +157,76 @@ function LlmStep() {
         <button
           type="button"
           className="setup-button"
-          onClick={() => void probe(DEFAULT_BASE_URL, model)}
+          onClick={() => void probe(effective, model)}
           disabled={busy}
         >
           {busy ? 'Checking...' : 'Retry'}
         </button>
       </header>
 
+      <div className="llm-endpoint-row">
+        <input
+          type="text"
+          className="lyrics-input llm-endpoint"
+          value={draftUrl}
+          onChange={(e) => setDraftUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void applyEndpoint()
+            }
+          }}
+          placeholder="OpenAI-compatible endpoint URL"
+          aria-label="Endpoint address"
+        />
+        <button
+          type="button"
+          className="setup-button setup-button-primary"
+          onClick={() => void applyEndpoint()}
+          disabled={busy}
+        >
+          Connect
+        </button>
+      </div>
+
+      <div className="llm-key-row">
+        {keyView === 'stored' ? (
+          <>
+            <span className="status-pill status-pill-ok">API key stored</span>
+            <button type="button" className="setup-button" onClick={() => void removeKey()}>
+              Remove
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              type="password"
+              className="lyrics-input llm-key"
+              value={draftKey}
+              onChange={(e) => setDraftKey(e.target.value)}
+              placeholder="API key (optional)"
+              aria-label="API key"
+            />
+            <button
+              type="button"
+              className="setup-button"
+              onClick={() => void storeKey()}
+              disabled={draftKey === ''}
+            >
+              Store key
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Rendered for type-completeness only. The step always resolves to a
+          non-empty endpoint -- a blank field means the default -- so nothing
+          in this wizard can currently produce `not_configured`. Kept because
+          the backend variant exists; do not put guidance a user needs here. */}
       {status !== null && status.state === 'not_configured' ? (
-        <p className="setup-next-step">Set an endpoint to write lyrics with a model.</p>
+        <p className="setup-next-step">No endpoint set.</p>
       ) : null}
 
-      {/* Where a user with no local model actually lands, so the guidance lives
-          here rather than on `not_configured` -- which this wizard cannot
-          currently produce, because it always probes a non-empty constant.
-          The address is named because nothing else on screen reveals it
-          (T-301b gives the user a field for it). */}
       {status !== null && status.state === 'unreachable' ? (
         <>
           <p className="setup-next-step">{status.detail}</p>
@@ -139,8 +236,7 @@ function LlmStep() {
             endpoint -- a local server, or a hosted API with a key.
           </p>
           <p className="setup-next-step">
-            Tried <code className="setup-command">{DEFAULT_BASE_URL}</code>, the local address used
-            by default.
+            Tried <code className="setup-command">{effective}</code>.
           </p>
         </>
       ) : null}
@@ -168,7 +264,7 @@ function LlmStep() {
                       value={view.id}
                       checked={model === view.id}
                       disabled={!view.selectable}
-                      onChange={() => void choose(DEFAULT_BASE_URL, view.id)}
+                      onChange={() => void choose(effective, view.id)}
                     />
                     <code>{view.id}</code>
                   </label>
@@ -193,7 +289,7 @@ function LlmStep() {
             <button
               type="button"
               className="setup-button setup-button-primary"
-              onClick={() => void test(DEFAULT_BASE_URL)}
+              onClick={() => void test(effective)}
               disabled={!canTest(status, model) || testing}
             >
               {testing ? 'Testing...' : 'Test call'}

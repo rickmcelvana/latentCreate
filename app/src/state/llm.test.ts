@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LlmModelRow, LlmStatus, LlmTestResult } from '../bridge/llm'
 import type { Config } from '../bridge/config'
-import { canTest, modelView, testSummary, useLlmStore } from './llm'
+import {
+  canTest,
+  DEFAULT_BASE_URL,
+  effectiveBaseUrl,
+  keyField,
+  modelView,
+  testSummary,
+  useLlmStore,
+} from './llm'
 import { useConfigStore } from './config'
 
 const mockLlmProbe = vi.fn()
@@ -158,6 +166,37 @@ describe('canTest', () => {
   })
 })
 
+describe('effectiveBaseUrl', () => {
+  /**
+   * Protects: the configured endpoint wins over the default. The default is
+   * only a prefill, not a fallback that strands a user on Ollama.
+   */
+  it('returns the configured URL when one is set', () => {
+    const config = baseConfig({
+      llm: { provider: 'open_ai_compat', base_url: 'https://api.openai.com/v1', model: null },
+    })
+    expect(effectiveBaseUrl(config)).toBe('https://api.openai.com/v1')
+  })
+
+  /**
+   * Protects: a null, empty or whitespace stored value is treated as unset,
+   * so clearing the field does not leave the step probing nothing forever.
+   */
+  it('falls back to the default when no endpoint is stored', () => {
+    expect(effectiveBaseUrl(baseConfig())).toBe(DEFAULT_BASE_URL)
+    expect(
+      effectiveBaseUrl(
+        baseConfig({ llm: { provider: 'open_ai_compat', base_url: '', model: null } }),
+      ),
+    ).toBe(DEFAULT_BASE_URL)
+    expect(
+      effectiveBaseUrl(
+        baseConfig({ llm: { provider: 'open_ai_compat', base_url: '   ', model: null } }),
+      ),
+    ).toBe(DEFAULT_BASE_URL)
+  })
+})
+
 describe('llm store', () => {
   beforeEach(() => {
     mockIsTauri = true
@@ -230,5 +269,56 @@ describe('llm store', () => {
     await useLlmStore.getState().probe('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
 
     expect(mockLlmProbe).toHaveBeenCalledWith('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
+  })
+
+  /**
+   * Protects: changing the endpoint must not drop the model the user already
+   * chose. `useConfigStore.save` does a shallow merge, so a partial `llm`
+   * patch would replace the whole block and lose the model (T-212).
+   */
+  it('test_save_endpoint_preserves_the_configured_model', async () => {
+    useConfigStore.setState({
+      config: baseConfig({
+        llm: { provider: 'open_ai_compat', base_url: 'http://old', model: 'gemma4:12b-32k' },
+      }),
+    })
+
+    await useLlmStore.getState().saveEndpoint('http://new')
+
+    const saved = mockSaveConfig.mock.calls[0]![0] as Config
+    expect(saved.llm).toEqual({
+      provider: 'open_ai_compat',
+      base_url: 'http://new',
+      model: 'gemma4:12b-32k',
+    })
+  })
+})
+
+describe('keyField', () => {
+  /**
+   * Protects: a stored key hides the input. The write-only rule itself is
+   * guaranteed by construction -- no command returns a secret value (T-004) --
+   * so what a test can reach is the branch, and this is it.
+   */
+  it('shows the stored affordance only when the endpoint reports a key', () => {
+    const ready = (has_key: boolean): LlmStatus => ({
+      state: 'ready',
+      models: [],
+      enriched: true,
+      preselect: null,
+      has_key,
+    })
+    expect(keyField(ready(true))).toBe('stored')
+    expect(keyField(ready(false))).toBe('entry')
+  })
+
+  /**
+   * Protects: before the endpoint has answered, the app must not claim a key
+   * is stored. `has_key` is only known on `ready`.
+   */
+  it('offers the input whenever no endpoint has answered', () => {
+    expect(keyField(null)).toBe('entry')
+    expect(keyField({ state: 'not_configured' })).toBe('entry')
+    expect(keyField({ state: 'unreachable', detail: 'refused', hint: null })).toBe('entry')
   })
 })

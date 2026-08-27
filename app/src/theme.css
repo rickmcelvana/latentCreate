@@ -437,6 +437,19 @@ body {
 
 /* --- Setup wizard, lyrics model step --- */
 
+.llm-endpoint-row,
+.llm-key-row {
+  display: flex;
+  gap: var(--gap-sm);
+  align-items: center;
+}
+
+.llm-endpoint,
+.llm-key {
+  flex: 1;
+  min-width: 0;
+}
+
 .llm-models {
   margin: 0;
   padding: 0;

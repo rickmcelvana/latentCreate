@@ -113,9 +113,13 @@ never render — T-301 shipped its guidance in that branch before this was notic
 moved to `unreachable`. With a clearable field, `not_configured` becomes a real state again
 and each branch says its own thing:
 
-- **`not_configured`** (field cleared / nothing stored): "Enter the address of an
-  OpenAI-compatible endpoint to write lyrics with a model." No address named — there isn't
-  one.
+- **`not_configured`** — ⚠ **corrected at review, 2026-08-27.** This branch was specified on
+  the assumption that clearing the field means "no endpoint". It does not: **blank means the
+  default**, because the prefill is the app's baseline and there is no useful state where the
+  step points at nothing. `effectiveBaseUrl` never returns null, so nothing in this wizard
+  can produce `not_configured` — it stays **unreachable**, and the branch is kept for
+  type-completeness with a comment saying so. Guidance a user needs must not live there.
+  (This is the second time this brief's author put copy in that branch.)
 - **`unreachable`**: keep `status.detail`, keep `status.hint` (the `/v1` hint from
   LLM-SURFACE §11.3, considerably more valuable now that users type URLs), keep the
   "works with any OpenAI-compatible endpoint" sentence, and keep naming the address —
@@ -134,9 +138,13 @@ the existing custom properties — no new colours, no hardcoded hex.
       back to the default. Name the invariant, not the mechanics.
 - [ ] A test that saving an endpoint **preserves the configured model** — it would fail if
       the `llm` block were patched partially.
-- [ ] A test that the key input is never populated from any backend call: the component
-      renders with an empty key field when `has_key` is true, and shows the stored/remove
-      affordance instead.
+- [ ] ⚠ **corrected at review:** the criterion above originally asked for a *rendering*
+      test. **This repo has no DOM test stack** -- vitest runs in `node`, there is no jsdom,
+      no `@testing-library/react`, and every existing test is pure logic. Satisfying it as
+      written means inventing three dependencies. The invariant belongs in a store selector
+      instead (`keyField`), which is also what the phase file's own opening note demands.
+      The write-only property itself is guaranteed **by construction** -- no command returns
+      a secret -- and is a review item, not a test.
 - [ ] Existing `llm.test.ts` tests still pass, `modelView`'s capability and disclosure tests
       untouched.
 - [ ] `npm run gate` clean.
@@ -148,7 +156,7 @@ the existing custom properties — no new colours, no hardcoded hex.
       confirm models list and a test call returns. This is the first time in the repo's life
       that path has been exercised, and it is the whole point of the task.
 - [ ] Endpoint survives a restart; model selection survives changing the endpoint and back.
-- [ ] Clear the field: the `not_configured` copy appears.
+- [ ] Clear the field and Connect: it refills with the default and probes it.
 - [ ] Store a key, restart, confirm the field is empty and the "stored" affordance shows —
       **the key must never reappear in the input.**
 

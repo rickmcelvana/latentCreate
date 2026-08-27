@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { Config } from '../bridge/config'
 import { isTauri } from '../bridge/comfy'
 import {
   llmProbe,
@@ -75,6 +76,41 @@ export function canTest(status: LlmStatus | null, model: string | null): boolean
   return status !== null && status.state === 'ready' && model !== null && model !== ''
 }
 
+/** The endpoint the step should use, before the user has typed anything. */
+export const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1'
+
+/**
+ * Which endpoint the step actually talks to.
+ *
+ * The configured value wins; the default is a prefill, not a fallback the
+ * user is stuck with (owner, 2026-08-27). A blank or whitespace-only stored
+ * value is treated as unset, because that is what clearing the field leaves
+ * behind and an empty string would probe nothing forever.
+ */
+export function effectiveBaseUrl(config: Config | null): string {
+  const stored = config?.llm?.base_url ?? null
+  return stored !== null && stored.trim() !== '' ? stored.trim() : DEFAULT_BASE_URL
+}
+
+/** What the API-key control should offer. */
+export type KeyField = 'stored' | 'entry'
+
+/**
+ * Whether to show the stored-key affordance or an input.
+ *
+ * A store selector rather than a condition in JSX, for the reason Phase 2
+ * ended on: a decision derived in a view is one no test can reach. This is
+ * the reachable half -- that a stored key hides the input.
+ *
+ * **The write-only half is guaranteed by construction, not by this**: no
+ * Tauri command returns a secret value (T-004), and the input's value comes
+ * only from local draft state initialised empty. There is nothing for a test
+ * to catch, because there is no code path that could populate it.
+ */
+export function keyField(status: LlmStatus | null): KeyField {
+  return status !== null && status.state === 'ready' && status.has_key ? 'stored' : 'entry'
+}
+
 interface LlmState {
   status: LlmStatus | null
   busy: boolean
@@ -85,6 +121,7 @@ interface LlmState {
   probe: (baseUrl: string | null, configuredModel: string | null) => Promise<void>
   choose: (baseUrl: string, model: string) => Promise<void>
   test: (baseUrl: string) => Promise<void>
+  saveEndpoint: (url: string | null) => Promise<void>
 }
 
 export const useLlmStore = create<LlmState>((set, get) => ({
@@ -130,5 +167,18 @@ export const useLlmStore = create<LlmState>((set, get) => ({
     } finally {
       set({ testing: false })
     }
+  },
+
+  // Saving the endpoint must preserve the model, because `useConfigStore.save`
+  // does a shallow merge and a partial `llm` patch would drop it (T-212).
+  saveEndpoint: async (url) => {
+    if (!isTauri()) return
+    await useConfigStore.getState().save({
+      llm: {
+        provider: 'open_ai_compat',
+        base_url: url,
+        model: useConfigStore.getState().config?.llm?.model ?? null,
+      },
+    })
   },
 }))
