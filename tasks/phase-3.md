@@ -252,7 +252,7 @@ TOCTOU), `set_slots` for everything addressable, the T-305 graph edits for what 
   guard, and it distinguishes a real backend node's link (inert) from a frontend-only
   `PrimitiveNode` link (dropped at conversion, so the write lands). Landed in a new
   `audit.rs`; all six briefed mutations killed, plus two the review added.
-- **T-306b — the command** ([brief](t-306b-brief.md)). `generate_audio(spec)` doing fetch →
+- **T-306b — the command**  — **LANDED** ([brief](t-306b-brief.md)). `generate_audio(spec)` doing fetch →
   audit → slots → graph edits → validate → submit, then handing off to the existing
   `jobs::run_workflow` pump rather than duplicating its lifecycle. Per-job working copy under
   the app data dir; `Verdict::Vacuous` treated as failure, not success.
@@ -267,6 +267,13 @@ TOCTOU), `set_slots` for everything addressable, the T-305 graph edits for what 
   and the mock transport moves behind a `test-support` feature so the four-call sequence can be
   asserted with no ComfyUI running — the first `src-tauri` command that makes more than one
   MCP call, and ordering is the only thing that can go wrong in it.
+  **Landed with all five briefed mutations killed and a sixth the review added:** the briefed
+  suite proved *"a bypassed LoRA is not spliced"*, which passes on a pipeline that splices
+  nothing at all. Splicing into a throwaway clone left `lora_nodes` correctly populated, the
+  gate green and no compiler warning, while the submitted graph carried none of the user's
+  LoRAs — 17.1 one layer up. The added test reads the loader node back out of the submitted
+  file. **Sixth task running where "nothing bad was found" passed because nothing was looked
+  at.**
 
 ⚠ **Be precise about what step 4 buys**, in the code and not only here. Measured on the live
 install, `validate_workflow` **does** catch an unknown enum value, an out-of-range number and a
