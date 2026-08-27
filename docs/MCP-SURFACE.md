@@ -1217,3 +1217,75 @@ passed 118 tests (see the session log for 2026-08-27).
 Unlike 17.1 this one fails **loudly** -- validation catches it before submission. It is
 recorded next to 17.1 precisely because the pair marks the boundary: wiring the destination
 wrong is caught, wiring the *consumer* wrong is not.
+
+## 18. Slot writes that do nothing -- 2026-08-27
+
+Verified while briefing T-306, by resolving the shipped ACE-Step profile against the real
+template and comparing what `set_workflow_slot` reported with what
+`GET /history/<prompt_id>` shows the engine ran.
+
+### 18.1 WARNING `applied` does not mean the value reaches the engine
+
+`set_workflow_slot` reports an address as `applied` whenever it can write the widget. Whether
+the widget is *read* depends on the graph, and the tool never says.
+
+In the ACE-Step template four widget inputs are fed by links, and the profile writes all four:
+
+| Address | Fed from | Source class | Executed prompt | Write lands? |
+|---|---|---|---|---|
+| `3.seed` | 109 | `PrimitiveInt` | `seed: ["109", 0]` | **no** |
+| `94.seed` | 109 | `PrimitiveInt` | `seed: ["109", 0]` | **no** |
+| `94.duration` | 99 | `PrimitiveNode` | `duration: 10.0` | yes |
+| `98.seconds` | 99 | `PrimitiveNode` | `seconds: 10.0` | yes |
+
+**The rule is the source node's class, not the presence of a link.** `PrimitiveNode` is a
+frontend-only node: it is absent from the executed prompt, its links do not survive conversion,
+and the consumer's own widget value is used. `PrimitiveInt` is a real backend node, so the link
+survives and the consumer's widget is ignored.
+
+Proof for the second row: node 99 holds `120`, both consumers were written `10`, and the engine
+ran `10.0`.
+
+**Consequence.** The shipped ACE-Step profile's seed mapping was inert -- every track would have
+rendered with node 109's seed regardless of the user's choice, with provenance recording the
+choice and no error anywhere. Fixed in T-306a by pointing `seed` at `109.value`, the one address
+that reaches both consumers. `create-core`'s `audit_slots` is the standing guard.
+
+`list_workflow_slots` gives no hint: it lists `3.seed` and `94.seed` with current values like
+any other slot.
+
+### 18.2 An adjacently tagged value fails closed
+
+`InputValue` is `#[serde(tag = "type", content = "value")]`, so `serde_json::to_value` produces
+an object. Sending that as a slot value is rejected, for numbers and strings alike:
+
+```
+3.steps = {"type":"int","value":12}      -> [workflow_slot_invalid] expected INT, got dict
+94.tags = {"type":"text","value":"..."}  -> [workflow_slot_invalid] expected STRING (string), got dict
+```
+
+Worth recording as a *good* failure mode: the wrong conversion breaks every generation
+immediately instead of writing a plausible-looking wrong value.
+
+### 18.3 Range violations warn on write and fail on validate
+
+`109.value = 18446744073709551615` (`u64::MAX`):
+
+- `set_workflow_slot` -> `applied`, with a **warning** `above_max: value=... above catalog max
+  9223372036854775807`. The value is written.
+- `validate_workflow` -> **`valid: false`**, `code: above_max`, `hint: use a value <= ...`.
+
+So the pipeline's validate step is what catches this; the write step is not a gate. Concrete
+evidence for what step 4 of ARCHITECTURE 7 actually buys -- alongside `unknown_enum_value`
+(17.1) and `required_input_missing` (17.8), and against its blindness to reachability (17.1).
+
+### 18.4 Seed ranges: the node and the template disagree
+
+- `KSampler.seed`: `min: 0, max: 18446744073709551615` -- the full `u64`, which is where T-003's
+  `Seed(u64)` came from. Still correct **for the node**.
+- `PrimitiveInt.value`: `max: 9223372036854775807` (`i64::MAX`).
+
+Because the ACE-Step template drives its seeds from a `PrimitiveInt`, the usable seed range for
+that template is `i64::MAX`, not `u64::MAX`. `InputSpec::Seed` declares no range, so nothing in
+the profile schema expresses this yet -- an open question, not a T-306 problem, since validation
+rejects an over-range seed before it costs anything.

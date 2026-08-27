@@ -235,15 +235,33 @@ JSON. This is the T-203 lesson generalised: a rule about model output has to run
 output, and a rule about template JSON has to run against template JSON. Hand-written fixtures
 are written to agree with the code.
 
-### T-306 — the pipeline command: fetch, edit, validate, run
+### T-306 — the pipeline: the pure seam, then the command  — **SPLIT**
 The `src-tauri` seam that puts T-304 and T-305 on the wire, following ARCHITECTURE 7:
 `fetch_template` to a **per-job working copy** (never a shared path — the MCP docs warn about
 TOCTOU), `set_slots` for everything addressable, the T-305 graph edits for what is not,
-`validate_workflow`, then `run_workflow(wait=false)`.
+`validate_workflow`, then `run_workflow(wait=false)` into the existing job pump.
 
-Keep step 4 **and** be honest about it in the code: validation catches a bad splice before
-GPU-minutes, and it is documented blind to the save format (16.1). A comment saying so is
-worth more than a test asserting a guarantee that does not exist.
+**Split at briefing time**, because two live findings turned the seam into its own task:
+
+- **T-306a — the pure seam and a profile bug** ([brief](t-306a-brief.md)). `InputValue` is
+  adjacently tagged, so `serde_json::to_value` yields `{"type":"seed","value":42}` where the
+  slot wants `42`. And **the shipped ACE-Step profile writes the seed to two addresses that do
+  nothing**: `3.seed` and `94.seed` are link-fed from `PrimitiveInt` 109, `set_workflow_slot`
+  reports both `applied`, and the executed prompt shows the sampler reading node 109 — so every
+  track would render with the template's seed whatever the user picked. `audit_slots` is the
+  guard, and it distinguishes a real backend node's link (inert) from a frontend-only
+  `PrimitiveNode` link (dropped at conversion, so the write lands). **Next up.**
+- **T-306b — the command.** `generate_audio(spec)` doing fetch → slots → graph edits →
+  validate → submit, then handing off to the existing `jobs::run_workflow` pump rather than
+  duplicating its lifecycle. Per-job working copy under the app data dir; `local_check` gated
+  before running; `Verdict::Vacuous` treated as failure, not success.
+
+⚠ **Be precise about what step 4 buys**, in the code and not only here. Measured on the live
+install, `validate_workflow` **does** catch an unknown enum value, an out-of-range number and a
+missing required input — all before GPU-minutes. It is **blind** to reachability: a LoRA splice
+that feeds nothing validates clean and runs (17.1). It is also documented blind to
+`COMFY_DYNAMICCOMBO_V3` sub-inputs, which is the save format (16.1). A comment saying exactly
+that is worth more than a test asserting a guarantee that does not exist.
 
 Also the natural place for the OQ-3 evidence to accumulate: if the pipeline needs a node fact
 the MCP surface cannot answer, record it here rather than reaching for `/object_info` silently.

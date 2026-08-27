@@ -293,6 +293,24 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
 - **2026-08-27 -- a seed does not reproduce a track, and the app must not imply it does.** Two runs of the unmodified ACE-Step template with the same seed and sampling forced greedy differ in **98.1% of their bytes**. GPU reduction order is not deterministic and 58 sampling steps amplify it. This was found while trying to prove the LoRA splice worked by comparing audio -- a method that had to be abandoned. It constrains two things: **no test or manual check may rest on two runs matching**, and **`provenance` reproduces the inputs, not the waveform**. Wherever the UI shows a seed, it is a recipe, not a guarantee. Evidence: [docs/MCP-SURFACE.md 17.3](docs/MCP-SURFACE.md).
 - **2026-08-27 -- `GET /history/<prompt_id>` is the project's answer to "what did the engine actually run".** It returns the API-format prompt as executed and was the only surface found that could tell a correct splice from a dangling one. comfy-mcp exposes no equivalent. Second entry in OQ-3's evidence column after `/object_info`, and the same shape: a read-only HTTP lookup that answers a question the MCP surface cannot. Still not a runtime dependency -- both are verification tools -- but the pipeline should be written knowing they exist.
 
+- **2026-08-27 -- `applied` is not `effective`, and the shipped ACE-Step profile was proof.**
+  Its `seed` wrote `94.seed` and `3.seed`; both are link-fed from `PrimitiveInt` 109, so
+  `set_workflow_slot` reported them applied and the sampler read node 109 anyway. **Every track
+  would have rendered with the template's seed while provenance recorded the user's choice** --
+  a lie the app would have told about its own output, with no error anywhere. Fixed by pointing
+  the input at `109.value`. The standing rule: **a slot write is only real if the target input
+  is not driven by a node that survives conversion**, and the app checks rather than assumes
+  (`create-core::audit_slots`). Note the nuance that makes a naive guard wrong -- a link from a
+  frontend-only `PrimitiveNode` **is** dropped at conversion, so those writes do land, and
+  flagging them would be a false alarm that gets the guard turned off.
+  Evidence: [docs/MCP-SURFACE.md 18.1](docs/MCP-SURFACE.md).
+- **2026-08-27 -- what `validate_workflow` is worth, stated precisely.** Measured, not assumed:
+  it catches `unknown_enum_value`, `above_max` and `required_input_missing` before any GPU time.
+  It is blind to reachability -- a LoRA chain feeding nothing passes (17.1) -- and documented
+  blind to `COMFY_DYNAMICCOMBO_V3` sub-inputs, which is the save format. **Keep the step, and
+  say in the code what it does and does not prove.** The phase file's earlier claim that it
+  "catches a bad splice" was wrong in exactly the direction that matters and has been corrected.
+
 ## Open questions (owner to decide)
 - ~~**OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?**~~ **RESOLVED
   2026-08-27 -- the question is withdrawn, not answered.** The owner's decision is that the
@@ -2668,3 +2686,36 @@ Also this run: the ninth `cargo fmt` miss, the same `clippy::needless_lifetimes`
 as last time, and two drive-bys reverted -- a `section`-wording sweep across T-305a's landed doc
 comments (against the crate's own `(MCP-SURFACE 9.1)` convention) and `SaveNodeChange` shuffled
 above the error enum for no reason.
+
+### 2026-08-27 (later still) -- T-306 briefed and split; the seed the app would have lied about
+
+Briefing the pipeline meant resolving the shipped ACE-Step profile against the real template for
+the first time. Two of the seven addresses it writes **do nothing**: `3.seed` and `94.seed` are
+link-fed from `PrimitiveInt` 109, `set_workflow_slot` reports both `applied`, and the engine's
+executed prompt reads `seed: ["109", 0]`. Every generation would have used the template's seed
+while the sidecar recorded the user's -- and batches, which are N seeds of one spec, would have
+been N identical jobs.
+
+**The near-miss inside the near-miss:** the obvious guard, "flag any link-fed slot", is wrong.
+The same template feeds `94.duration` and `98.seconds` by link too, and those writes land,
+because node 99 is a frontend-only `PrimitiveNode` whose links are dropped at conversion. Proof:
+99 holds 120, the consumers were written 10, the engine ran 10.0. A guard that condemned all
+four would have been a false alarm on half of them, and false alarms are how guards get deleted.
+So `audit_slots` keys on the source node's class, and reports what it could not check rather
+than skipping it.
+
+Also verified for the brief: `serde_json::to_value(InputValue)` sends the adjacent tag over the
+wire and is rejected for INT and STRING alike -- a wrong conversion that fails closed (18.2);
+an over-range value warns on write but fails validation (18.3); and `KSampler.seed` really does
+declare the full `u64` T-003 claimed, while `PrimitiveInt.value` caps at `i64::MAX`, so this
+template's usable seed range is narrower than the node's (18.4).
+
+Split into **T-306a** (the pure seam plus the profile fix, briefed) and **T-306b** (the Tauri
+command). T-306a's regression test is the one that matters: resolve the shipped profile against
+the real fixture and assert no address is inert. It fails on the profile as it stands.
+
+**The pattern, now three tasks running:** T-305a asked whether the format value was right rather
+than the node class; T-305b asked whether the chain reached the consumer rather than whether the
+nodes existed; this asks whether a write is read rather than whether it was accepted. Every one
+of them is the same question -- *does the thing downstream actually see this?* -- and every time
+the convenient signal said yes.
