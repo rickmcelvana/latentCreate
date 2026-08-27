@@ -8,7 +8,7 @@
 - **Phase:** **0, 1 and 2 complete**, tagged `phase0-done` (2026-08-23), **`phase1-done` (2026-08-25)** and **`phase2-done` (2026-08-26)**. Phase 2 (Lyrics Studio) shipped T-201 … T-210 plus the T-211 live milestone and its fix-ups (T-212 … T-214): a user fills in a brief, watches lyrics stream from their own LLM, edits across versions, runs an advisory structure lint, optionally accepts a consent-gated optimized prompt, and approves a version for audio. **Verified live on 2026-08-26** against a real Ollama -- a whole song in 6.9-9.2 s with reasoning suppressed (against a 44 s / 85-character baseline), the optimizer preserving its five fixed lines 5/5, and the approved lyric on disk with its `prompt_optimized` consent flag. `mcp-bridge` (88 offline tests) covers the verified comfy-mcp surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Phase 3 is in progress** -- its pure half is done (slot resolution, both graph edits, the slot audit); the `src-tauri` pipeline that runs them is T-306b and nothing generates audio through the app yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
 - **Landed in Phase 3 so far** (all 2026-08-27): the phase-start surface re-verification (docs/MCP-SURFACE.md §16), then **T-301** (no lyric model is recommended), **T-301b** (endpoint + API-key fields, so any OpenAI-compatible provider works -- verified live against QwenCloud), **T-302** (measured the cost of the conservative `reasoning_effort` rule: 11.8x billed tokens), **T-302b** (the app discovers acceptance per endpoint instead of inferring it -- 33 s became 1-2 s), **T-303** (`default_profile_id` persists; profile picker), **T-304** (`resolve_slots`: semantic inputs fanned out to slot addresses), **T-305a** (`ensure_lossless_output`), **T-305b** (`splice_loras`), **T-306a** (`to_slot_value` + `audit_slots`, and the ACE-Step seed fix). `create-core` is 126 tests.
-- **Next up: T-306b, the pipeline command** ([brief not yet written](tasks/phase-3.md)). `generate_audio(spec)` in `src-tauri`: `fetch_template` to a per-job working copy -> `set_slots` -> the T-305 graph edits -> `validate_workflow` -> submit into the **existing** `jobs::run_workflow` pump rather than a second lifecycle. Then T-307 … T-314. **Audio generation still does not run end to end** -- every piece exists and nothing is wired together yet.
+- **Next up: T-306b, the pipeline command** ([brief](tasks/t-306b-brief.md), written 2026-08-27). `generate_audio(spec)` in `src-tauri`: `fetch_template` to a per-job working copy -> audit the resolved addresses -> `set_slots` -> the T-305 graph edits -> `validate_workflow` -> submit into the **existing** `jobs::run_workflow` pump rather than a second lifecycle. Then T-307 … T-314. **Audio generation still does not run end to end** -- every piece exists and nothing is wired together yet.
 - ⚠ **Three findings from Phase 3 constrain everything downstream**, all verified live and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §§17-18. Read them before touching the pipeline: **(1)** a LoRA splice that feeds nothing validates clean, runs and writes audio -- `validate_workflow` is a schema check, not a reachability check (§17.1). **(2)** `set_workflow_slot` reporting an address `applied` does not mean the value reaches the engine (§18.1). **(3)** ACE-Step is **not reproducible run-to-run** even with a fixed seed -- two identical runs differ in 98.1% of bytes -- so no test or check may rest on two runs matching, and provenance reproduces the *inputs*, not the waveform (§17.3). `GET /history/<prompt_id>` is the only surface that shows what actually ran (§17.2).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
@@ -318,6 +318,33 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   blind to `COMFY_DYNAMICCOMBO_V3` sub-inputs, which is the save format. **Keep the step, and
   say in the code what it does and does not prove.** The phase file's earlier claim that it
   "catches a bad splice" was wrong in exactly the direction that matters and has been corrected.
+
+- **2026-08-27 -- `local_check` is not a gate on the generation path, and the phase file said it
+  was.** Found while briefing T-306b. `fetch_template` evaluates `local_check` against the
+  template **as fetched**, before the profile's `slot_overrides` are applied -- and MiniMax
+  Music 3 reports `runnable: false` over the one filename its own override corrects, with all
+  three model files installed (MCP-SURFACE 14.4). A pipeline gating on it would refuse to
+  generate with a fully working model, which is the same mistake the models step already
+  refuses at length. The pipeline reads it nowhere; `validate_workflow` on the **edited** copy
+  is what replaces it, because that is the first artefact that resembles what will be
+  submitted. Same shape as the phase's other findings: the convenient signal was available,
+  early, and about a different question than the one being asked.
+- **2026-08-27 -- the mock MCP transport moves behind a `test-support` feature, because
+  sequencing is what T-306b can get wrong.** Every `src-tauri` command until now made exactly
+  one MCP call; the pipeline makes four in order against one file, and the failure modes -- an
+  edit before the write it invalidates, a validate on a different path, an audit after the
+  write it exists to prevent, a graph never written back -- are all invisible to tests over
+  pure functions. `mcp-bridge::mock` already records every call sent, so it is exposed with
+  `#[cfg(any(test, feature = "test-support"))]` and taken as a **dev**-dependency: Cargo does
+  not build dev-dependencies for `cargo build`, verified by watching `cargo build -p app --lib`
+  recompile `mcp-bridge` without the feature. The rule this sets: **a command that makes more
+  than one call gets its call sequence asserted offline**, not left to the live milestone.
+- **2026-08-27 -- the pipeline submits the lyric text it is given and never opens the lyric
+  document.** `GenerationSpec` carries both the text (in `inputs`) and a `LyricRef`; resolving
+  the ref would need a project slug the spec does not carry, and the Library view that owns
+  that question is Phase 4. The gap -- one version's ref beside another version's text -- is
+  closed at T-311 by ARCHITECTURE 8's existing requirement that the sidecar record the resolved
+  slot values **actually submitted**, rather than the UI's account of them.
 
 ## Open questions (owner to decide)
 - ~~**OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?**~~ **RESOLVED
@@ -2845,3 +2872,41 @@ been corrected twice this phase by findings in those files; if it disagrees with
 [docs/CSS-TODO.md](docs/CSS-TODO.md). Test tracks named `T305B_*`, `det_*`, `poison_*`,
 `stale_anchor` and `null_input` are sitting in the producer's ComfyUI `output/audio` and can be
 deleted.
+
+### 2026-08-27 (later still) -- T-306b briefed, and the phase file was wrong about `local_check`
+
+Session ritual first: PROJECT.md and ARCHITECTURE.md against `git log` -- no drift, tree clean,
+`1482590` is the session-close commit the snapshot describes.
+
+**The brief's headline is a correction.** The T-306 stub said the pipeline should gate on
+`local_check` before running. Following that would have made MiniMax Music 3 ungenerable: the
+check runs at fetch time, before the profile's `slot_overrides` are applied, and MiniMax is
+`runnable: false` over precisely the filename its override fixes. `models.rs` already opens with
+a paragraph on why readiness never reads that field; the pipeline inherits the trap and adds one
+of its own, because it fetches before it fixes anything. Fourth time this phase that an
+available signal answered a different question than the one being asked.
+
+**The reference code was written, compiled, run and mutation-checked before the brief went out**
+-- 6 new tests green, `fmt`/`clippy`/`cargo test --workspace` clean at 51 tests for `app`, then
+the tree reverted. Five mutations were run and all five bite. Two are worth naming:
+
+- **Dropping the write-back** of the edited graph is caught *only* by re-reading the submitted
+  file. The returned `output_format` says `flac` either way. That is the fifth consecutive task
+  where "nothing bad was found" would have passed on a function that did nothing -- the check
+  is now written into the brief as a criterion, not left to review.
+- **Moving the audit below `set_slots`** is caught only by asserting the *call count* on the
+  refusal path. It is the difference between refusing a bad run and performing it.
+
+**The one structural change:** `mcp-bridge`'s mock transport is exposed behind a `test-support`
+feature and taken as a dev-dependency of `src-tauri`. Four `cfg` lines. Every command so far
+made one MCP call; this one makes four in order against one file, and ordering is the only thing
+that can go wrong in it. `cargo build -p app --lib` was watched recompiling `mcp-bridge` without
+the feature, so nothing reaches a shipped binary.
+
+**Working set for the run: ~36 KB across seven files**, four of them a few lines each -- under
+the ~60 KB the successful T-306a run carried. `create-core` is not passed at all; every
+signature the task needs is in the brief.
+
+**Not verified live, and deliberately:** no generation was run. The four-call sequence is proven
+against the mock; that it produces audio is T-314's job, and it is also the first chance to
+settle `vram_gb_min: 8`.

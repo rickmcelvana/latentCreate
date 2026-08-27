@@ -252,10 +252,21 @@ TOCTOU), `set_slots` for everything addressable, the T-305 graph edits for what 
   guard, and it distinguishes a real backend node's link (inert) from a frontend-only
   `PrimitiveNode` link (dropped at conversion, so the write lands). Landed in a new
   `audit.rs`; all six briefed mutations killed, plus two the review added.
-- **T-306b — the command.** **Next up.** `generate_audio(spec)` doing fetch → slots → graph edits →
-  validate → submit, then handing off to the existing `jobs::run_workflow` pump rather than
-  duplicating its lifecycle. Per-job working copy under the app data dir; `local_check` gated
-  before running; `Verdict::Vacuous` treated as failure, not success.
+- **T-306b — the command** ([brief](t-306b-brief.md)). `generate_audio(spec)` doing fetch →
+  audit → slots → graph edits → validate → submit, then handing off to the existing
+  `jobs::run_workflow` pump rather than duplicating its lifecycle. Per-job working copy under
+  the app data dir; `Verdict::Vacuous` treated as failure, not success.
+  ⚠ **Correction, made while briefing it: `local_check` is NOT a gate.** An earlier line here
+  said it was. It is evaluated at fetch time, *before* the profile's `slot_overrides` are
+  applied — and MiniMax Music 3 is `runnable: false` for exactly the filename its own override
+  corrects (14.4). Gating on it would refuse to generate with a fully installed model, which is
+  the same mistake the models step already documents at length. `validate_workflow` on the
+  **edited** copy is what replaces it.
+  Also settled here: the audit runs **before** the first slot write, so a profile bug costs
+  nothing; `unchecked` addresses are reported, never a refusal (MiniMax's seed is one, 18.5);
+  and the mock transport moves behind a `test-support` feature so the four-call sequence can be
+  asserted with no ComfyUI running — the first `src-tauri` command that makes more than one
+  MCP call, and ordering is the only thing that can go wrong in it.
 
 ⚠ **Be precise about what step 4 buys**, in the code and not only here. Measured on the live
 install, `validate_workflow` **does** catch an unknown enum value, an out-of-range number and a
