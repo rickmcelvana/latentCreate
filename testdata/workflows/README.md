@@ -4,6 +4,34 @@ CI never has a running ComfyUI and must never reach the template gallery
 (WORKFLOW.md §5). Anything that parses, edits or reasons about workflow JSON therefore
 needs a real graph checked in. These are those graphs.
 
+## `ace_step_1_5_xl_turbo.json`
+
+The `audio_ace_step1_5_xl_turbo` gallery template, **unmodified**, fetched 2026-08-27 against
+ComfyUI v0.34.1. `local_check` reported `runnable: true` with zero errors.
+
+### Why this one is worth freezing
+It is the graph the pipeline's two hard edits are written against:
+
+- **It ends in `SaveAudioMP3`** at node `107`, widgets `["audio/ACE_Step1.5_xl_turbo", "V0"]`
+  -- the deprecated lossy node the save swap replaces (MCP-SURFACE 5, 16.1). Pair it with
+  `minimax_music3_int8.json`, which ships the *modern* `SaveAudioAdvanced` **already set to
+  `mp3`**: between them they cover both halves of the rule that the test is the **format
+  value, not the node class** (MCP-SURFACE 16.3). A graph-edit test that uses only this file
+  will pass while the app ships MP3 for MiniMax.
+- **It contains no LoRA loader**, so applying one means *inserting* a node, not setting a
+  value. The MODEL chain is `104 (UNETLoader) --260--> 78 (ModelSamplingAuraFlow) --175--> 3
+  (KSampler)`, and the profile's `loras.attach_after` is `"104"`, so the splice goes between
+  104 and 78 and must rewire link `260`. Links are
+  `[link_id, src_node, src_slot, dst_node, dst_slot, type]`; `last_node_id` is 110 and
+  `last_link_id` is 265, which is where fresh ids come from.
+- Its slots are the **flat `A.name`** form, against MiniMax's `A/B.name` subgraph form. Both
+  address styles are represented in `testdata/` on purpose.
+
+### Regenerating it
+```
+fetch_template("audio_ace_step1_5_xl_turbo", out_path)   # no edits; expect runnable: true
+```
+
 ## `minimax_music3_int8.json`
 
 The `audio_minimax_music_3` gallery template (dated 2026-08-13), with **one** value changed:
@@ -36,10 +64,15 @@ validate_workflow(out_path)   # expect valid: true
 ```
 
 ### Staleness
-This is a **snapshot**. The gallery updates and comfy-cli caches templates with a 24-hour
+Both files here are **snapshots**. The gallery updates and comfy-cli caches templates with a 24-hour
 TTL, so this file will drift from upstream. That is fine — its job is to be a stable input
 for parser and graph-edit tests, not to mirror the current gallery. When a test needs
 current gallery content, it is a live producer-run check, not a CI test.
+
+**Checked 2026-08-27:** a structural diff of `minimax_music3_int8.json` against a freshly
+fetched template found **619 leaf values on both sides and exactly one difference** -- the
+documented `unet_name` override. Four days on, upstream has not moved. Worth re-running that
+diff rather than assuming, in either direction.
 
 ### Not a fixture
 Three `COMFY_MATCHTYPE_V3` warnings appear on validation (`ComfySwitchNode`'s wildcard type

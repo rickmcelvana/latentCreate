@@ -194,7 +194,7 @@ vacuous — name the invariant (*both* addresses carry it) the way WORKFLOW 4.2 
 ARCHITECTURE 8 wants both levels stored, so `resolve_slots` output is not a throwaway: it is
 half the sidecar.
 
-### T-305 — the workflow working copy and its graph edits  *(pure, and the hard one)*
+### T-305 — the workflow working copy and its graph edits  *(pure, and the hard one)*  — **SPLIT**
 A pure transform over workflow JSON: take a fetched template, apply resolved slots, splice
 LoRA loaders, and make the save node write lossless. No MCP calls, no ComfyUI — which is what
 makes the phase's riskiest code unit-testable.
@@ -209,6 +209,19 @@ it subtly wrong:
 - **LoRAs need node insertion, not slot-setting** (4): `LoraLoaderModelOnly` spliced between
   `UNETLoader` (104) and its downstream consumer, per the profile's `attach_after`, stacking
   in order.
+
+**Split in two at briefing time**, because link rewiring needs its own reference code and the
+pair exceeds the ~400-line run limit:
+
+- **T-305a — the save node** ([brief](t-305a-brief.md)). `ensure_lossless_output`: the format
+  is a positional `widgets_values` entry, the array is rebuilt to two entries rather than
+  patched, and **the test is the format value, not the node class** -- MiniMax ships the
+  modern node already set to `mp3`. Reference implementation compiled and run against both
+  fixtures before the brief was written.
+- **T-305b — the LoRA splice.** Inserting `LoraLoaderModelOnly` nodes and rewiring the MODEL
+  chain. In the ACE-Step fixture that chain is `104 -> 78 -> 3` with the profile's
+  `attach_after` at `104`, so the splice goes between 104 and 78 and rewires link `260`;
+  fresh ids come from `last_node_id` 110 and `last_link_id` 265.
 
 **Fixtures are the real captured templates**, committed to `testdata/` — not hand-written
 JSON. This is the T-203 lesson generalised: a rule about model output has to run against model

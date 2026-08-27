@@ -47,7 +47,9 @@ latentCreate/
 │   │   └── theme.css         # single source of styling truth
 ├── crates/
 │   ├── create-core/          # domain types: Project, Track, LyricDoc, GenerationSpec,
-│   │                         #   ModelProfile, Provenance. No I/O. Serde everywhere.
+│   │                         #   ModelProfile, Provenance. Plus the pure transforms over
+│   │                         #   them: slot resolution (T-304) and the workflow graph edits
+│   │                         #   slots cannot express (T-305). No I/O. Serde everywhere.
 │   ├── mcp-bridge/           # MCP client (rmcp). Spawns/attaches local comfy-mcp (stdio).
 │   │                         #   Typed wrappers per verified tool (docs/MCP-SURFACE.md).
 │   ├── llm-bridge/           # LLM providers behind one trait. reqwest + SSE streaming.
