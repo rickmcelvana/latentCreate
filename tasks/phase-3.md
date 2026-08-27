@@ -107,7 +107,7 @@ is the suggestion load, and the `"../data/*.json"` bundle glob, which would othe
 a directory that no longer exists in a fresh clone. **The gate cannot catch that one** —
 `npm run gate` runs `vite build`, never `tauri build`.
 
-### T-301b — let the user set the endpoint and the API key  ([brief](t-301b-brief.md))
+### T-301b — let the user set the endpoint and the API key  — **LANDED** ([brief](t-301b-brief.md))
 **This is the task that actually delivers the owner's decision**, and T-301 is only its
 clearing-up. Found while writing T-301's brief:
 `DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1'` is a **hardcoded constant in five places in

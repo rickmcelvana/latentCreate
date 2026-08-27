@@ -2328,3 +2328,42 @@ prefilled field still shows everyone else what the app had been assuming.
 the step renders (the real check on the `tauri.conf.json` change), the model list and
 disclosure still read correctly against a running Ollama, and the new copy appears with
 nothing listening on 11434.
+
+### 2026-08-27 (later still) -- T-301b landed; the executor built a test stack this repo does not have
+
+The LLM step now has an endpoint field and a write-only API-key field, both persisted, so
+the app can reach any OpenAI-compatible endpoint. Until today `DEFAULT_BASE_URL` was a
+constant in five places with no way to point it anywhere else -- the load-bearing half of
+the Ollama assumption, where the suggestion list T-301 removed was only the visible half.
+Frontend only: `llm_probe`/`llm_test` already took `base_url`, the three secret commands were
+already registered, `SecretKey::LlmApiKey` already whitelisted. vitest 108 -> 113.
+
+**The executor's run did not compile, and the reason is worth keeping.** My acceptance
+criterion asked for a test that the key input is never populated from the backend. It
+answered by importing `@testing-library/react` and rendering the component -- inside a `.ts`
+file, which cannot hold JSX -- against a repo that has **no DOM test stack at all**: vitest
+runs in `node`, there is no jsdom, and none of the three packages it needs are installed.
+Every existing test in this app is pure logic, by construction.
+
+The executor was not wrong about what the criterion asked for. **The criterion asked for
+something this repo cannot express**, and the honest version of it is a store selector --
+`keyField(status)` -- with two pure tests, which is also exactly what this phase file's own
+opening note demands. The write-only property itself is **guaranteed by construction**: no
+Tauri command returns a secret value, and the input reads only from local draft state. There
+is no code path a test could catch, so it is a review item, not a test. Saying that plainly
+beats a test that appears to prove it.
+
+**Second correction, and it is the same mistake twice.** I specified `not_configured` as the
+state a cleared field produces. It is not: blank means the **default**, since the prefill is
+the app's baseline and there is no useful state where the step points at nothing. As briefed,
+clearing probed null while the sync effect refilled the box -- the message read "enter an
+address" beside a filled-in address. One rule now. `not_configured` is therefore unreachable
+again and is commented as type-complete only. **That is twice in two tasks that I put
+user-facing copy into a branch nothing can reach**, which is why the corollary from the last
+entry is now written into the brief itself rather than just the log.
+
+**Outstanding, and it is the whole point of the task:** point the app at a **non-Ollama**
+endpoint -- a hosted API with a key, or LM Studio -- and confirm the list and a test call.
+That path has never been exercised in this repo's life. It is also what makes **T-302**
+measurable, since Ollama's own cloud models still go through native enrichment and so do not
+answer the question about endpoints the app cannot enrich.
