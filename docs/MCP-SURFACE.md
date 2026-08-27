@@ -76,7 +76,7 @@ Enumeration works: `nodes(action="get", name="LoraLoaderModelOnly")` returns `lo
 - `strength_model`: FLOAT, node range **−100…100**, step 0.01, default 1.0. The UI should still offer a sane musical range (≈0–2) rather than the node's full range.
 - **Entries are paths with backslashes inside subdirectories**, e.g. `ACE-Step-v1.5-ambient_dream1-LoRA\adapter_model.safetensors`.
 - **The list is dominated by training noise.** Of 95 entries on this install, ~85 are epoch checkpoints from two training runs (`LoRAgoth\checkpoint-epoch-105\adapter\...` across 20 epochs and two case-variant directories). Roughly 9 are real, usable LoRAs.
-- **`training_state.pt` files are listed but are not loadable LoRAs** — they must be filtered out or users will pick them and get failures.
+- **`training_state.pt` files are listed but are not loadable LoRAs** — they must be filtered out. **Corrected 2026-08-27 (17.6): picking one does not fail**, it silently applies no LoRA, which is worse.
 - **A single LoRA directory can contain several adapters** (`...5-LoRAs\` holds `male_vocals_`, `instrumental_`, `voc_06_inst_14___`, etc.) — the unit the user picks is a *file*, not a folder.
 - Case-duplicate directories (`LoRAgoth\` and `loragoth\`) both appear on a case-insensitive filesystem.
 - Video LoRAs for unrelated models sit in the same folder (`minimax_h3_fl2v_turbo_*`) — filtering by base model is not possible from filenames alone.
@@ -1087,3 +1087,103 @@ list, and three tools grew arguments:
 
 `discover` is the general answer to this drift: comfy-cli publishes its own contract at
 runtime, so a future re-verification can diff it rather than re-reading tool docs by hand.
+
+## 17. The LoRA splice, verified live -- 2026-08-27
+
+Method: the reference implementation for T-305b was compiled, run against the checked-in
+ACE-Step fixture, and its output submitted to the live ComfyUI v0.34.1. Everything below was
+observed. This section exists mostly because of 17.1, which is the most dangerous thing found
+on this surface so far.
+
+### 17.1 WARNING A dangling splice validates clean, runs, and produces audio
+
+Insert `LoraLoaderModelOnly` nodes and their links but leave the downstream consumer's link
+still sourced at the anchor -- one plausible mistake -- and the LoRA affects nothing. Every
+signal available to the app says the run succeeded:
+
+| | Correct splice | Dangling splice |
+|---|---|---|
+| `validate_workflow` | `valid: true`, 0 errors, 0 warnings | **identical** |
+| `converted_node_count` | 13 (from 11) | **13** |
+| `list_workflow_slots` sees the loaders | yes | **yes** |
+| `job(action="status")` | `completed`, `error: null` | **identical** |
+| Audio written | yes | **yes** |
+| LoRA applied | **yes** | **no** |
+
+ComfyUI prunes nodes that no output depends on. The orphaned loaders are converted, validated,
+carried into the prompt, and then never executed. There is no warning anywhere.
+
+**Consequence for this app:** `validate_workflow` is a schema and enum check, not a reachability
+check. A clean validation is not evidence that a graph edit took effect, and the pipeline
+command must not treat it as one. The only defence is asserting the edge topology in
+`create-core`'s own tests before the graph is ever submitted.
+
+### 17.2 `GET /history/<prompt_id>` is the authority on what actually ran
+
+The local ComfyUI's HTTP history returns the **API-format prompt as executed**, which is the
+only surface found that distinguishes 17.1's two cases:
+
+```
+correct   3.model=["78",0]  78.model=["112",0]  112.model=["111",0]  111.model=["104",0]
+dangling  3.model=["78",0]  78.model=["104",0]  112.model=["111",0]  111.model=["104",0]
+```
+
+comfy-mcp exposes no equivalent -- `job(action="status")` returns outputs, and comfy-cli's job
+state file (`%LOCALAPPDATA%\comfy-cli\jobs\<id>.json`) records the workflow *path*, not the
+submitted prompt. Use the HTTP endpoint directly when a future question is "did the engine
+really see the edit".
+
+### 17.3 WARNING ACE-Step is not reproducible run-to-run, even with a fixed seed
+
+Two runs of the **unmodified** template, identical seed (12345, fed to both `94.seed` and
+`3.seed` through `PrimitiveInt` 109), sampling forced greedy (`94.temperature: 0`,
+`94.top_p: 1`, `94.top_k: 1`), 10-second duration:
+
+```
+run 1  296541 bytes  sha256 a9625ebbfa09c656...
+run 2  296542 bytes  sha256 189e1d55df9c5d32...
+98.1% of overlapping bytes differ
+```
+
+Not an encoder artefact -- MP3 encoding of identical PCM is deterministic. GPU reduction order
+varies run to run and 50 LM-sampling steps plus 8 diffusion steps amplify it.
+
+**Consequences.** (a) No test and no manual check may rest on two runs matching; that route
+was tried for the LoRA splice and had to be abandoned for 17.2. (b) It bears on what
+`provenance` can honestly promise: the recipe reproduces the *inputs*, not the waveform. Worth
+saying plainly wherever the app implies a seed reproduces a track.
+
+### 17.4 `get_logs` is stale when the user launches ComfyUI themselves
+
+`get_logs` reads comfy-cli's captured stdout, which only exists when comfy-cli launched the
+server in the background. The owner launches ComfyUI himself, so the file is a leftover: during
+this session it returned a plausible-looking run whose `mtime` predated every actual run by
+nine hours, and it did not change across four submissions.
+
+**Always check `mtime` before believing `get_logs`.** It fails by returning stale content, not
+by erroring -- the failure mode this project keeps finding.
+
+### 17.5 Spliced loader widgets become ordinary slots
+
+After the splice, `list_workflow_slots` reports `111.lora_name`, `111.strength_model`,
+`112.lora_name`, `112.strength_model` alongside the template's own. So changing a LoRA's
+strength on an already-spliced workflow is a `set_workflow_slot` call, not a re-splice. (It
+reports them for the dangling graph too -- see 17.1.)
+
+### 17.6 CORRECTION 4's claim that `training_state.pt` causes failures
+
+4 says these files "must be filtered out or users will pick them and get failures". A run with
+`loragoth\final\training_state.pt` as a spliced loader's `lora_name` **completed successfully**
+-- ComfyUI warns on unmatched LoRA keys and continues rather than erroring.
+
+The design consequence in 4 is unchanged and if anything stronger: these entries still must be
+filtered out of the picker, because choosing one now yields a track that silently has no LoRA
+applied rather than an error the user can see.
+
+### 17.7 `LoraLoaderModelOnly` schema, re-read
+
+`model` (MODEL, linked), `lora_name` (COMBO, 53 choices, confirming 16.5), `strength_model`
+(FLOAT, -100..100, step 0.01, default 1.0). One MODEL output. Not deprecated.
+
+**`widgets_values` is `[lora_name, strength_model]`** -- the non-linked inputs in declaration
+order, the same positional rule as 16.1's `format`.

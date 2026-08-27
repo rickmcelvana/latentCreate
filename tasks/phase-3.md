@@ -219,10 +219,14 @@ pair exceeds the ~400-line run limit:
   node class** -- MiniMax ships the modern node already set to `mp3`. Landed with the three
   briefed mutations killed and two more the review added: the whole-document comparison
   (a version that deleted `links` had passed) and a second save node.
-- **T-305b — the LoRA splice.** Inserting `LoraLoaderModelOnly` nodes and rewiring the MODEL
-  chain. In the ACE-Step fixture that chain is `104 -> 78 -> 3` with the profile's
-  `attach_after` at `104`, so the splice goes between 104 and 78 and rewires link `260`;
-  fresh ids come from `last_node_id` 110 and `last_link_id` 265. **Next up.**
+- **T-305b — the LoRA splice** ([brief](t-305b-brief.md)). Inserting `LoraLoaderModelOnly`
+  nodes and rewiring the MODEL chain. In the ACE-Step fixture that chain is `104 -> 78 -> 3`
+  with the profile's `attach_after` at `104`, so the splice goes between 104 and 78 and
+  re-sources link `260`; fresh ids come from `last_node_id` 110 and `last_link_id` 265.
+  ⚠ **The reason this brief is long:** a splice that inserts the loaders but leaves the
+  consumer link at the anchor **validates clean, runs, and writes audio with no LoRA
+  applied** (MCP-SURFACE 17.1, produced and run live). Nothing downstream catches it, so
+  the unit tests must assert the MODEL chain by traversal. **Briefed, ready to run.**
 
 **Fixtures are the real captured templates**, committed to `testdata/` — not hand-written
 JSON. This is the T-203 lesson generalised: a rule about model output has to run against model

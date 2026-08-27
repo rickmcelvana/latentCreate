@@ -289,6 +289,10 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   confusion the proof-of-life decision exists to prevent. Recorded because this repo's habit
   is to delete defensive code that never fires; this one fired the first time it could.
 
+- **2026-08-27 -- a graph edit that silently does nothing is the failure mode this app has to design against, and validation will not catch it.** Building T-305b's brief produced a LoRA splice with one plausible mistake -- loader nodes inserted, consumer link left sourced at the anchor -- and ran it live. `validate_workflow` returned `valid: true` with zero errors, the converted node count was identical to the correct splice, the job reported `completed` with `error: null`, and audio was written. **The user would have got a track with none of their LoRAs applied and nothing anywhere saying so.** ComfyUI prunes unreachable nodes without complaint. The standing consequence: **`validate_workflow` is a schema and enum check, not a reachability check**, and no part of the pipeline may treat a clean validation as evidence that an edit took effect. Reachability is asserted in `create-core`'s own tests, by traversing the edges, before a graph is ever submitted. Evidence: [docs/MCP-SURFACE.md 17.1](docs/MCP-SURFACE.md).
+- **2026-08-27 -- a seed does not reproduce a track, and the app must not imply it does.** Two runs of the unmodified ACE-Step template with the same seed and sampling forced greedy differ in **98.1% of their bytes**. GPU reduction order is not deterministic and 58 sampling steps amplify it. This was found while trying to prove the LoRA splice worked by comparing audio -- a method that had to be abandoned. It constrains two things: **no test or manual check may rest on two runs matching**, and **`provenance` reproduces the inputs, not the waveform**. Wherever the UI shows a seed, it is a recipe, not a guarantee. Evidence: [docs/MCP-SURFACE.md 17.3](docs/MCP-SURFACE.md).
+- **2026-08-27 -- `GET /history/<prompt_id>` is the project's answer to "what did the engine actually run".** It returns the API-format prompt as executed and was the only surface found that could tell a correct splice from a dangling one. comfy-mcp exposes no equivalent. Second entry in OQ-3's evidence column after `/object_info`, and the same shape: a read-only HTTP lookup that answers a question the MCP surface cannot. Still not a runtime dependency -- both are verification tools -- but the pipeline should be written knowing they exist.
+
 ## Open questions (owner to decide)
 - ~~**OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?**~~ **RESOLVED
   2026-08-27 -- the question is withdrawn, not answered.** The owner's decision is that the
@@ -2584,3 +2588,45 @@ each have one. Third and fourth holes mutation testing has found (T-110, T-304 b
 
 Also this run: the eighth `cargo fmt` miss and a `clippy::needless_lifetimes` failure, both in
 the executor's own test helpers, neither in the briefed reference code.
+
+### 2026-08-27 (later still) -- T-305b briefed; the splice was run live, and the near-miss was the finding
+
+`tasks/t-305b-brief.md` is ready. The reference implementation was compiled, run against the
+ACE-Step fixture, and its output **submitted to the live ComfyUI** -- `valid: true`,
+`converted_node_count` 11 -> 13, completed in ~19 s, audio written.
+
+**Then the near-miss, which is the real output of this session.** I built the same splice with
+one plausible mistake -- loaders inserted, consumer link left sourced at the anchor -- expecting
+validation to reject it. It did not. `valid: true`, zero errors, same converted node count, job
+`completed`, `error: null`, audio written, **and not one byte of it touched by either LoRA**.
+ComfyUI prunes unreachable nodes silently. Recorded as MCP-SURFACE 17.1 and as a standing
+decision, because it generalises past LoRAs to every graph edit the pipeline will make.
+
+Getting to that answer cost three dead ends, each worth not repeating:
+
+1. **Compare the audio.** Two runs of the *unmodified* template, same seed, sampling forced
+   greedy, differ in 98.1% of their bytes. ACE-Step is not reproducible run-to-run at all
+   (17.3) -- which is now a constraint on what `provenance` may claim.
+2. **Read the engine log.** `get_logs` returned a plausible run with `0 patches attached`. Its
+   `mtime` predated every submission by nine hours: comfy-cli only captures a server it
+   launched itself, and the owner launches his own (17.4). I nearly reported that stale line as
+   evidence the LoRA had not applied.
+3. **Poison the LoRA.** Point the splice at a `training_state.pt`, expecting a load failure to
+   prove the node executes. It succeeded -- ComfyUI warns on unmatched keys and continues. That
+   corrects MCP-SURFACE 4, which claimed those files cause failures (17.6). The design
+   consequence is stronger, not weaker: picking one now yields a silent no-op.
+
+What settled it was `GET /history/<prompt_id>`, the executed API prompt. Correct:
+`78.model=["112",0]`. Dangling: `78.model=["104",0]`, with 111 and 112 present, correctly
+configured, and feeding nothing.
+
+**Why this took a long session and was worth it:** three of the four things I tried to verify
+with returned a confident, wrong-shaped answer -- a clean validation, a stale log, a successful
+poison run. Any one of them, taken at face value, produces a brief that ships the bug. The
+brief now leads with the comparison table and requires the chain test as a traversal, because
+'the loaders are present with the right names' is true of the broken graph.
+
+Also settled while in there: `widgets_values` is `[lora_name, strength_model]` (live schema),
+spliced loaders become ordinary addressable slots so T-308 can change a strength without
+re-splicing (17.5), and `last_node_id` can exceed the top-level maximum -- MiniMax declares 43
+against a top-level max of 40 -- so id allocation takes the max of declared and present.
