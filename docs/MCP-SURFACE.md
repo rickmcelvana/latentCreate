@@ -1032,17 +1032,28 @@ exists to prevent. The condition is the **format widget value**, not the node ty
   **the same three `COMFY_MATCHTYPE_V3` warnings**. The profile's `slot_overrides` fix is
   still correct and still needed.
 
-### 16.5 The LoRA list changed -- 95 entries to 53
+### 16.5 The LoRA list -- confirmed at 53 entries, and 4's numbers are the stale ones
 
-Re-read from `nodes(action="get", name="LoraLoaderModelOnly")`. The design consequences in 4
-all stand, but the numbers there are stale:
+Re-read from `nodes(action="get", name="LoraLoaderModelOnly")`: **53 entries**, unchanged from
+what **12.2 already recorded on 2026-08-24**. This pass confirms that count rather than
+discovering it -- the drop from 4's 95 happened before 2026-08-24, not in this window, and
+12.2 already said so ("this box's model set churns"). 4's numbers are the outlier; treat 12.2
+and 16.5 as the current pair.
 
-| | 2026-08-23 | 2026-08-27 |
-|---|---|---|
-| Total entries | 95 | **53** |
-| Case-variant dirs (`LoRAgoth` + `loragoth`) | both present | **only `loragoth`** |
-| `training_state.pt` non-adapters | present | **21, still listed** |
-| Distinct usable adapters | ~9 | **~10** (9 ACE-Step + `loragoth/final`) |
+| | 4 (2026-08-23) | 12.2 (2026-08-24) | here (2026-08-27) |
+|---|---|---|---|
+| Total entries | 95 | 53 | **53** |
+| Case-variant dirs (`LoRAgoth` + `loragoth`) | both present | only `loragoth` | **only `loragoth`** |
+| `training_state.pt` non-adapters | present | present | **21, still listed** |
+| Distinct usable adapters | ~9 | 9 | **~10** (9 ACE-Step + `loragoth/final`) |
+
+WARNING **The 95-entry list was never captured as data** -- 4 describes it in prose and
+nothing in `testdata/` holds it. So the case-variant duplicate that drove the dedupe
+requirement **cannot be used as a fixture**: the only record of it is 4's sentence. A dedupe
+test therefore needs a case-variant pair added to the fixture deliberately and labelled as
+synthetic, which is a weaker footing than the rest of the picker rules stand on. The
+requirement itself stays -- the filesystem that produced it is unchanged -- but its evidence
+is a description, not a capture.
 
 Still true and still driving the picker design: entries are **paths with backslashes**,
 `training_state.pt` files are listed but not loadable, one directory
@@ -1051,9 +1062,9 @@ checkpoints from one training run dominate the list, and unrelated **video** LoR
 (`minimax_h3_fl2v_turbo_*`) sit in the same folder. `strength_model` is unchanged:
 FLOAT, -100..100, step 0.01, default 1.0.
 
-**The case-variant duplicate is gone from this install**, so that specific evidence no longer
-exists -- but the requirement stays, because the filesystem that produced it is unchanged.
-The honest statement is "seen once on this machine, not currently present".
+**The case-variant duplicate is gone from this install** and was already gone by 12.2. The
+honest statement is "seen once on 2026-08-23, described but never captured, not present
+since".
 
 ### 16.6 Tool-surface drift since 1
 
