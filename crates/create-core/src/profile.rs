@@ -26,8 +26,8 @@ pub enum ModelKind {
 /// One user-facing control, bound to the slot address(es) it drives.
 ///
 /// A single control may drive several slots: ACE-Step 1.5 turbo carries duration in
-/// both `94.duration` and `98.seconds`, and separate planner/sampler seeds in
-/// `94.seed` and `3.seed`. The UI shows one control; the pipeline fans it out.
+/// both `94.duration` and `98.seconds`. The UI shows one control; the pipeline
+/// fans it out.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputSpec {
@@ -362,9 +362,7 @@ mod tests {
         let seed = profile.inputs.get("seed").expect("seed input");
         match seed {
             InputSpec::Seed { slots } => {
-                assert_eq!(slots.len(), 2);
-                assert!(slots.contains(&SlotAddress("94.seed".to_string())));
-                assert!(slots.contains(&SlotAddress("3.seed".to_string())));
+                assert_eq!(slots, &[SlotAddress("109.value".to_string())]);
             }
             other => panic!("seed was not Seed: {:?}", other),
         }
@@ -543,6 +541,7 @@ mod tests {
     const VERIFIED_ACE_STEP_SLOTS: &[&str] = &[
         "107.filename_prefix",
         "107.quality",
+        "109.value",
         "3.cfg",
         "3.denoise",
         "3.sampler_name",
@@ -578,7 +577,7 @@ mod tests {
             profile.slot_addresses().into_iter().map(|a| a.0).collect();
 
         let expected: BTreeSet<String> = [
-            "3.seed",
+            "109.value",
             "3.steps",
             "78.shift",
             "94.bpm",
@@ -588,7 +587,6 @@ mod tests {
             "94.language",
             "94.lyrics",
             "94.min_p",
-            "94.seed",
             "94.tags",
             "94.temperature",
             "94.timesignature",

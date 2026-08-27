@@ -48,7 +48,7 @@
       "step": 1.0,
       "label": "Duration (s)"
     },
-    "seed": { "type": "seed", "slots": ["94.seed", "3.seed"] },
+    "seed": { "type": "seed", "slots": ["109.value"] },
     "bpm": {
       "type": "int",
       "slots": ["94.bpm"],

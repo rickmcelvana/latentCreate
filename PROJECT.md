@@ -2761,3 +2761,30 @@ model handles it badly. `whole` will not survive the crate getting bigger.
 guessing -- the "If unclear, do not guess" clause earning its place twice in one task. The
 failure mode to watch is the opposite one, where a brief is *just* answerable enough that the
 executor proceeds on a wrong assumption.
+
+### 2026-08-27 (later still) -- T-306a landed on the third attempt; the seed bug is closed
+
+`--edit-format diff` worked: small targeted hunks, `graph.rs` untouched, and the run completed
+instead of stalling. `create-core` 118 -> 126 tests, and the shipped ACE-Step profile now writes
+its seed to `109.value`, the one address that reaches the sampler.
+
+**One miss, and it was in the site list I wrote.** §4 item 5 said the expected-address set swaps
+`3.seed` and `94.seed` for `109.value`; the executor swapped `3.seed` and left `94.seed`. The
+gate caught it -- one failing test, one line to fix. Worth noting the shape: the instruction
+named two addresses in one sentence and only one got acted on. Naming each edit on its own line
+would have been harder to half-apply.
+
+**All six briefed mutations killed.** Two more from review:
+
+- Reading the link's **target** node type instead of its source -- caught.
+- **`audit_slots` returning an empty audit** -- caught by four tests, but *not* by
+  `test_no_inert_slots_in_shipped_ace_step_profile`, the test this whole task exists for. An
+  empty audit has no inert slots, so the headline assertion passed on a function that did
+  nothing. Added vacuity guards -- addresses non-empty, `unchecked` empty, `link_fed` non-empty
+  -- and re-ran the mutation to confirm it now bites. Same fix as T-305a's `assert_ne!`, and the
+  same lesson: an assertion of the form "nothing bad was found" is only as good as the proof
+  that something was looked at.
+
+Also moved the two `to_slot_value` tests from `audit.rs` to `generation.rs`, beside the method
+they cover. Every module in this crate keeps its own tests; a test that lives one module away
+from its subject is one the next editor will not see.

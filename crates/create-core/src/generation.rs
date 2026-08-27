@@ -64,6 +64,26 @@ pub enum ResolveError {
 }
 
 impl InputValue {
+    /// The bare JSON value a slot write carries.
+    ///
+    /// **Not `serde_json::to_value(self)`.** `InputValue` is adjacently tagged, so
+    /// that yields `{"type":"seed","value":42}` -- an object where the slot wants a
+    /// number. comfy-mcp rejects it with `[workflow_slot_invalid]` (`expected INT,
+    /// got dict`), for STRING slots too, so the mistake fails closed rather than
+    /// corrupting a run; it still fails every generation.
+    ///
+    /// The tag exists so a value survives the round trip through provenance
+    /// (T-003); it must be dropped on the way to the wire.
+    pub fn to_slot_value(&self) -> serde_json::Value {
+        match self {
+            InputValue::Text(s) | InputValue::Enum(s) => serde_json::Value::String(s.clone()),
+            InputValue::Int(i) => serde_json::Value::from(*i),
+            InputValue::Float(f) => serde_json::Value::from(*f),
+            InputValue::Seed(s) => serde_json::Value::from(*s),
+            InputValue::Bool(b) => serde_json::Value::Bool(*b),
+        }
+    }
+
     /// The variant name, for error messages.
     fn kind(&self) -> &'static str {
         match self {
@@ -446,7 +466,46 @@ mod tests {
     }
 
     #[test]
-    fn test_seed_reaches_both_slots_and_u64_max_survives() {
+    fn test_to_slot_value_per_variant() {
+        assert_eq!(
+            InputValue::Text("x".to_string()).to_slot_value(),
+            serde_json::Value::String("x".to_string())
+        );
+        assert_eq!(
+            InputValue::Enum("x".to_string()).to_slot_value(),
+            serde_json::Value::String("x".to_string())
+        );
+        assert_eq!(
+            InputValue::Int(12).to_slot_value(),
+            serde_json::Value::from(12)
+        );
+        assert_eq!(
+            InputValue::Float(1.5).to_slot_value(),
+            serde_json::Value::from(1.5)
+        );
+        assert_eq!(
+            InputValue::Bool(true).to_slot_value(),
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(
+            InputValue::Seed(u64::MAX).to_slot_value(),
+            serde_json::Value::from(u64::MAX)
+        );
+    }
+
+    #[test]
+    fn test_to_slot_value_is_not_serde_to_value() {
+        let value = InputValue::Seed(42);
+        let serde_value = serde_json::to_value(&value).unwrap();
+        assert!(
+            serde_value.get("type").is_some(),
+            "serde must produce the adjacent tag"
+        );
+        assert_eq!(value.to_slot_value(), serde_json::Value::from(42));
+    }
+
+    #[test]
+    fn test_seed_reaches_its_slot_and_u64_max_survives() {
         let profile = ace_step();
         let mut inputs = BTreeMap::new();
         inputs.insert("seed".to_string(), InputValue::Seed(u64::MAX));
@@ -459,13 +518,13 @@ mod tests {
 
         let resolved = profile.resolve_slots(&spec).unwrap();
         assert_eq!(
-            resolved.get(&SlotAddress("94.seed".to_string())),
+            resolved.get(&SlotAddress("109.value".to_string())),
             Some(&InputValue::Seed(u64::MAX))
         );
-        assert_eq!(
-            resolved.get(&SlotAddress("3.seed".to_string())),
-            Some(&InputValue::Seed(u64::MAX))
-        );
+        // The graph fans the seed out to both sampler and planner; the profile
+        // no longer lists both addresses. u64::MAX still survives resolution
+        // unchanged, but the live PrimitiveInt slot tops out at i64::MAX and
+        // validate_workflow rejects anything above it (MCP-SURFACE 18.3/18.4).
     }
 
     #[test]
