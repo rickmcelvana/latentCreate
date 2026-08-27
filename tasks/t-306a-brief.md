@@ -4,6 +4,7 @@
 **Files to modify:**
 - `crates/create-core/src/generation.rs`
 - `crates/create-core/src/graph.rs`
+- `crates/create-core/src/profile.rs` — **tests and one doc comment only**, see §4
 - `profiles/ace-step-1.5-turbo.json`
 
 **T-306 is split.** This half is the pure seam between T-304's resolved slots and the wire, and
@@ -120,6 +121,62 @@ slots**, and the two `PrimitiveNode`-fed addresses are still correctly reported 
 ⚠ **Do not "fix" `duration_s` as well.** `94.duration` and `98.seconds` are link-fed and land
 correctly, per the table above. Changing them would be a regression driven by a
 pattern-match on the word "link".
+
+### 4. What the profile change breaks, and how each site changes
+
+⚠ **Corrected after the first run stopped here.** The brief's original file list was wrong: it
+named three files and the seed change reaches **five sites** — one in `generation.rs`, which was
+listed, and four in `profile.rs`, which was not. Every one of them is enumerated below, so no
+file has to be requested mid-run.
+
+These are not string swaps. Four of the five encode a *claim* about the template, and the claim
+is what changed — a site edited to make the compiler happy, without the reason, leaves the next
+reader believing the old fan-out story.
+
+**`crates/create-core/src/generation.rs`**
+
+1. `test_seed_reaches_both_slots_and_u64_max_survives` asserts the seed lands in `94.seed` **and**
+   `3.seed`. Rename it — the seed no longer fans out — and assert `109.value` instead. **Keep the
+   `u64::MAX` half**: it is the T-003 guard and it is still exactly right here, because
+   `resolve_slots` does not range-check and `InputSpec::Seed` declares no range. Add a line saying
+   the live `109.value` maximum is `i64::MAX` and that `validate_workflow` is what rejects an
+   over-range seed (MCP-SURFACE §18.3/§18.4), so the test does not read as a contradiction.
+   `test_duration_reaches_both_slots...` is untouched: duration **is** still a fan-out, and it is
+   now the only one, which makes it the load-bearing test for that behaviour.
+
+**`crates/create-core/src/profile.rs`**
+
+2. The `InputSpec` doc comment (~line 30) uses the seed as its fan-out example: *"separate
+   planner/sampler seeds in `94.seed` and `3.seed`"*. That example is now false. Drop the seed
+   clause and keep duration, which is still a genuine one-control-many-slots case.
+3. `test_fixture_matches_verified_slot_addresses` — the `seed` arm expects two addresses. It
+   becomes the single `109.value`. **Leave the `duration_s` arm exactly as it is**; it is the
+   contrast case and it still passes.
+4. `VERIFIED_ACE_STEP_SLOTS` — **add `"109.value"`. Do not remove `3.seed` or `94.seed`.** That
+   constant records what `list_workflow_slots` returned for the template, not what the profile
+   drives; all three addresses genuinely exist as slots. `109.value` is confirmed present in the
+   live list. Without this addition,
+   `test_shipped_ace_step_addresses_all_exist_in_the_verified_template` fails — a third breakage
+   the first run did not spot.
+5. `test_slot_addresses_walk_groups_and_skip_unsupported` — the exact expected set swaps
+   `"3.seed"` and `"94.seed"` for `"109.value"`. This test is about walking groups; a minimal
+   edit is right here.
+
+Nothing outside these two files and the profile JSON references the old addresses — checked
+across `crates/`, `src-tauri/`, `app/` and `profiles/`.
+
+### 5. MiniMax has the same shape and is **out of scope**
+
+For the record, so a green T-306a is not misread as "the profiles are verified": the MiniMax
+profile's `seed` names `37/13.seed`, `37/9.seed` and `37/38.seed`, and **all three are link-fed**
+— the first two from `SeedNode` 38, and `38.seed` itself from the subgraph's promoted input
+proxy (`origin_id: -10`). Its subgraph also stores links as **objects**
+(`{"id", "origin_id", "target_id", ...}`), not the top-level six-element arrays.
+
+`audit_slots` reports all three as `unchecked`, which is correct and honest: this task does not
+resolve subgraph interiors. **Do not change the MiniMax profile and do not extend the audit to
+reach into subgraphs.** Settling it needs a MiniMax generation and a read of
+`GET /history/<prompt_id>`, which is its own task.
 
 ## Reference implementation
 
@@ -313,7 +370,12 @@ Fixtures are the real `testdata/workflows/ace_step_1_5_xl_turbo.json` and the re
 - [ ] An address naming a node that is not in the graph lands in `unchecked`.
 - [ ] A link whose source node is missing from the graph yields `source_type: None` and
       `is_inert() == true` — unknown provenance is treated as inert, because the link exists.
-- [ ] `npm run gate` clean; no changes outside the three listed files.
+- [ ] The five sites in §4 are updated, and the two doc/test sites that explained the seed
+      fan-out now say what is true rather than merely compiling.
+- [ ] `VERIFIED_ACE_STEP_SLOTS` still contains `3.seed` and `94.seed` **and** gains
+      `109.value`. Removing the first two would be wrong: the constant records the template's
+      slots, not the profile's choices.
+- [ ] `npm run gate` clean; no changes outside the four listed files.
 
 **Mutation check before you call it done.** Each must turn the suite red:
 
@@ -324,6 +386,9 @@ Fixtures are the real `testdata/workflows/ace_step_1_5_xl_turbo.json` and the re
 4. `audit_slots` pushes nothing to `unchecked` for a subgraph address — the silent skip.
 5. Revert §3's profile change. The regression test must fail; if it does not, it is not
       testing the profile.
+6. Remove `"109.value"` from `VERIFIED_ACE_STEP_SLOTS`.
+      `test_shipped_ace_step_addresses_all_exist_in_the_verified_template` must fail — that test
+      is the typo guard for every profile address and it has to still bite.
 
 ## Out of scope
 
@@ -342,9 +407,9 @@ Do not guess. Output a numbered list of questions and stop.
 ## Aider launch
 
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read docs/MCP-SURFACE.md --read tasks/t-306a-brief.md --read crates/create-core/src/profile.rs --read testdata/workflows/README.md --read profiles/minimax-music-3.json --file crates/create-core/src/generation.rs --file crates/create-core/src/graph.rs --file profiles/ace-step-1.5-turbo.json
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read docs/MCP-SURFACE.md --read tasks/t-306a-brief.md --read testdata/workflows/README.md --read profiles/minimax-music-3.json --file crates/create-core/src/generation.rs --file crates/create-core/src/graph.rs --file crates/create-core/src/profile.rs --file profiles/ace-step-1.5-turbo.json
 ```
 
-`profile.rs` is `--read` for `SlotAddress`/`ModelProfile`; the MiniMax profile is `--read`
-because one acceptance criterion uses its real `slot_overrides` address and the executor should
-not invent one.
+`profile.rs` is now `--file`, not `--read`: the seed change breaks four sites in it (§4). The
+MiniMax profile is `--read` because one acceptance criterion uses its real `slot_overrides`
+address and the executor should not invent one.

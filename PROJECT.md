@@ -341,6 +341,16 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   files appear to `search_models` with **no ComfyUI restart**, so the post-install re-check is
   enough.
 ## Backlog (accepted, not yet scheduled)
+
+- **Verify MiniMax's seed mapping the way ACE-Step's was verified.** All three addresses its
+  profile names are link-fed (MCP-SURFACE 18.5); `audit_slots` reports them `unchecked` because
+  they are subgraph interiors. Needs one MiniMax generation and a read of
+  `GET /history/<prompt_id>`. Until then MiniMax's seed is unverified, not working.
+- **Give `InputSpec::Seed` a declared range.** The ACE-Step template's seed goes through a
+  `PrimitiveInt` capped at `i64::MAX`, while `KSampler.seed` accepts the full `u64`
+  (MCP-SURFACE 18.4). Nothing in the profile schema can express that today; validation catches
+  an over-range seed, so this is a UI-quality issue rather than a correctness one.
+
 - **Click the Install button once, on a machine missing a model.** `models_install` and
   `models_progress` are the only Tauri commands in the wizard never exercised through the UI:
   the 18.5 GiB install ran the same `download_model` calls they wrap, but the click-through

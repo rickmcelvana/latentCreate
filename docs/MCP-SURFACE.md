@@ -1289,3 +1289,21 @@ Because the ACE-Step template drives its seeds from a `PrimitiveInt`, the usable
 that template is `i64::MAX`, not `u64::MAX`. `InputSpec::Seed` declares no range, so nothing in
 the profile schema expresses this yet -- an open question, not a T-306 problem, since validation
 rejects an over-range seed before it costs anything.
+
+### 18.5 OPEN MiniMax's three seed addresses are all link-fed too
+
+The MiniMax profile's `seed` names `37/13.seed`, `37/9.seed` and `37/38.seed`. In the fixture's
+subgraph, `13.seed` and `9.seed` are driven by links 52/53 from **`SeedNode` 38**, and `38.seed`
+is driven by link 54 from `origin_id: -10` -- the subgraph's promoted input proxy, not a node.
+
+So the same shape as 18.1, one level down, and `list_workflow_slots` again lists all three with
+current values and no hint that two are driven by the third.
+
+**Not yet settled**, and deliberately so: `audit_slots` reports subgraph-interior addresses as
+`unchecked` rather than guessing, and deciding which address actually reaches the sampler needs
+a MiniMax run and a read of `GET /history/<prompt_id>` (17.2). Until then, treat MiniMax's seed
+as unverified rather than working.
+
+Structural note for whoever does it: **subgraph links are objects**
+(`{"id", "origin_id", "origin_slot", "target_id", "target_slot", "type"}`), not the
+six-element arrays the top-level graph uses. Code that walks links has to handle both.
