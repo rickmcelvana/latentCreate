@@ -504,3 +504,52 @@ prompt lists them, never numbered. **Numbering tolerance in the lint is therefor
 user's own text, not the model's** -- the shipped ACE-Step template writes `[Verse 1]`
 (MCP-SURFACE 15.2), so a lyric pasted from there, or typed by a songwriter out of habit,
 is the case that needs it.
+
+## 13. The first non-Ollama endpoint -- observed 2026-08-27
+
+Every capture above section 12 was taken against Ollama, local or its cloud tags. T-301b gave
+the wizard an endpoint field, and the first hosted OpenAI-compatible endpoint was connected
+the same day. **This is a producer click-through, not an instrumented run** -- no timings or
+token counts were taken, so what follows is recorded as observation, and section 13.1 is the
+measurement it argues for.
+
+Endpoint: a hosted OpenAI-compatible API (provider not yet recorded here). Model id
+`qwen3.8-flash`. What happened:
+
+- **`/v1/models` listed the catalogue and the test call returned.** The step's whole path
+  works against something that is not Ollama, which had never been exercised before.
+- **The model reasoned at length**, and the reasoning was rendered as status text above the
+  lyric editor -- the proof-of-life behaviour from the 2026-08-25 decision, working as
+  intended against a provider it was never tested on.
+- **The lyrics arrived clean in the editor.** No reasoning text leaked into the document.
+
+**The typed-delta split held against a second provider, and that is the finding.** `ChatDelta`
+separates `Content` from `Reasoning` (section 2), and both spellings are read because clients
+that know only one have shipped the bug of dropping the other (section 3). Until now that was
+a rule justified by one vendor's wire format. A different vendor's stream fed the same code
+path and the user's document received only content. **Which spelling this endpoint used was
+not captured** -- it works either way, which is the point, but 13.1 should record it.
+
+### 13.1 What this does NOT answer, and what to measure
+
+`reasoning_effort: "none"` is sent **only where `thinks` is true**, and `thinks` exists only
+where Ollama's native enrichment answered (12.2). This endpoint cannot be enriched, so **the
+field was never sent** -- the long think the producer sat through is the unsuppressed default,
+which is exactly the behaviour section 12.1 measured at 44 seconds before the first content
+delta on Ollama.
+
+So this run confirms the **premise** of the open question and answers none of it. The
+measurement still to take, now that a reachable endpoint exists:
+
+1. Send `reasoning_effort: "none"` to this endpoint. Is it **honoured** (the Ollama result),
+   **ignored** (like Ollama's own `think: false`, 12.2), or an **error** the app must not
+   provoke? All three are live possibilities and they imply different rules.
+2. Capture which spelling -- `reasoning` or `reasoning_content` -- the stream uses, and
+   whether a usage frame arrives (section 5).
+3. Time the first content delta with and without the field, the way 12.1 and 12.3 did, so the
+   numbers are comparable rather than impressionistic.
+
+Until that is done the current rule stands unchanged: **the field goes only to endpoints the
+app has enriched**, which keeps the unverified path untaken rather than defended. The cost of
+that conservatism is now known and visible -- a user on a hosted reasoning model waits, and
+watches the model think while they do.

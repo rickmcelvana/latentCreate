@@ -2367,3 +2367,33 @@ endpoint -- a hosted API with a key, or LM Studio -- and confirm the list and a 
 That path has never been exercised in this repo's life. It is also what makes **T-302**
 measurable, since Ollama's own cloud models still go through native enrichment and so do not
 answer the question about endpoints the app cannot enrich.
+
+### 2026-08-27 (later still) -- T-301b verified live: the app reached a non-Ollama endpoint
+
+The click-through passed, including **the item that had never been exercised in this repo's
+life**: a hosted OpenAI-compatible API listed its catalogue and returned a good test call.
+The API-key badge survives a restart and offers Remove, and the key never reappears in the
+input. T-301b is done.
+
+**A lyric run on `qwen3.8-flash` produced the finding, and it is not the one the click-through
+was looking for.** The model reasoned at length; the reasoning rendered as status text above
+the editor; the lyrics then arrived clean in the box with **no reasoning text in the
+document**. That is `ChatDelta`'s `Content`/`Reasoning` split (T-108) holding against a
+**second provider's wire format** -- until today the rule that both spellings are read, and
+that only `Content` may reach the user's document, was justified by one vendor's stream.
+Another vendor's stream fed the same code and the document received only content.
+
+It also confirms **T-302's premise and answers none of it.** `reasoning_effort: "none"` is
+sent only where `thinks` is true, and `thinks` comes only from Ollama's native enrichment --
+so on this endpoint the field was never sent, and the long think the producer sat through is
+the unsuppressed default. The conservatism is now visibly costing something. What is still
+unmeasured: whether that endpoint honours the field, ignores it the way Ollama ignores its own
+`think: false`, or errors on it; which spelling its stream uses; and the first-content-delta
+timing with and without. Recorded as [LLM-SURFACE 13](docs/LLM-SURFACE.md), with 13.1 naming
+the three measurements. **T-302 is now cheap to run** and should go next, while the endpoint
+is configured.
+
+Open and small: the streamed reasoning renders between the approval badge and the lyric box,
+which is where T-208 put it. With a model that thinks *a lot* that block can be long, and
+nobody has yet looked at whether it should cap or scroll. Not reported as a problem -- noted
+so it is looked at deliberately rather than discovered.
