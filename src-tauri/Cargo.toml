@@ -37,3 +37,8 @@ llm-bridge = { path = "../crates/llm-bridge" }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tempfile = "3"
 tokio = { version = "1.53", features = ["macros", "rt"] }
+
+# The fake MCP peer. Dev-only: the same path dependency as above, with the test
+# transport switched on, so the pipeline's call sequence can be asserted with
+# no ComfyUI running.
+mcp-bridge = { path = "../crates/mcp-bridge", features = ["test-support"] }

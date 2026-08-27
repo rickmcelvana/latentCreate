@@ -60,6 +60,21 @@ impl ComfyState {
         *self.comfy.write().await = Some(Arc::clone(&comfy));
         comfy
     }
+
+    /// Start the lifecycle pump for a job ComfyUI has already accepted.
+    ///
+    /// The one way a submitted job becomes `job://` events. Every submitter
+    /// calls this rather than spawning its own monitor -- a second lifecycle
+    /// would emit a second set of events for the same prompt id, and
+    /// [`cancel_job`] would only know about one of them.
+    pub(crate) fn pump(&self, app: AppHandle, comfy: Arc<LocalComfy>, id: String) {
+        let jobs = Arc::clone(&self.jobs);
+        let handle = async_runtime::spawn(monitor_job(app, comfy, id.clone(), jobs));
+        self.jobs
+            .lock()
+            .expect("jobs lock poisoned")
+            .insert(id, handle.inner().abort_handle());
+    }
 }
 
 /// Connect to `comfy-mcp`, replacing any existing connection.
@@ -98,16 +113,7 @@ pub async fn run_workflow(
         .await
         .map_err(|e| e.to_string())?;
     let id = run.prompt_id.clone();
-
-    let jobs = Arc::clone(&state.jobs);
-    let handle = async_runtime::spawn(monitor_job(app, comfy, id.clone(), jobs));
-    let abort = handle.inner().abort_handle();
-    state
-        .jobs
-        .lock()
-        .expect("jobs lock poisoned")
-        .insert(id.clone(), abort);
-
+    state.pump(app, comfy, id.clone());
     Ok(id)
 }
 

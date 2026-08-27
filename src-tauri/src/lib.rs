@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 mod comfy;
+mod generate;
 mod install;
 mod jobs;
 mod llm;
@@ -59,6 +60,7 @@ pub fn run() {
             comfy::comfy_status,
             comfy::comfy_launch,
             models::models_status,
+            generate::generate_audio,
             llm::llm_probe,
             llm::llm_test,
             profile::profile_guide,

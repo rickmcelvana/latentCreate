@@ -193,8 +193,8 @@ fn spawn_stderr_drain(
     tokio::spawn(drain_stderr(reader, log)).abort_handle()
 }
 
-#[cfg(test)]
-pub(crate) mod test_helpers {
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_helpers {
     use tokio::io::duplex;
 
     use crate::mock::{spawn_mock, RecordedCalls, Reply};

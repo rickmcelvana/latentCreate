@@ -33,8 +33,14 @@ pub use slots::{split_address, Slot, SlotList, SlotOverride, SlotWrite};
 pub use templates::{FetchedTemplate, LocalCheck, TemplateDetail, TemplateInfo, TemplateSearch};
 pub use types::SystemStats;
 
-#[cfg(test)]
-mod mock;
+/// The fake MCP peer, compiled for this crate's own tests and for downstream
+/// crates that enable `test-support` as a **dev**-dependency (T-306b: the
+/// pipeline's call sequence is asserted offline). Never in a release build.
+#[cfg(any(test, feature = "test-support"))]
+pub mod mock;
+
+#[cfg(any(test, feature = "test-support"))]
+pub use local::test_helpers;
 
 #[cfg(test)]
 mod tests {
