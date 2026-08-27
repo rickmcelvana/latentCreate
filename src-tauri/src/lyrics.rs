@@ -732,4 +732,97 @@ mod tests {
             "  (both spellings are read either way -- LLM-SURFACE 3 -- this is for the record)"
         );
     }
+
+    /// **T-302b's evidence**, excluded from CI. **Spends the user's API credits.**
+    ///
+    /// `cargo test -p app -- --ignored rejection_shapes --nocapture`
+    ///
+    /// Answers the question T-302 left open: *what does an endpoint that will
+    /// not take `reasoning_effort` actually do?* Nobody had seen one. The
+    /// findings are LLM-SURFACE 13.3 and 13.4 -- a rejection is a 400 carrying
+    /// `code: "invalid_parameter_error"` and the field name, an **unknown**
+    /// parameter is accepted and silently ignored, and **honouring is per
+    /// model while acceptance is per endpoint**.
+    ///
+    /// ⚠ The model ids below are QwenCloud's and exist nowhere else. Re-running
+    /// this against another provider means changing them; what transfers is the
+    /// set of cases, not the names. Prints everything, asserts nothing -- the
+    /// point is the shapes.
+    #[tokio::test]
+    #[ignore = "T-302b evidence: hosted endpoint + stored key; spends API credits"]
+    async fn test_live_reasoning_effort_rejection_shapes() {
+        use library::SecretKey;
+
+        let config_dir = std::path::PathBuf::from(std::env::var("APPDATA").expect("APPDATA"))
+            .join("com.latentbeats.create");
+        let (base_url, model) = configured_llm(&config_dir).expect("configured");
+        let key = library::secrets::get_secret(SecretKey::LlmApiKey).ok();
+
+        let client = OpenAiCompat::new(base_url.clone(), key.clone()).expect("client");
+        let ids = client.list_models().await.expect("models");
+        println!("\n=== {} models on {base_url} ===", ids.len());
+        for id in &ids {
+            println!("  {id}");
+        }
+
+        let http = reqwest::Client::new();
+        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+        // Each case: (label, model, extra fields merged into the body)
+        let cases: Vec<(String, String, serde_json::Value)> = vec![
+            (
+                "configured reasoning model + none".to_string(),
+                model.clone(),
+                serde_json::json!({ "reasoning_effort": "none" }),
+            ),
+            (
+                "configured reasoning model + INVALID value".to_string(),
+                model.clone(),
+                serde_json::json!({ "reasoning_effort": "banana" }),
+            ),
+            (
+                "configured reasoning model + unknown parameter".to_string(),
+                model.clone(),
+                serde_json::json!({ "latentcreate_not_a_real_param": true }),
+            ),
+            (
+                "OLDER non-reasoning model + none".to_string(),
+                "qwen3.5-27b".to_string(),
+                serde_json::json!({ "reasoning_effort": "none" }),
+            ),
+            (
+                "a different vendor's model on the same endpoint + none".to_string(),
+                "deepseek-v3.2".to_string(),
+                serde_json::json!({ "reasoning_effort": "none" }),
+            ),
+            (
+                "an EMBEDDING model + none".to_string(),
+                "qwen3.7-text-embedding".to_string(),
+                serde_json::json!({ "reasoning_effort": "none" }),
+            ),
+        ];
+
+        for (label, m, extra) in cases {
+            let mut body = serde_json::json!({
+                "model": m,
+                "messages": [{ "role": "user", "content": "Hi." }],
+                "max_tokens": 16,
+            });
+            if let (Some(obj), Some(add)) = (body.as_object_mut(), extra.as_object()) {
+                for (k, v) in add {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+            let mut req = http.post(&url).json(&body);
+            if let Some(k) = key.as_deref() {
+                req = req.bearer_auth(k);
+            }
+            let resp = req.send().await.expect("send");
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            println!("\n--- {label} ---");
+            println!("  HTTP {status}");
+            println!("  body: {}", text.chars().take(600).collect::<String>());
+        }
+    }
 }

@@ -575,13 +575,56 @@ proof-of-life decision named. The 2026-08-24 rule to read both spellings was wri
 documentation, defensively, with no provider in hand that needed it. **The first hosted
 endpoint this app ever connected to needed it.**
 
-### 13.3 What is still not known
+### 13.3 MEASURED -- what a rejection looks like, and what gets silently ignored
 
-- **Whether any endpoint rejects the field.** Two providers now: Ollama honours it,
-  QwenCloud honours it. An endpoint that 400s on an unsupported parameter is still
-  hypothetical -- and is the entire reason the current rule exists. Sending the field
-  everywhere on two data points would be the same class of move this repo keeps refusing.
-- **Whether QwenCloud's Anthropic-compatible endpoint behaves the same.** It exists (owner,
-  2026-08-27) and is the second wire format `LlmProvider` has been waiting for since T-109.
-- Nothing here was run more than once. The effect is far too large to be noise, but the
-  exact figures are single samples.
+Probed against QwenCloud, tiny prompts, `max_tokens: 16`. Harness:
+`cargo test -p app -- --ignored rejection_shapes --nocapture`.
+
+| Sent | Result |
+|---|---|
+| `reasoning_effort: "none"`, reasoning model | **200** |
+| `reasoning_effort: "banana"` (invalid value) | **400** |
+| `latentcreate_not_a_real_param: true` (unknown field) | **200** -- silently ignored |
+| `reasoning_effort: "none"`, older `qwen3.5-27b` | **200**, *and it reasoned anyway* |
+| `reasoning_effort: "none"`, `deepseek-v3.2` (another vendor, same gateway) | **200** |
+| any field, `qwen3.7-text-embedding` | **404** `model_not_supported` -- unrelated to the field |
+
+**A rejection is a 400 naming the field**, and it is precise:
+
+```json
+{"error":{"message":"'reasoning_effort' must be one of: 'none', 'minimal', 'low',
+ 'medium', 'high', 'xhigh', 'max'","type":"invalid_request_error","param":null,
+ "code":"invalid_parameter_error"}}
+```
+
+`code: "invalid_parameter_error"` with the field name in `message`. That the endpoint
+validates the *value* is itself the proof it genuinely supports the field, rather than
+tolerating it.
+
+⚠ **An unknown parameter is accepted and ignored, not rejected.** `latentcreate_not_a_real_param`
+came back 200. So the failure this app has been guarding against -- an endpoint erroring on
+`reasoning_effort` because it does not know it -- **is not how at least this gateway behaves**.
+The 400 above was for an invalid *value* of a *known* field, which is a different thing.
+The guarded-against case remains possible on a stricter endpoint; it is no longer the
+expected one.
+
+### 13.4 WARNING Acceptance is per endpoint; **honouring is per model**
+
+The finding that shapes any fix. On **one** endpoint, with the **same** field:
+
+- `qwen3.8-flash` -- **honoured**. Zero reasoning characters, 235 completion tokens (13.1).
+- `qwen3.5-27b` -- **accepted and ignored**. HTTP 200, and the response carried
+  `reasoning_content` regardless: it thought anyway.
+
+So "does this endpoint accept the field" and "will this model stop reasoning" are two
+questions, and only the first is worth asking. **Accepted-but-ignored costs nothing** -- the
+request succeeds and behaviour is what it would have been. The only outcome that hurts is a
+rejection, and that is detectable by 13.3's shape.
+
+Consequence for the design: a probe needs to answer **one** question -- *does sending this
+field make the request fail?* -- and its answer is per **endpoint**, not per model. Trying to
+discover which models honour it would be a much larger surface for no benefit, since sending
+it to a model that ignores it is free.
+
+Also captured: usage carries `completion_tokens_details.reasoning_tokens` (41 on a
+16-token greeting), which is a cheaper measure of thinking than counting delta characters.

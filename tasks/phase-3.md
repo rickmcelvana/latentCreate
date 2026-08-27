@@ -150,7 +150,7 @@ a parameter change against a third-party surface gets measured like one — and 
 said testing another API is not a blocker. Outcome is a decision entry plus, if warranted, a
 small change to when the field is sent. **Not a Phase 3 blocker; it blocks nothing below it.**
 
-### T-302b — discover whether an endpoint accepts `reasoning_effort`, per endpoint
+### T-302b — discover whether an endpoint accepts `reasoning_effort`  ([brief](t-302b-brief.md))
 T-302's measurement (LLM-SURFACE 13.1) found **QwenCloud honours the field**: 33.12 s -> 1.13 s
 to first content and **2771 -> 235 completion tokens**, for a song no worse. The app never
 sends it there, because `thinks` only exists where Ollama's native enrichment answered -- so
@@ -163,10 +163,12 @@ error for whoever's endpoint is strict. That is the guess the current rule exist
 Instead, **discover it where the app already makes a call for exactly this purpose**: the
 wizard's test call (`llm_test`). Probe once at configuration time, persist the answer beside
 the endpoint, and send the field wherever it is known-accepted -- turning an inference from
-enrichment into a verified per-endpoint fact, which is this repo's whole method. Open design
-questions the brief must settle: what a "rejected" response actually looks like (nobody has
-seen one), whether the probe costs a second test call or rides on the existing one, and where
-the answer lives given `config.json` holds one endpoint today.
+enrichment into a verified per-endpoint fact, which is this repo's whole method. **All three open design questions were settled by measurement before the brief was written**
+(LLM-SURFACE 13.3, 13.4): a rejection is a 400 naming the field, an **unknown** parameter is
+accepted and silently ignored rather than rejected, and **acceptance is per endpoint while
+honouring is per model** -- so the probe asks one question, "does sending this fail", and
+rides on the wizard's existing test call at the cost of a second request only when it does.
+Detection is **differential, never an error-message match**.
 
 ### T-303 — `default_profile_id` persistence and the profile picker
 The same class as T-212 — a value the wizard never writes, degrading silently to
