@@ -9,7 +9,6 @@ pub mod lyrics;
 pub mod profiles;
 pub mod projects;
 pub mod secrets;
-pub mod suggestions;
 
 /// Re-export of [`config::Config`].
 pub use config::Config;
@@ -35,10 +34,6 @@ pub use projects::ProjectSet;
 pub use projects::ProjectWarning;
 /// Re-export of [`secrets::SecretKey`].
 pub use secrets::SecretKey;
-
-pub use suggestions::SuggestionSet;
-
-pub use suggestions::SuggestionWarning;
 
 use thiserror::Error;
 

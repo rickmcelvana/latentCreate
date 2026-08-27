@@ -54,17 +54,18 @@ The owner's own production workflow is **ACE-Step 1.5 turbo + custom-trained LoR
 
 The shipped turbo template contains **no** loader node, so applying LoRAs means splicing nodes into a per-job copy of the workflow — slots can set values but cannot add nodes.
 
-## Lyric-writing LLMs (suggestions, not requirements)
+## Lyric-writing LLMs
 
-The app works with **any** OpenAI-compatible endpoint (ARCHITECTURE §4) — these are the models the setup wizard suggests, based on the owner's hands-on use for lyric writing. They are hints in the UI, never a gate, and the user's own choice always wins.
+The app works with **any** OpenAI-compatible endpoint (ARCHITECTURE §4) and recommends
+no particular model. People making music already have a model they write with; the
+app's job is connecting to it, not having an opinion about it.
 
-| Model | Suggest when | Notes |
-|---|---|---|
-| **Gemma 4 12B** | Default suggestion — ~8–12 GB VRAM class | Owner's pick: outperforms other models of its size for lyrics |
-| **Gemma 4 26B / 31B** | User has the VRAM (~24 GB+) to run them | Also perform well; suggest as "if you can run it" |
-| Any OpenAI-compatible model | Always available | Ollama, LM Studio, llama.cpp server, OpenRouter, vLLM, hosted APIs |
+Nothing here is a gate: the wizard lists what the endpoint offers, says what it can and
+cannot verify about each one, and the user chooses. Where capabilities cannot be checked
+the list says so rather than guessing (LLM-SURFACE §11.1, §11.2).
 
-Wizard behavior: after `list_models` returns the endpoint's catalog, mark any Gemma 4 12B/26B/31B present with a "recommended for lyrics" chip and preselect the 12B if nothing is chosen yet. If none are installed, show the suggestion as help text with the user's own pull command — **never auto-pull an LLM**; that's the user's disk and bandwidth. Because these are suggestions and models move fast, the wizard reads them as **data, not hardcoded strings**: the machine-readable list is [data/lyric-llms.json](../data/lyric-llms.json), shipped as a bundle resource, and the table above is its human-readable twin. Change both together. Matching is by **id prefix**, not equality -- a user who pulled `gemma4:12b-it-qat` has Gemma 4 12B, and no endpoint reports a tag named plainly `gemma4:12b` (LLM-SURFACE 11.5).
+*(A suggestion list shipped as `data/lyric-llms.json` until 2026-08-27; see PROJECT.md's
+decisions log for why it was removed.)*
 
 ## Upgrade / discovery UX (ARCHITECTURE §10)
 - Each profile pins a *recommended* model file (name+hash when available). Setup compares against the installed-model listing (`search_models(folder=…)`, or a template's own `local_check`): missing → "Install", older/different → quiet "Update available" chip, present → ✅.

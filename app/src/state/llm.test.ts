@@ -47,7 +47,6 @@ function row(over: Partial<LlmModelRow>): LlmModelRow {
     is_remote: false,
     remote_host: null,
     size_bytes: null,
-    suggested: null,
     ...over,
   }
 }
@@ -105,14 +104,6 @@ describe('modelView', () => {
     expect(view.chips).toContain('cannot chat')
   })
 
-  /** Protects: the recommendation chip reaches the row. */
-  it('chips a suggested model', () => {
-    const view = modelView(
-      row({ id: 'gemma4:12b-32k', suggested: { label: 'Gemma 4 12B', why: 'x', vram_hint: null } }),
-    )
-    expect(view.chips).toContain('recommended for lyrics')
-  })
-
   /**
    * Protects: the thinking flag is shown, because it explains a pause the user
    * would otherwise read as a hang.
@@ -156,7 +147,6 @@ describe('canTest', () => {
       state: 'ready',
       models: [],
       enriched: true,
-      missing_suggestions: [],
       preselect: null,
       has_key: false,
     }
@@ -231,9 +221,9 @@ describe('llm store', () => {
 
   /**
    * Protects: the probe is told what is already configured. The backend's
-   * preselect exists so a configured model wins over any suggestion, and
-   * passing null makes that rule unreachable -- the second half of the same
-   * bug, which would have shown as the wizard forgetting the choice on reopen.
+   * preselect exists so a configured model wins, full stop, and passing null
+   * makes that rule unreachable -- the second half of the same bug, which would
+   * have shown as the wizard forgetting the choice on reopen.
    */
   it('test_probe_forwards_the_configured_model', async () => {
     mockLlmProbe.mockResolvedValue({ state: 'not_configured' })

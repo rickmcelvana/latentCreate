@@ -17,23 +17,6 @@ export interface LlmModelRow {
   /** Who the prompt is sent to, when it is sent anywhere. */
   remote_host: string | null
   size_bytes: number | null
-  suggested: Suggested | null
-}
-
-/** The "recommended for lyrics" chip. Mirrors Rust `Suggested`. */
-export interface Suggested {
-  label: string
-  why: string | null
-  vram_hint: string | null
-}
-
-/** A suggested model with nothing installed. Mirrors Rust `MissingSuggestion`. */
-export interface MissingSuggestion {
-  label: string
-  why: string | null
-  vram_hint: string | null
-  /** Shown for the user to run. The app never pulls an LLM. */
-  pull_command: string | null
 }
 
 /**
@@ -48,7 +31,6 @@ export type LlmStatus =
       models: LlmModelRow[]
       /** False means every capability is null and the UI must say so. */
       enriched: boolean
-      missing_suggestions: MissingSuggestion[]
       preselect: string | null
       /** Whether a key is stored. The key itself never crosses the boundary. */
       has_key: boolean

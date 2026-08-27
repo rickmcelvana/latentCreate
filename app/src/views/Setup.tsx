@@ -97,11 +97,11 @@ function LlmStep() {
 
   useEffect(() => {
     // Probe once, and not before config has been read. Passing null while it
-    // loads would throw away the model the user already configured and
-    // preselect a suggestion over it, which the backend's `preselect` exists
-    // to prevent. Re-probing whenever config changes is the other wrong
-    // answer: `probe` resets `model` from `preselect`, so it would stomp the
-    // selection the user just made and saved.
+    // loads would throw away the model the user already configured, which is
+    // the whole of what the backend's `preselect` now protects. Re-probing
+    // whenever config changes is the other wrong answer: `probe` resets
+    // `model` from `preselect`, so it would stomp the selection the user just
+    // made and saved.
     if (probed.current || configStatus === 'idle' || configStatus === 'loading') return
     probed.current = true
     void probe(DEFAULT_BASE_URL, configuredModel)
@@ -125,10 +125,23 @@ function LlmStep() {
         <p className="setup-next-step">Set an endpoint to write lyrics with a model.</p>
       ) : null}
 
+      {/* Where a user with no local model actually lands, so the guidance lives
+          here rather than on `not_configured` -- which this wizard cannot
+          currently produce, because it always probes a non-empty constant.
+          The address is named because nothing else on screen reveals it
+          (T-301b gives the user a field for it). */}
       {status !== null && status.state === 'unreachable' ? (
         <>
           <p className="setup-next-step">{status.detail}</p>
           {status.hint !== null ? <p className="setup-next-step">{status.hint}</p> : null}
+          <p className="setup-next-step">
+            Lyrics are written by a model you provide. latentCreate works with any OpenAI-compatible
+            endpoint -- a local server, or a hosted API with a key.
+          </p>
+          <p className="setup-next-step">
+            Tried <code className="setup-command">{DEFAULT_BASE_URL}</code>, the local address used
+            by default.
+          </p>
         </>
       ) : null}
 
@@ -175,21 +188,6 @@ function LlmStep() {
               )
             })}
           </ul>
-
-          {status.missing_suggestions.map((suggestion) => (
-            <div key={suggestion.label} className="llm-suggestion">
-              <p className="setup-next-step">
-                {suggestion.label} is suggested for lyrics
-                {suggestion.why === null ? '' : ` -- ${suggestion.why}`}
-                {suggestion.vram_hint === null ? '' : ` Needs ${suggestion.vram_hint}.`}
-              </p>
-              {/* The command is shown, never run: this app does not pull an
-                  LLM onto the user's disk (docs/MODELS.md). */}
-              {suggestion.pull_command !== null ? (
-                <code className="setup-command">{suggestion.pull_command}</code>
-              ) : null}
-            </div>
-          ))}
 
           <div className="setup-actions">
             <button

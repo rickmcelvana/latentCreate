@@ -23,12 +23,6 @@ use lyrics::LyricsState;
 /// Resolved once at startup so every command shares one location.
 struct ConfigDir(PathBuf);
 
-/// Where the app's shipped data files live, resolved once at startup.
-///
-/// Currently just `lyric-llms.json`. Kept out of `profiles/`, which is scanned
-/// for model profiles and would report a non-profile file there as malformed.
-struct DataDir(PathBuf);
-
 /// Where the profiles that ship with the app live, resolved once at startup.
 ///
 /// Bundled as a resource; in a dev build the bundle has not been assembled, so
@@ -51,7 +45,6 @@ pub fn run() {
             let dir = app.path().app_config_dir()?;
             app.manage(ConfigDir(dir));
             app.manage(ProfilesDir(shipped_dir(app.handle(), "profiles")));
-            app.manage(DataDir(shipped_dir(app.handle(), "data")));
             app.manage(ComfyState::default());
             app.manage(LyricsState::default());
             Ok(())

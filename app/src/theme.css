@@ -504,12 +504,6 @@ body {
   color: var(--warning);
 }
 
-.llm-suggestion {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-sm);
-}
-
 /* --- LyricsStudio: the brief form --- */
 
 .lyrics-form {

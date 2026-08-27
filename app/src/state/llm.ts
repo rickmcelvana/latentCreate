@@ -34,7 +34,6 @@ export interface ModelView {
  */
 export function modelView(row: LlmModelRow): ModelView {
   const chips: string[] = []
-  if (row.suggested !== null) chips.push('recommended for lyrics')
   if (row.can_chat === false) chips.push('cannot chat')
   if (row.is_remote === true) chips.push('remote')
   if (row.thinks === true) chips.push('thinks first')

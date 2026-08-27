@@ -17,14 +17,10 @@
 //! **No secret crosses this boundary.** The key is read from the keychain to
 //! sign the request and is never returned, logged, or included in an error.
 
-use create_core::suggestions::{LyricLlmSuggestion, LyricLlmSuggestions};
 use futures_util::StreamExt;
 use library::{secrets, SecretKey};
 use llm_bridge::{ChatDelta, ChatMessage, ChatRequest, LlmError, OllamaNative, OpenAiCompat, Role};
 use serde::Serialize;
-use tauri::State;
-
-use crate::DataDir;
 
 /// How many tokens the test call may spend.
 ///
@@ -50,38 +46,6 @@ pub struct LlmModelRow {
     pub remote_host: Option<String>,
     /// On-disk size, absent for remote models where the number is a stub.
     pub size_bytes: Option<u64>,
-    /// Set when this model matches a suggestion in `data/lyric-llms.json`.
-    pub suggested: Option<Suggested>,
-}
-
-/// The "recommended for lyrics" chip.
-#[derive(Debug, Clone, Serialize)]
-pub struct Suggested {
-    pub label: String,
-    pub why: Option<String>,
-    pub vram_hint: Option<String>,
-}
-
-impl Suggested {
-    fn from(suggestion: &LyricLlmSuggestion) -> Self {
-        Suggested {
-            label: suggestion.label.clone(),
-            why: suggestion.why.clone(),
-            vram_hint: suggestion.vram_hint.clone(),
-        }
-    }
-}
-
-/// A suggested model with nothing installed to satisfy it.
-///
-/// Becomes help text carrying the user's own pull command. **This app never
-/// pulls an LLM** -- that is the user's disk and bandwidth (docs/MODELS.md).
-#[derive(Debug, Clone, Serialize)]
-pub struct MissingSuggestion {
-    pub label: String,
-    pub why: Option<String>,
-    pub vram_hint: Option<String>,
-    pub pull_command: Option<String>,
 }
 
 /// What the LLM step shows.
@@ -106,8 +70,6 @@ pub enum LlmStatus {
         /// every `can_chat` / `is_remote` is `None`, and the UI must say the
         /// list could not be checked rather than implying it is safe.
         enriched: bool,
-        /// Suggestions with nothing installed, for help text.
-        missing_suggestions: Vec<MissingSuggestion>,
         /// Which model to select, honouring what is already configured.
         preselect: Option<String>,
         /// Whether an API key is stored. **The value never crosses this
@@ -131,21 +93,35 @@ pub struct LlmTestResult {
     pub detail: Option<String>,
 }
 
+/// Which model the picker should select, given what is already configured.
+///
+/// **A configured model always wins** when it is still on the endpoint -- the
+/// user's own choice is a setting, not a hint to be re-decided on every visit.
+/// A configured model that is no longer offered returns `None` rather than
+/// pinning the picker to something unusable.
+///
+/// This is the whole of what survives `LyricLlmSuggestions::preselect`: the
+/// suggestion half is gone, the settings half is not.
+fn preselect(selectable: &[&str], configured: Option<&str>) -> Option<String> {
+    configured
+        .filter(|current| selectable.contains(current))
+        .map(str::to_string)
+}
+
 /// Report what the configured endpoint offers.
 ///
-/// **Never returns `Err` for a service problem.** An unreachable endpoint is a
-/// state with a next step; the `Err` arm is reserved for this app failing to
-/// read its own shipped data.
+/// **Never returns `Err`.** An unreachable endpoint is a state with a next
+/// step, not a failure. The `Err` arm survives only to match the signature
+/// every other command in this module carries; nothing in the body takes it
+/// now that the shipped-data read is gone.
 #[tauri::command]
 pub async fn llm_probe(
-    data_dir: State<'_, DataDir>,
     base_url: Option<String>,
     configured_model: Option<String>,
 ) -> Result<LlmStatus, String> {
     let Some(base_url) = base_url.filter(|u| !u.trim().is_empty()) else {
         return Ok(LlmStatus::NotConfigured);
     };
-    let suggestions = library::suggestions::load(&data_dir.0).suggestions;
 
     // One keychain read for the whole step. `has_secret` would read it too, so
     // fetching it here is strictly fewer touches than asking twice.
@@ -165,7 +141,7 @@ pub async fn llm_probe(
     let enriched = native.is_some();
     let models: Vec<LlmModelRow> = ids
         .iter()
-        .map(|id| row(id.as_str(), native.as_deref(), &suggestions))
+        .map(|id| row(id.as_str(), native.as_deref()))
         .collect();
 
     // Only models that can chat are offered, and a model whose capabilities
@@ -176,25 +152,11 @@ pub async fn llm_probe(
         .filter(|m| m.can_chat.unwrap_or(true))
         .map(|m| m.id.as_str())
         .collect();
-    let preselect = suggestions
-        .preselect(&selectable, configured_model.as_deref())
-        .map(str::to_string);
-
-    let missing_suggestions = suggestions
-        .missing(&selectable)
-        .into_iter()
-        .map(|s| MissingSuggestion {
-            label: s.label.clone(),
-            why: s.why.clone(),
-            vram_hint: s.vram_hint.clone(),
-            pull_command: s.pull_command.clone(),
-        })
-        .collect();
+    let preselect = preselect(&selectable, configured_model.as_deref());
 
     Ok(LlmStatus::Ready {
         models,
         enriched,
-        missing_suggestions,
         preselect,
         has_key,
     })
@@ -253,11 +215,7 @@ pub async fn llm_test(base_url: String, model: String) -> Result<LlmTestResult, 
 }
 
 /// Build one row, enriched when the native catalogue is available.
-fn row(
-    id: &str,
-    native: Option<&[llm_bridge::OllamaModel]>,
-    suggestions: &LyricLlmSuggestions,
-) -> LlmModelRow {
+fn row(id: &str, native: Option<&[llm_bridge::OllamaModel]>) -> LlmModelRow {
     let found = native.and_then(|models| models.iter().find(|m| m.name == id));
     LlmModelRow {
         id: id.to_string(),
@@ -266,7 +224,6 @@ fn row(
         is_remote: found.map(|m| m.is_remote()),
         remote_host: found.and_then(|m| m.remote_host.clone()),
         size_bytes: found.and_then(|m| m.disk_size()).filter(|size| *size > 0),
-        suggested: suggestions.for_model(id).map(Suggested::from),
     }
 }
 
@@ -320,10 +277,6 @@ mod tests {
     use super::*;
     use llm_bridge::OllamaModel;
 
-    fn suggestions() -> LyricLlmSuggestions {
-        serde_json::from_str(include_str!("../../data/lyric-llms.json")).expect("decodes")
-    }
-
     /// The live catalogue, trimmed to the rows that matter, captured
     /// 2026-08-25 from Ollama 0.32.15.
     fn native() -> Vec<OllamaModel> {
@@ -347,10 +300,10 @@ mod tests {
     #[test]
     fn test_an_embedding_model_is_marked_as_unable_to_chat() {
         let native = native();
-        let embedding = row("all-minilm:latest", Some(&native), &suggestions());
+        let embedding = row("all-minilm:latest", Some(&native));
         assert_eq!(embedding.can_chat, Some(false));
 
-        let chat = row("gemma4:12b-32k", Some(&native), &suggestions());
+        let chat = row("gemma4:12b-32k", Some(&native));
         assert_eq!(chat.can_chat, Some(true));
     }
 
@@ -362,12 +315,12 @@ mod tests {
     #[test]
     fn test_a_remote_model_carries_its_host() {
         let native = native();
-        let remote = row("kimi-k3:cloud", Some(&native), &suggestions());
+        let remote = row("kimi-k3:cloud", Some(&native));
         assert_eq!(remote.is_remote, Some(true));
         assert_eq!(remote.remote_host.as_deref(), Some("https://ollama.com"));
         assert_eq!(remote.size_bytes, None, "a stub manifest is not a size");
 
-        let local = row("gemma4:12b-32k", Some(&native), &suggestions());
+        let local = row("gemma4:12b-32k", Some(&native));
         assert_eq!(local.is_remote, Some(false));
         assert_eq!(local.remote_host, None);
         assert_eq!(local.size_bytes, Some(7_194_619_904));
@@ -379,27 +332,12 @@ mod tests {
     /// capability must be `None`.
     #[test]
     fn test_an_unenriched_row_reports_unknown_not_false() {
-        let unchecked = row("some-model", None, &suggestions());
+        let unchecked = row("some-model", None);
         assert_eq!(unchecked.can_chat, None);
         assert_eq!(unchecked.thinks, None);
         assert_eq!(unchecked.is_remote, None);
         assert_eq!(unchecked.remote_host, None);
         assert_eq!(unchecked.size_bytes, None);
-    }
-
-    /// Protects: the recommended chip lands on the installed variant. The
-    /// suggestion is `gemma4:12b` and the installed tag is `gemma4:12b-32k`.
-    #[test]
-    fn test_a_suggested_variant_gets_its_chip() {
-        let native = native();
-        let suggested = row("gemma4:12b-32k", Some(&native), &suggestions());
-        let chip = suggested.suggested.expect("12B variant is suggested");
-        assert_eq!(chip.label, "Gemma 4 12B");
-        assert!(chip.why.is_some());
-
-        assert!(row("qwen3.5:9b", Some(&native), &suggestions())
-            .suggested
-            .is_none());
     }
 
     /// Protects: the thinking flag, which explains a pause the user would
@@ -408,12 +346,9 @@ mod tests {
     #[test]
     fn test_the_thinking_flag_distinguishes_models_on_one_endpoint() {
         let native = native();
+        assert_eq!(row("kimi-k3:cloud", Some(&native)).thinks, Some(true));
         assert_eq!(
-            row("kimi-k3:cloud", Some(&native), &suggestions()).thinks,
-            Some(true)
-        );
-        assert_eq!(
-            row("mistral-large-3:675b-cloud", Some(&native), &suggestions()).thinks,
+            row("mistral-large-3:675b-cloud", Some(&native)).thinks,
             Some(false)
         );
     }
@@ -464,10 +399,9 @@ mod tests {
         let native = enrich(BASE).await.expect("this endpoint is Ollama");
         println!("{} ids, {} enriched", ids.len(), native.len());
 
-        let suggestions = suggestions();
         let rows: Vec<LlmModelRow> = ids
             .iter()
-            .map(|id| row(id.as_str(), Some(&native), &suggestions))
+            .map(|id| row(id.as_str(), Some(&native)))
             .collect();
 
         assert!(
@@ -529,7 +463,6 @@ mod tests {
         let json = serde_json::to_value(LlmStatus::Ready {
             models: vec![],
             enriched: false,
-            missing_suggestions: vec![],
             preselect: None,
             has_key: true,
         })
@@ -545,5 +478,39 @@ mod tests {
 
         let json = serde_json::to_value(LlmStatus::NotConfigured).expect("serialises");
         assert_eq!(json["state"], serde_json::json!("not_configured"));
+    }
+}
+
+#[cfg(test)]
+mod preselect_tests {
+    use super::*;
+
+    /// Protects: the user's own choice is never overridden. This is the
+    /// difference between a suggestion and a setting -- a wizard that re-picks
+    /// on every visit silently discards a deliberate decision.
+    #[test]
+    fn test_a_configured_model_is_kept() {
+        let available = ["qwen3.5:9b", "some-other-model"];
+        assert_eq!(
+            preselect(&available, Some("qwen3.5:9b")),
+            Some("qwen3.5:9b".to_string())
+        );
+    }
+
+    /// Protects: a configured model that is no longer installed does not pin
+    /// the picker to something unusable, and nothing is chosen in its place.
+    /// Picking a model for the user is what this task exists to stop.
+    #[test]
+    fn test_an_uninstalled_configured_model_selects_nothing() {
+        let available = ["qwen3.5:9b"];
+        assert_eq!(preselect(&available, Some("gemma4:26b")), None);
+    }
+
+    /// Protects: nothing configured means nothing selected. The picker opens
+    /// unset and the user chooses.
+    #[test]
+    fn test_nothing_configured_selects_nothing() {
+        assert_eq!(preselect(&["qwen3.5:9b"], None), None);
+        assert_eq!(preselect(&[], None), None);
     }
 }
