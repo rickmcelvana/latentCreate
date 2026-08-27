@@ -213,15 +213,16 @@ it subtly wrong:
 **Split in two at briefing time**, because link rewiring needs its own reference code and the
 pair exceeds the ~400-line run limit:
 
-- **T-305a — the save node** ([brief](t-305a-brief.md)). `ensure_lossless_output`: the format
-  is a positional `widgets_values` entry, the array is rebuilt to two entries rather than
-  patched, and **the test is the format value, not the node class** -- MiniMax ships the
-  modern node already set to `mp3`. Reference implementation compiled and run against both
-  fixtures before the brief was written.
+- **T-305a — the save node**  — **LANDED** ([brief](t-305a-brief.md)).
+  `ensure_lossless_output`: the format is a positional `widgets_values` entry, the array is
+  rebuilt to two entries rather than patched, and **the test is the format value, not the
+  node class** -- MiniMax ships the modern node already set to `mp3`. Landed with the three
+  briefed mutations killed and two more the review added: the whole-document comparison
+  (a version that deleted `links` had passed) and a second save node.
 - **T-305b — the LoRA splice.** Inserting `LoraLoaderModelOnly` nodes and rewiring the MODEL
   chain. In the ACE-Step fixture that chain is `104 -> 78 -> 3` with the profile's
   `attach_after` at `104`, so the splice goes between 104 and 78 and rewires link `260`;
-  fresh ids come from `last_node_id` 110 and `last_link_id` 265.
+  fresh ids come from `last_node_id` 110 and `last_link_id` 265. **Next up.**
 
 **Fixtures are the real captured templates**, committed to `testdata/` — not hand-written
 JSON. This is the T-203 lesson generalised: a rule about model output has to run against model

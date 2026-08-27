@@ -5,12 +5,14 @@
 //! [`profile`] holds the model capability schema (T-003), the abstraction the whole
 //! app is built on: supporting a new music model is a JSON file, not code.
 //! [`generation`] holds what the user asked for before it is fanned out to slots.
+//! [`graph`] holds pure workflow graph edits that slots cannot express (T-305a).
 //! [`project`] holds the library's project, lyric and track-id types.
 //! [`provenance`] holds the reproducible recipe for one generated asset.
 //! [`readiness`] decides whether a profile's model files are present.
 //! [`lyrics`] holds the lyric brief and the prompt assembled from it.
 
 pub mod generation;
+pub mod graph;
 pub mod lyrics;
 pub mod profile;
 pub mod project;
@@ -18,6 +20,7 @@ pub mod provenance;
 pub mod readiness;
 
 pub use generation::*;
+pub use graph::*;
 pub use lyrics::*;
 pub use profile::*;
 pub use project::*;

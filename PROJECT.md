@@ -2548,3 +2548,39 @@ suite is evidence only against the mutations someone tried.
 
 Also this run: the seventh `cargo fmt` miss, and an unused `BTreeSet` import that was unused
 in the lib and used in a test -- it belonged inside `mod tests`.
+
+### 2026-08-27 (later still) -- T-305a landed; the mutations the brief named all died, and two more did not
+
+`ensure_lossless_output` exists in the new `create-core::graph`: every audio save node in a
+workflow is rewritten to `SaveAudioAdvanced` with `widgets_values` **rebuilt** to
+`[filename_prefix, "flac"]`. `create-core` 94 -> 104 tests, and it gained `serde_json` as its
+third dependency (promoted from dev-dependency; `Cargo.lock` unchanged, the package was
+already in the tree).
+
+The executor's run was faithful to the brief and the fixtures are the real templates. **All
+three mutations the brief named turned the suite red**, and the middle one is the evidence
+the whole task was shaped around: patching `widgets_values[1]` in place instead of rebuilding
+the array **passed the ACE-Step test and failed only MiniMax**. Exactly the trap MCP-SURFACE
+16.3 predicted -- a suite with one fixture would have shipped the stale `"V0"`.
+
+**Two further mutations found holes the briefed three did not reach:**
+
+1. **Deleting the entire `links` array passed every test.** The executor's
+   `assert_other_nodes_unchanged` walked the nodes arrays pairwise, so nothing outside them
+   was compared -- not `links`, not `extra`, not `last_node_id`. A workflow with no links is
+   a disconnected graph, and T-306 would submit it. Replaced with `without_node` +
+   whole-document equality, plus an `assert_ne!` guard so the comparison cannot go vacuous if
+   the node id ever stops matching.
+2. **Stopping after the first save node in each array passed every test.** Neither shipped
+   template has two, so nothing enforced the "every" in the function's own contract. Added a
+   synthetic three-save-node workflow (two top-level, one nested).
+
+Both were re-checked by re-running the mutation against the new tests.
+
+**The pattern worth carrying**: the briefed mutations test what the brief already understood.
+The ones that find something are the mutations aimed at what the *tests* assume -- here, that
+"unchanged" meant "the nodes are unchanged" and that "every" was covered by fixtures that
+each have one. Third and fourth holes mutation testing has found (T-110, T-304 before them).
+
+Also this run: the eighth `cargo fmt` miss and a `clippy::needless_lifetimes` failure, both in
+the executor's own test helpers, neither in the briefed reference code.
