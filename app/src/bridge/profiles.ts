@@ -1,8 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
 
-/** The profile used when none has been selected yet -- the app's default model. */
-export const DEFAULT_PROFILE_ID = 'ace-step-1.5-turbo'
-
 /** One worked example. Mirrors Rust `PromptExampleView`. */
 export interface PromptExample {
   tags: string

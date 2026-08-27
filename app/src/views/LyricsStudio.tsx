@@ -9,7 +9,8 @@ import {
   useLyricsStore,
   type GenerationPhase,
 } from '../state/lyrics'
-import { getProfileGuide, DEFAULT_PROFILE_ID, type ProfileGuide } from '../bridge/profiles'
+import { effectiveProfileId } from '../state/profiles'
+import { getProfileGuide, type ProfileGuide } from '../bridge/profiles'
 import { isTauri, type PointOfView } from '../bridge/lyrics'
 import { PromptDiff } from '../components/PromptDiff'
 import { lintSeverity, type LintFinding, type LyricSource, type LyricVersion } from '../bridge/lyricdoc'
@@ -46,8 +47,10 @@ export function LyricsStudio() {
   // text being replaced is always the one the user can see.
   const reviewing = useLyricsStore((state) => state.optimization !== null)
   const accepted = useLyricsStore((state) => state.promptOverride !== null)
-  const configured = useConfigStore((state) => state.config?.default_profile_id ?? null)
-  const profileId = configured ?? DEFAULT_PROFILE_ID
+  // Select the derived id, not the config object: this re-renders only when
+  // the effective profile changes, where subscribing to `config` would rerun
+  // on every unrelated setting (WORKFLOW 4.10).
+  const profileId = useConfigStore((state) => effectiveProfileId(state.config))
   const [guide, setGuide] = useState<ProfileGuide | null>(null)
 
   useEffect(() => {

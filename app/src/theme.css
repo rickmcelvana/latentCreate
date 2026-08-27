@@ -517,6 +517,96 @@ body {
   color: var(--warning);
 }
 
+/* --- AudioStudio: profile picker --- */
+
+.profile-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-lg);
+}
+
+.profile-picker-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.profile-picker-fallback,
+.profile-picker-disclaimer {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.profile-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.profile-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--gap-sm) 0;
+  border-top: 1px solid var(--border);
+}
+
+.profile-row-selected {
+  background: var(--panel-hover);
+}
+
+.profile-row-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  cursor: pointer;
+}
+
+.profile-row-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.profile-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 26px;
+}
+
+.profile-row-origin,
+.profile-row-vram {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-bright);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profile-row-license {
+  margin: 0;
+  padding-left: 26px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.profile-row-license-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* --- LyricsStudio: the brief form --- */
 
 .lyrics-form {

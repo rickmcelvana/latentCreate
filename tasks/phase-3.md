@@ -170,7 +170,7 @@ honouring is per model** -- so the probe asks one question, "does sending this f
 rides on the wizard's existing test call at the cost of a second request only when it does.
 Detection is **differential, never an error-message match**.
 
-### T-303 — `default_profile_id` persistence and the profile picker  ([brief](t-303-brief.md))
+### T-303 — `default_profile_id` persistence and the profile picker  — **LANDED** ([brief](t-303-brief.md))
 The same class as T-212 — a value the wizard never writes, degrading silently to
 `ace-step-1.5-turbo` — and Phase 2's close assigned it here because this phase owns the
 picker. Fourth instance in this repo of a command or setting with no caller, so the brief

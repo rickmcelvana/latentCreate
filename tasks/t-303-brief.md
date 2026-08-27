@@ -170,11 +170,19 @@ that would reintroduce the clobbering it was written to prevent.
 
 ### 4. Say when the configured profile has gone
 
-When `selectedProfile` returns `null` but the list has loaded, show that the configured
-profile is not among the loaded ones and that the app is falling back -- naming both ids. No
-auto-repair, no silent rewrite of config: the user chose that profile and deserves to be told
-their choice is no longer available rather than to discover a different model generated their
-track.
+When `selectedProfile` returns `null` but the list has loaded, say that the configured profile
+is not among the loaded ones, and have the user pick.
+
+⚠ **Corrected at review: do not word this as a fallback.** An earlier draft of this section
+said to name both ids and report falling back to the default. **No fallback happens** --
+`effectiveProfileId` returns the configured id whether or not a profile answers to it, so
+generation fails on that id rather than quietly using another model. Promising a fallback the
+app does not perform is worse than saying nothing, and when the missing profile *is* the
+default the sentence names the same id twice.
+
+No auto-repair and no silent rewrite of config either: the user chose that profile and
+deserves to be told their choice is unavailable rather than to discover a different model
+generated their track.
 
 ### 5. `theme.css`
 
@@ -187,8 +195,8 @@ existing pattern and worth matching rather than inventing a second look.
 - [ ] `effectiveProfileId` tested: configured id wins; `null` and `''` fall back to the
       default.
 - [ ] `pickable` tested: filters by `kind`, and orders by the existing `curatedFirst` rule.
-- [ ] `selectedProfile` tested: returns the row when present, and **`null` when the
-      configured id is not in the list** -- that is the case §4 exists for.
+- [ ] `selectedProfile` tested: returns the row when present, **`null` when the configured id
+      is not in the list** (the case §4 exists for), and `null` before the list has loaded.
 - [ ] `profileRow` tested: **`license` is non-empty for every shipped profile**, `origin`
       distinguishes shipped from user, and `vramClaim` is `null` when undeclared and worded as
       a claim when not. This is the testable form of "every row shows a licence" --
