@@ -41,6 +41,8 @@ export interface LlmTestResult {
   ok: boolean
   content: string
   saw_reasoning: boolean
+  /** Whether the endpoint accepted `reasoning_effort: "none"` when probed. Null = could not tell. */
+  accepts_reasoning_effort: boolean | null
   detail: string | null
 }
 

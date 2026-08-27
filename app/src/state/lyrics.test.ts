@@ -431,7 +431,12 @@ describe('versioned document store', () => {
       config: {
         schema_version: 1,
         comfy: { mode: 'local', url: null, comfy_bin: null },
-        llm: { provider: 'open_ai_compat', base_url: null, model: 'gemma4:12b-32k' },
+        llm: {
+          provider: 'open_ai_compat',
+          base_url: null,
+          model: 'gemma4:12b-32k',
+          accepts_reasoning_effort: null,
+        },
         default_profile_id: null,
       },
     })

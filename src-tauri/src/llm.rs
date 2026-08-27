@@ -90,6 +90,9 @@ pub struct LlmTestResult {
     /// Whether chain-of-thought arrived. Proves the reasoning split works
     /// against this endpoint, which is what the lyric flow depends on.
     pub saw_reasoning: bool,
+    /// Whether the endpoint accepted `reasoning_effort: "none"` when probed.
+    /// `None` means the probe could not decide (both attempts failed).
+    pub accepts_reasoning_effort: Option<bool>,
     pub detail: Option<String>,
 }
 
@@ -176,15 +179,89 @@ pub async fn llm_test(base_url: String, model: String) -> Result<LlmTestResult, 
         Err(e) => return Ok(failed_test(&e)),
     };
 
+    let outcome = probe_reasoning_effort(&client, &model).await;
+    let mut result = match outcome.result {
+        Ok(r) => r,
+        Err(e) => failed_test(&e),
+    };
+    result.accepts_reasoning_effort = outcome.accepted;
+    Ok(result)
+}
+
+/// The result of the differential probe: a verdict and the call result to show.
+#[derive(Debug)]
+struct ProbeOutcome {
+    accepted: Option<bool>,
+    result: Result<LlmTestResult, LlmError>,
+}
+
+/// Does this endpoint accept `reasoning_effort`?
+///
+/// **A differential test, not an error-message match.** Send the field; if
+/// that fails, send the identical request without it. If the second attempt
+/// succeeds, the field was the difference and this endpoint rejects it.
+///
+/// Deliberately not parsing the provider's wording: the rejection observed on
+/// QwenCloud is a 400 naming the field (LLM-SURFACE 13.3), but matching on
+/// that text is the thing this repo already refuses to do for status
+/// classification -- it breaks the first time a message is reworded. Two
+/// requests in the failure case is a price paid once, in a wizard.
+///
+/// WARNING A transient failure on the first attempt that clears on the second
+/// is recorded as "rejects". The consequence is that the field is not sent:
+/// slower and, on a paid endpoint, dearer -- but nothing breaks, and the user
+/// can run the test call again. That is the safe direction for this to fail in.
+async fn probe_reasoning_effort(client: &OpenAiCompat, model: &str) -> ProbeOutcome {
+    let with = run_test_call(client, model, Some("none".to_string())).await;
+    if with.is_ok() {
+        return ProbeOutcome {
+            accepted: probe_verdict(true, false),
+            result: with,
+        };
+    }
+    let without = run_test_call(client, model, None).await;
+    ProbeOutcome {
+        accepted: probe_verdict(false, without.is_ok()),
+        result: without,
+    }
+}
+
+/// The verdict itself, given whether each attempt succeeded.
+///
+/// Split out from the call above because **the decision is the part worth
+/// protecting and the I/O is untestable here**: `OpenAiCompat` opens a real
+/// socket and exposes no injectable transport, so a test driving
+/// `probe_reasoning_effort` could only ever reach the both-attempts-failed
+/// path. Rather than assert one quarter of the behaviour and call it covered,
+/// the rule lives where a test can reach all of it -- the same move as
+/// `approvedText` and `generationPhase` in Phase 2.
+///
+/// Both failing is `None`, never `false`: the endpoint is broken and the test
+/// call already says so. Recording a judgement about the field from a call
+/// that never worked would be inventing data (LLM-SURFACE 11.1).
+fn probe_verdict(with_ok: bool, without_ok: bool) -> Option<bool> {
+    match (with_ok, without_ok) {
+        (true, _) => Some(true),
+        (false, true) => Some(false),
+        (false, false) => None,
+    }
+}
+
+/// One test call with an optional `reasoning_effort` value.
+async fn run_test_call(
+    client: &OpenAiCompat,
+    model: &str,
+    reasoning_effort: Option<String>,
+) -> Result<LlmTestResult, LlmError> {
     let request = ChatRequest {
-        model,
+        model: model.to_string(),
         messages: vec![ChatMessage {
             role: Role::User,
             content: "Reply with exactly: ok".to_string(),
         }],
         temperature: None,
         max_tokens: Some(TEST_CALL_MAX_TOKENS),
-        reasoning_effort: None,
+        reasoning_effort,
     };
 
     let mut stream = client.stream_chat(request);
@@ -197,7 +274,7 @@ pub async fn llm_test(base_url: String, model: String) -> Result<LlmTestResult, 
             Ok(ChatDelta::Reasoning(_)) => saw_reasoning = true,
             Ok(ChatDelta::Finished { .. }) => finished = true,
             Ok(_) => {}
-            Err(e) => return Ok(failed_test(&e)),
+            Err(e) => return Err(e),
         }
     }
 
@@ -206,6 +283,7 @@ pub async fn llm_test(base_url: String, model: String) -> Result<LlmTestResult, 
         ok: answered,
         content: content.trim().to_string(),
         saw_reasoning,
+        accepts_reasoning_effort: None,
         detail: if answered {
             None
         } else {
@@ -268,6 +346,7 @@ fn failed_test(error: &LlmError) -> LlmTestResult {
         ok: false,
         content: String::new(),
         saw_reasoning: false,
+        accepts_reasoning_effort: None,
         detail: Some(error.to_string()),
     }
 }
@@ -446,8 +525,12 @@ mod tests {
         .expect("the command itself does not fail");
 
         println!(
-            "ok={} saw_reasoning={} content={:?} detail={:?}",
-            result.ok, result.saw_reasoning, result.content, result.detail
+            "ok={} saw_reasoning={} content={:?} detail={:?} accepts={:?}",
+            result.ok,
+            result.saw_reasoning,
+            result.content,
+            result.detail,
+            result.accepts_reasoning_effort
         );
         assert!(result.ok, "a healthy endpoint must read as success");
         assert!(
@@ -478,6 +561,32 @@ mod tests {
 
         let json = serde_json::to_value(LlmStatus::NotConfigured).expect("serialises");
         assert_eq!(json["state"], serde_json::json!("not_configured"));
+    }
+
+    /// Protects: the verdict rule, across every combination of the two
+    /// attempts. The endpoint that rejects the field is the case this whole
+    /// task exists for, and it is the middle row.
+    ///
+    /// Deliberately not a test of `probe_reasoning_effort`: that function
+    /// opens a socket, and a test of it could only reach the both-failed path
+    /// (noted by the executor on the T-302b run, and correct).
+    #[test]
+    fn test_probe_verdict_covers_every_outcome() {
+        assert_eq!(
+            probe_verdict(true, false),
+            Some(true),
+            "the field went through: send it"
+        );
+        assert_eq!(
+            probe_verdict(false, true),
+            Some(false),
+            "only the call without the field worked: the field is the difference"
+        );
+        assert_eq!(
+            probe_verdict(false, false),
+            None,
+            "neither worked: the endpoint is broken and nothing was learned about the field"
+        );
     }
 }
 

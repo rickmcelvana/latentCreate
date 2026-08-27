@@ -23,6 +23,8 @@ export interface LlmConfig {
   provider: LlmProvider
   base_url: string | null
   model: string | null
+  /** Whether the endpoint accepted `reasoning_effort: "none"` in the wizard's test call. */
+  accepts_reasoning_effort: boolean | null
 }
 
 /** Mirrors Rust `library::config::Config`. Field names are snake_case on the wire. */

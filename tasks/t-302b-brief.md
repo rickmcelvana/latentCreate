@@ -10,6 +10,11 @@
 - `app/src/bridge/llm.ts`
 - `app/src/state/llm.ts`
 - `app/src/state/llm.test.ts`
+- `app/src/state/config.test.ts`  *(added at review: it builds an `LlmConfig` literal)*
+- `app/src/state/lyrics.test.ts`  *(added at review: same)*
+- `testdata/wire/loaded-config.json`  *(added at review: the shared wire fixture, asserted by
+  `library`'s `test_wire_fixture_matches_current_types` and by `config.test.ts` -- it exists
+  to catch exactly the Rust/TS drift this task creates, and it caught it)*
 
 ## Goal
 
@@ -171,9 +176,13 @@ Update both callers and the existing `--ignored` measurements in `lyrics.rs`, wh
 - [ ] A `config.json` with no `accepts_reasoning_effort` loads with the field `None`.
 - [ ] `reasoning_effort_for` tested across all six `(accepts, thinks)` combinations, with a
       verified `false` beating a `thinks: true`.
-- [ ] The differential probe returns `Some(true)` when the first attempt succeeds,
-      `Some(false)` when only the second does, and `None` when neither does -- tested against
-      a mock, not a live endpoint (WORKFLOW §5).
+- [ ] ⚠ **corrected at review.** As written this asked for the probe to be tested against a
+      mock. **`OpenAiCompat` opens a real socket and exposes no injectable transport**, so a
+      test driving `probe_reasoning_effort` can only ever reach the both-attempts-failed path
+      -- the executor flagged this mid-run and was right. Splitting the *decision* out as a
+      pure `probe_verdict(with_ok, without_ok)` puts the rule where a test reaches all of it,
+      which is the same move as `approvedText` and `keyField` before it. Adding a mock
+      transport to `llm-bridge` would be its own task, not a line in this one.
 - [ ] Changing the endpoint clears the verdict.
 - [ ] `npm run gate` clean; no `--ignored` test is required to pass in CI.
 - [ ] No changes outside the listed files.

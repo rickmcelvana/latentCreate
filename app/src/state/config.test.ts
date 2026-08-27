@@ -21,6 +21,7 @@ const fixture: LoadedConfig = {
       provider: 'open_ai_compat',
       base_url: 'http://localhost:11434/v1',
       model: 'gemma4:12b',
+      accepts_reasoning_effort: null,
     },
     default_profile_id: 'ace-step-1.5-turbo',
   },

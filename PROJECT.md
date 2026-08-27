@@ -329,10 +329,10 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   and a sweep at T-111 found five pre-existing violations that earlier reviews had missed. The
   rule is "ASCII in code and comments; UI strings may use Unicode", so the check must exempt
   rendered strings — `app/src/views/CoverArt.tsx` holds a legitimate one.
-- **Style the streamed-reasoning panel so a long think reads as reassuring**, not as the app
-  being stuck. It already caps and scrolls (producer, 2026-08-27), so this is presentation
-  rather than behaviour -- and it matters most on hosted reasoning models, where a user can
-  wait 33 s before the first lyric character (LLM-SURFACE 13.1).
+- **Styling debt lives in [docs/CSS-TODO.md](docs/CSS-TODO.md)**, not here -- presentation
+  gaps found while clicking through a feature, written down at the moment they are noticed
+  so the Phase 5 polish pass is not a rediscovery exercise. Currently: the model list's
+  unstyled scrollbar, and the streamed-reasoning panel.
 - Album lists → bulk send-to-mastering once mastering's bulk import lands (owner-stated future feature).
 - latentPlayer integration (library hand-off) once player matures.
 - Audio-to-audio flows (cover/remix/extend) for models that support it — profiles already leave room via `inputs`.

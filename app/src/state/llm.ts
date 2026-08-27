@@ -153,9 +153,15 @@ export const useLlmStore = create<LlmState>((set, get) => ({
   choose: async (baseUrl: string, model: string) => {
     set({ model, result: null })
     if (!isTauri()) return
-    await useConfigStore
-      .getState()
-      .save({ llm: { provider: 'open_ai_compat', base_url: baseUrl, model } })
+    const existing = useConfigStore.getState().config?.llm
+    await useConfigStore.getState().save({
+      llm: {
+        provider: 'open_ai_compat',
+        base_url: baseUrl,
+        model,
+        accepts_reasoning_effort: existing?.accepts_reasoning_effort ?? null,
+      },
+    })
   },
 
   test: async (baseUrl: string) => {
@@ -163,14 +169,27 @@ export const useLlmStore = create<LlmState>((set, get) => ({
     if (!isTauri() || model === null || get().testing) return
     set({ testing: true, result: null })
     try {
-      set({ result: await llmTest(baseUrl, model) })
+      const result = await llmTest(baseUrl, model)
+      set({ result })
+      // Persist the verdict so generation uses it, using the full llm block
+      // so the shallow merge does not drop the model (T-212, T-301b).
+      await useConfigStore.getState().save({
+        llm: {
+          provider: 'open_ai_compat',
+          base_url: baseUrl,
+          model,
+          accepts_reasoning_effort: result.accepts_reasoning_effort,
+        },
+      })
     } finally {
       set({ testing: false })
     }
   },
 
-  // Saving the endpoint must preserve the model, because `useConfigStore.save`
-  // does a shallow merge and a partial `llm` patch would drop it (T-212).
+  // Saving the endpoint must preserve the model and clear the verdict,
+  // because the verdict is a fact about one endpoint. Carrying it to a
+  // different endpoint would present a stale verified-fact as true, which is
+  // worse than unknown.
   saveEndpoint: async (url) => {
     if (!isTauri()) return
     await useConfigStore.getState().save({
@@ -178,6 +197,7 @@ export const useLlmStore = create<LlmState>((set, get) => ({
         provider: 'open_ai_compat',
         base_url: url,
         model: useConfigStore.getState().config?.llm?.model ?? null,
+        accepts_reasoning_effort: null,
       },
     })
   },

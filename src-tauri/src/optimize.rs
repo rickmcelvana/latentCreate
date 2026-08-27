@@ -54,14 +54,22 @@ pub async fn lyrics_optimize(
     brief: LyricBrief,
     profile_id: String,
 ) -> Result<PromptOptimization, String> {
-    let (base_url, model) = configured_llm(&config_dir.0)?;
+    let endpoint = configured_llm(&config_dir.0)?;
     let profile = load_profile(&profiles_dir.0, &config_dir.0, &profile_id)?;
 
     let key = library::secrets::get_secret(library::SecretKey::LlmApiKey).ok();
-    let client = OpenAiCompat::new(base_url.clone(), key).map_err(|e| e.to_string())?;
-    let thinks = model_thinks(&base_url, &model).await;
+    let client = OpenAiCompat::new(endpoint.base_url.clone(), key).map_err(|e| e.to_string())?;
+    let thinks = model_thinks(&endpoint.base_url, &endpoint.model).await;
 
-    optimize_with(&client, &profile, &brief, model, thinks).await
+    optimize_with(
+        &client,
+        &profile,
+        &brief,
+        endpoint.model,
+        endpoint.accepts_reasoning_effort,
+        thinks,
+    )
+    .await
 }
 
 /// One optimizer round trip against an already-built client.
@@ -74,6 +82,7 @@ async fn optimize_with(
     profile: &ModelProfile,
     brief: &LyricBrief,
     model: String,
+    accepts_reasoning_effort: Option<bool>,
     thinks: Option<bool>,
 ) -> Result<PromptOptimization, String> {
     let original = assemble_user_message(brief);
@@ -93,7 +102,7 @@ async fn optimize_with(
         ],
         temperature: None,
         max_tokens: Some(OPTIMIZER_MAX_TOKENS),
-        reasoning_effort: reasoning_effort_for(thinks),
+        reasoning_effort: reasoning_effort_for(accepts_reasoning_effort, thinks),
     };
 
     let collected = collect_answer(client.stream_chat(request)).await?;
@@ -277,7 +286,7 @@ mod tests {
 
         for run in 1..=RUNS {
             let started = std::time::Instant::now();
-            let result = optimize_with(&client, &profile, &brief, model.clone(), thinks)
+            let result = optimize_with(&client, &profile, &brief, model.clone(), None, thinks)
                 .await
                 .unwrap_or_else(|e| panic!("run {run} failed: {e}"));
             let elapsed = started.elapsed();

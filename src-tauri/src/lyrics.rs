@@ -3,9 +3,9 @@
 //!
 //! The backend streams; the frontend accumulates. Nothing here writes a lyric
 //! document -- that is the lyrics store's job. This module owns the policy from
-//! LLM-SURFACE 12.2: `reasoning_effort: "none"` is sent only when the model is
-//! known to think, because the field is verified against Ollama and nothing
-//! else.
+//! LLM-SURFACE 12.2 and 13.4: `reasoning_effort: "none"` is sent when the
+//! endpoint is verified to accept it, or when the model is known to think and
+//! the endpoint has never been probed.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -64,16 +64,32 @@ pub struct LyricsState {
     current: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
 }
 
-/// Whether to suppress reasoning for this model, per the LLM-SURFACE 12.2
-/// policy.
+/// The configured lyric endpoint, with the verified `reasoning_effort` answer.
 ///
-/// The field is verified against Ollama only, so it is sent only when the model
-/// is *known* to think -- `Some(true)` from the native enrichment. Unknown
-/// (`None`) means "could not check", and the unverified path is never taken.
-pub(crate) fn reasoning_effort_for(thinks: Option<bool>) -> Option<String> {
-    match thinks {
-        Some(true) => Some("none".to_string()),
-        _ => None,
+/// A small named struct rather than a third tuple element, because three
+/// anonymous strings at a call site is where the wrong one gets passed.
+pub(crate) struct LyricEndpoint {
+    pub base_url: String,
+    pub model: String,
+    pub accepts_reasoning_effort: Option<bool>,
+}
+
+/// Whether `reasoning_effort` may be sent, and why.
+///
+/// `accepts` is the endpoint's verified answer from the wizard's test call
+/// (`None` = never probed). `thinks` is the pre-T-302b rule, kept as a
+/// fallback so an existing Ollama user who never re-runs the test call does
+/// not silently lose the suppression they have today.
+///
+/// **Acceptance is per endpoint, honouring is per model** (LLM-SURFACE 13.4),
+/// and only acceptance matters: a model that ignores the field costs nothing,
+/// because the request succeeds and behaves exactly as it would have.
+pub(crate) fn reasoning_effort_for(accepts: Option<bool>, thinks: Option<bool>) -> Option<String> {
+    match (accepts, thinks) {
+        (Some(true), _) => Some("none".to_string()),
+        (Some(false), _) => None,
+        (None, Some(true)) => Some("none".to_string()),
+        (None, _) => None,
     }
 }
 
@@ -86,13 +102,13 @@ pub(crate) async fn model_thinks(base_url: &str, model: &str) -> Option<bool> {
     native.iter().find(|m| m.name == model).map(|m| m.thinks())
 }
 
-/// The configured lyric endpoint and model, as `(base_url, model)`.
+/// The configured lyric endpoint and model.
 ///
 /// Shared with the optimizer, which talks to the same endpoint by definition
 /// (ARCHITECTURE 6). Each missing piece names itself, because "no lyric LLM
 /// configured" and "no model chosen" send the user to different parts of the
 /// wizard.
-pub(crate) fn configured_llm(config_dir: &Path) -> Result<(String, String), String> {
+pub(crate) fn configured_llm(config_dir: &Path) -> Result<LyricEndpoint, String> {
     let llm = library::config::load(config_dir)
         .config
         .llm
@@ -103,7 +119,11 @@ pub(crate) fn configured_llm(config_dir: &Path) -> Result<(String, String), Stri
     let model = llm
         .model
         .ok_or_else(|| "no lyric model configured".to_string())?;
-    Ok((base_url, model))
+    Ok(LyricEndpoint {
+        base_url,
+        model,
+        accepts_reasoning_effort: llm.accepts_reasoning_effort,
+    })
 }
 
 /// The model profile the studio is writing for.
@@ -160,18 +180,18 @@ pub async fn lyrics_generate(
         previous.abort();
     }
 
-    let (base_url, model) = configured_llm(&config_dir.0)?;
+    let endpoint = configured_llm(&config_dir.0)?;
     let profile = load_profile(&profiles_dir.0, &config_dir.0, &profile_id)?;
 
     let system = assemble_system_prompt(&profile, &brief);
     let user = user_message(&brief, prompt_override.as_deref());
 
     let key = library::secrets::get_secret(library::SecretKey::LlmApiKey).ok();
-    let client = OpenAiCompat::new(base_url.clone(), key).map_err(|e| e.to_string())?;
+    let client = OpenAiCompat::new(endpoint.base_url.clone(), key).map_err(|e| e.to_string())?;
 
-    let thinks = model_thinks(&base_url, &model).await;
+    let thinks = model_thinks(&endpoint.base_url, &endpoint.model).await;
     let request = ChatRequest {
-        model: model.clone(),
+        model: endpoint.model.clone(),
         messages: vec![
             ChatMessage {
                 role: Role::System,
@@ -184,7 +204,7 @@ pub async fn lyrics_generate(
         ],
         temperature: None,
         max_tokens: Some(token_budget(&brief)),
-        reasoning_effort: reasoning_effort_for(thinks),
+        reasoning_effort: reasoning_effort_for(endpoint.accepts_reasoning_effort, thinks),
     };
 
     let stream = client.stream_chat(request);
@@ -353,21 +373,27 @@ mod tests {
         )
         .expect("shipped profile parses");
 
-        let base_url = "http://127.0.0.1:11434/v1";
-        let client = OpenAiCompat::new(base_url, None).expect("client");
+        let config_dir = std::path::PathBuf::from(std::env::var("APPDATA").expect("APPDATA"))
+            .join("com.latentbeats.create");
+        let endpoint = configured_llm(&config_dir).expect("an endpoint is configured");
+
+        let client = OpenAiCompat::new(endpoint.base_url.clone(), None).expect("client");
         let models = client.list_models().await.expect("model list");
         let model = models
             .iter()
             .find(|id| id.starts_with("gemma4:"))
             .cloned()
             .unwrap_or_else(|| models.first().cloned().expect("endpoint offers no models"));
-        let thinks = model_thinks(base_url, &model).await;
+        let thinks = model_thinks(&endpoint.base_url, &model).await;
 
         let brief = LyricBrief::default();
         let budget = token_budget(&brief);
 
         println!("\n=== T-211 lyric measurement ===");
-        println!("model: {model}  thinks: {thinks:?}  budget: {budget}  runs: {RUNS}");
+        println!(
+            "model: {model}  thinks: {thinks:?}  accepts: {:?}  budget: {budget}  runs: {RUNS}",
+            endpoint.accepts_reasoning_effort
+        );
         println!(
             "baseline to beat (LLM-SURFACE 12.1, no reasoning_effort): 85 chars, first content 44.08s\n"
         );
@@ -387,7 +413,7 @@ mod tests {
                 ],
                 temperature: None,
                 max_tokens: Some(budget),
-                reasoning_effort: reasoning_effort_for(thinks),
+                reasoning_effort: reasoning_effort_for(endpoint.accepts_reasoning_effort, thinks),
             };
 
             let started = std::time::Instant::now();
@@ -439,14 +465,44 @@ mod tests {
         println!("=== end measurement ===\n");
     }
 
-    /// Protects: the policy itself. `reasoning_effort` is sent only when the
-    /// model is known to think; unknown (`None`) is treated as "do not send",
-    /// because the field is verified against Ollama and nothing else.
+    /// Protects: the policy itself. A verified acceptance beats the legacy
+    /// `thinks` fallback, and an unprobed endpoint falls back to it.
     #[test]
-    fn test_reasoning_effort_is_sent_only_when_the_model_known_to_think() {
-        assert_eq!(reasoning_effort_for(Some(true)).as_deref(), Some("none"));
-        assert_eq!(reasoning_effort_for(Some(false)), None);
-        assert_eq!(reasoning_effort_for(None), None);
+    fn test_reasoning_effort_is_sent_when_accepted_or_when_model_thinks_and_not_probed() {
+        // Accepted endpoint: send regardless of whether the model thinks.
+        assert_eq!(
+            reasoning_effort_for(Some(true), Some(true)).as_deref(),
+            Some("none")
+        );
+        assert_eq!(
+            reasoning_effort_for(Some(true), Some(false)).as_deref(),
+            Some("none")
+        );
+        assert_eq!(
+            reasoning_effort_for(Some(true), None).as_deref(),
+            Some("none")
+        );
+
+        // Rejected endpoint: never send, even if the model is known to think.
+        assert_eq!(reasoning_effort_for(Some(false), Some(true)), None);
+        assert_eq!(reasoning_effort_for(Some(false), Some(false)), None);
+        assert_eq!(reasoning_effort_for(Some(false), None), None);
+
+        // Unprobed endpoint: fall back to the pre-T-302b `thinks` rule.
+        assert_eq!(
+            reasoning_effort_for(None, Some(true)).as_deref(),
+            Some("none")
+        );
+        assert_eq!(reasoning_effort_for(None, Some(false)), None);
+        assert_eq!(reasoning_effort_for(None, None), None);
+    }
+
+    /// Protects: a verified `false` beats a `thinks: true`. Without this, an
+    /// endpoint that rejects the field would still receive it whenever the
+    /// model is known to think, which is exactly the rejection the probe found.
+    #[test]
+    fn test_verified_rejection_beats_thinks_true() {
+        assert_eq!(reasoning_effort_for(Some(false), Some(true)), None);
     }
 
     /// Protects: the consent gate. What is sent is what the user approved --
@@ -588,14 +644,15 @@ mod tests {
 
         let config_dir = std::path::PathBuf::from(std::env::var("APPDATA").expect("APPDATA"))
             .join("com.latentbeats.create");
-        let (base_url, model) = configured_llm(&config_dir).expect("an endpoint is configured");
+        let endpoint = configured_llm(&config_dir).expect("an endpoint is configured");
         let key = library::secrets::get_secret(SecretKey::LlmApiKey).ok();
 
-        let thinks = model_thinks(&base_url, &model).await;
+        let thinks = model_thinks(&endpoint.base_url, &endpoint.model).await;
         assert_eq!(
             thinks, None,
             "this measurement is about endpoints the app CANNOT enrich; \
-             {base_url} answered the native API, so it is the wrong subject"
+             {} answered the native API, so it is the wrong subject",
+            endpoint.base_url
         );
 
         let profile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -608,14 +665,15 @@ mod tests {
         let budget = token_budget(&brief);
 
         println!("\n=== T-302: reasoning_effort on an unenrichable endpoint ===");
-        println!("endpoint: {base_url}");
+        println!("endpoint: {}", endpoint.base_url);
         println!(
-            "model: {model}  key stored: {}  budget: {budget}",
+            "model: {}  key stored: {}  budget: {budget}",
+            endpoint.model,
             key.is_some()
         );
         println!(
             "app-computed reasoning_effort for this model: {:?}",
-            reasoning_effort_for(thinks)
+            reasoning_effort_for(endpoint.accepts_reasoning_effort, thinks)
         );
         println!("baseline (LLM-SURFACE 12.1, Ollama, no field): first content 44.08s, 85 chars\n");
 
@@ -623,9 +681,9 @@ mod tests {
             ("A: no reasoning_effort (what the app sends today)", None),
             ("B: reasoning_effort = none", Some("none".to_string())),
         ] {
-            let client = OpenAiCompat::new(base_url.clone(), key.clone()).expect("client");
+            let client = OpenAiCompat::new(endpoint.base_url.clone(), key.clone()).expect("client");
             let request = ChatRequest {
-                model: model.clone(),
+                model: endpoint.model.clone(),
                 messages: vec![
                     ChatMessage {
                         role: Role::System,
@@ -685,7 +743,7 @@ mod tests {
         // which field it decoded (LLM-SURFACE 3). A tiny prompt: this is about
         // field names, not about lyrics, and it spends the user's credits.
         let body = serde_json::json!({
-            "model": model,
+            "model": endpoint.model,
             "messages": [{ "role": "user", "content": "Say hi." }],
             "max_tokens": 64,
             "stream": true,
@@ -695,7 +753,7 @@ mod tests {
         let mut req = http
             .post(format!(
                 "{}/chat/completions",
-                base_url.trim_end_matches('/')
+                endpoint.base_url.trim_end_matches('/')
             ))
             .json(&body);
         if let Some(k) = key.as_deref() {
@@ -755,34 +813,37 @@ mod tests {
 
         let config_dir = std::path::PathBuf::from(std::env::var("APPDATA").expect("APPDATA"))
             .join("com.latentbeats.create");
-        let (base_url, model) = configured_llm(&config_dir).expect("configured");
+        let endpoint = configured_llm(&config_dir).expect("configured");
         let key = library::secrets::get_secret(SecretKey::LlmApiKey).ok();
 
-        let client = OpenAiCompat::new(base_url.clone(), key.clone()).expect("client");
+        let client = OpenAiCompat::new(endpoint.base_url.clone(), key.clone()).expect("client");
         let ids = client.list_models().await.expect("models");
-        println!("\n=== {} models on {base_url} ===", ids.len());
+        println!("\n=== {} models on {} ===", ids.len(), endpoint.base_url);
         for id in &ids {
             println!("  {id}");
         }
 
         let http = reqwest::Client::new();
-        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/chat/completions",
+            endpoint.base_url.trim_end_matches('/')
+        );
 
         // Each case: (label, model, extra fields merged into the body)
         let cases: Vec<(String, String, serde_json::Value)> = vec![
             (
                 "configured reasoning model + none".to_string(),
-                model.clone(),
+                endpoint.model.clone(),
                 serde_json::json!({ "reasoning_effort": "none" }),
             ),
             (
                 "configured reasoning model + INVALID value".to_string(),
-                model.clone(),
+                endpoint.model.clone(),
                 serde_json::json!({ "reasoning_effort": "banana" }),
             ),
             (
                 "configured reasoning model + unknown parameter".to_string(),
-                model.clone(),
+                endpoint.model.clone(),
                 serde_json::json!({ "latentcreate_not_a_real_param": true }),
             ),
             (

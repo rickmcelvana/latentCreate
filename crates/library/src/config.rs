@@ -54,6 +54,10 @@ pub struct LlmConfig {
     /// Model id as the endpoint names it, e.g. `"gemma4:12b"`.
     #[serde(default)]
     pub model: Option<String>,
+    /// Whether this endpoint accepts `reasoning_effort`, as verified by the
+    /// wizard's test call. `None` means it has never been probed.
+    #[serde(default)]
+    pub accepts_reasoning_effort: Option<bool>,
 }
 
 /// Everything persisted to `config.json`.
@@ -200,6 +204,7 @@ mod tests {
                 provider: LlmProvider::Anthropic,
                 base_url: Some("http://llm.example".to_string()),
                 model: Some("claude".to_string()),
+                accepts_reasoning_effort: None,
             }),
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
         };
@@ -280,6 +285,7 @@ mod tests {
                 provider: LlmProvider::OpenAiCompat,
                 base_url: Some("http://localhost:11434/v1".to_string()),
                 model: Some("gemma4:12b".to_string()),
+                accepts_reasoning_effort: Some(true),
             }),
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
         };
@@ -302,6 +308,22 @@ mod tests {
             !lower.contains("token"),
             "config.json must not contain token"
         );
+    }
+
+    /// Protects: every existing `config.json` predates this field. A user who
+    /// installed the app before T-302b must not have their config rejected.
+    #[test]
+    fn test_load_missing_accept_reasoning_effort_defaults_to_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE);
+        let old = r#"{"schema_version":1,"comfy":{"mode":"local","url":null,"comfy_bin":null},"llm":{"provider":"open_ai_compat","base_url":"http://localhost:11434/v1","model":"gemma4:12b"},"default_profile_id":null}"#;
+        std::fs::write(&path, old).unwrap();
+        let loaded = load(dir.path());
+        assert_eq!(
+            loaded.config.llm.as_ref().unwrap().accepts_reasoning_effort,
+            None
+        );
+        assert!(loaded.warnings.is_empty());
     }
 
     #[test]

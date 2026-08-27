@@ -63,7 +63,14 @@ function row(over: Partial<LlmModelRow>): LlmModelRow {
 const UNCHECKED = row({ can_chat: null, thinks: null, is_remote: null })
 
 function result(over: Partial<LlmTestResult>): LlmTestResult {
-  return { ok: true, content: '', saw_reasoning: false, detail: null, ...over }
+  return {
+    ok: true,
+    content: '',
+    saw_reasoning: false,
+    accepts_reasoning_effort: null,
+    detail: null,
+    ...over,
+  }
 }
 
 describe('modelView', () => {
@@ -173,7 +180,7 @@ describe('effectiveBaseUrl', () => {
    */
   it('returns the configured URL when one is set', () => {
     const config = baseConfig({
-      llm: { provider: 'open_ai_compat', base_url: 'https://api.openai.com/v1', model: null },
+      llm: { provider: 'open_ai_compat', base_url: 'https://api.openai.com/v1', model: null, accepts_reasoning_effort: null },
     })
     expect(effectiveBaseUrl(config)).toBe('https://api.openai.com/v1')
   })
@@ -186,12 +193,12 @@ describe('effectiveBaseUrl', () => {
     expect(effectiveBaseUrl(baseConfig())).toBe(DEFAULT_BASE_URL)
     expect(
       effectiveBaseUrl(
-        baseConfig({ llm: { provider: 'open_ai_compat', base_url: '', model: null } }),
+        baseConfig({ llm: { provider: 'open_ai_compat', base_url: '', model: null, accepts_reasoning_effort: null } }),
       ),
     ).toBe(DEFAULT_BASE_URL)
     expect(
       effectiveBaseUrl(
-        baseConfig({ llm: { provider: 'open_ai_compat', base_url: '   ', model: null } }),
+        baseConfig({ llm: { provider: 'open_ai_compat', base_url: '   ', model: null, accepts_reasoning_effort: null } }),
       ),
     ).toBe(DEFAULT_BASE_URL)
   })
@@ -279,7 +286,7 @@ describe('llm store', () => {
   it('test_save_endpoint_preserves_the_configured_model', async () => {
     useConfigStore.setState({
       config: baseConfig({
-        llm: { provider: 'open_ai_compat', base_url: 'http://old', model: 'gemma4:12b-32k' },
+        llm: { provider: 'open_ai_compat', base_url: 'http://old', model: 'gemma4:12b-32k', accepts_reasoning_effort: null },
       }),
     })
 
@@ -290,6 +297,58 @@ describe('llm store', () => {
       provider: 'open_ai_compat',
       base_url: 'http://new',
       model: 'gemma4:12b-32k',
+      accepts_reasoning_effort: null,
+    })
+  })
+
+  /**
+   * Protects: the verdict is a fact about one endpoint. Carrying it to a
+   * different endpoint would present a stale verified-fact as true, which is
+   * worse than unknown.
+   */
+  it('test_save_endpoint_clears_the_reasoning_effort_verdict', async () => {
+    useConfigStore.setState({
+      config: baseConfig({
+        llm: {
+          provider: 'open_ai_compat',
+          base_url: 'http://old',
+          model: 'gemma4:12b-32k',
+          accepts_reasoning_effort: true,
+        },
+      }),
+    })
+
+    await useLlmStore.getState().saveEndpoint('http://new')
+
+    const saved = mockSaveConfig.mock.calls[0]![0] as Config
+    expect(saved.llm).toEqual({
+      provider: 'open_ai_compat',
+      base_url: 'http://new',
+      model: 'gemma4:12b-32k',
+      accepts_reasoning_effort: null,
+    })
+  })
+
+  /**
+   * Protects: the test call's verdict is persisted so generation uses it.
+   * Without this write, the backend would fall back to the `thinks` rule and
+   * miss endpoints that accept the field but are not Ollama.
+   */
+  it('test_test_persists_the_reasoning_effort_verdict', async () => {
+    useLlmStore.setState({ model: 'gemma4:12b-32k' })
+    mockLlmTest.mockResolvedValue(result({ accepts_reasoning_effort: true }))
+
+    await useLlmStore.getState().test('http://127.0.0.1:11434/v1')
+
+    expect(mockLlmTest).toHaveBeenCalledWith('http://127.0.0.1:11434/v1', 'gemma4:12b-32k')
+    expect(mockSaveConfig).toHaveBeenCalledTimes(1)
+    expect(mockSaveConfig.mock.calls[0]![0]).toMatchObject({
+      llm: {
+        provider: 'open_ai_compat',
+        base_url: 'http://127.0.0.1:11434/v1',
+        model: 'gemma4:12b-32k',
+        accepts_reasoning_effort: true,
+      },
     })
   })
 })
