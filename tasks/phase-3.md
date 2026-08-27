@@ -77,7 +77,7 @@ then the live milestone. This is the same shape that made Phase 1's `mcp-bridge`
 tests possible, and it is what keeps the pipeline's hard part — graph surgery — out of the
 "you had to be there" category.
 
-### T-301 — remove the lyric-model suggestions  ([brief](t-301-brief.md))
+### T-301 — remove the lyric-model suggestions  — **LANDED** ([brief](t-301-brief.md))
 **First, and deliberately so.** It is Phase 2 code changed by an owner decision
 (2026-08-27, PROJECT.md): **the app recommends no lyric model**. Users already have a go-to,
 many are not on Ollama, and what the app owes them is connecting to whatever they already use.
@@ -121,8 +121,11 @@ is the exact capability the owner named as the one thing the app owes them. Remo
 suggestion list without this would leave the Ollama assumption fully load-bearing and merely
 invisible.
 
-Scope: an endpoint field defaulting to the current constant (so nothing regresses for Ollama
-users), an API-key field that writes through the existing keychain path and **never reads
+**Owner decision 2026-08-27: the endpoint field ships prefilled with the Ollama address.**
+Nothing regresses for local users, and a prefilled field still shows every other user what
+the app has been silently assuming -- which an empty field with placeholder text would not.
+
+Scope: an endpoint field defaulting to the current constant, an API-key field that writes through the existing keychain path and **never reads
 back** — the value must not cross the boundary, only `has_key` (T-004) — both persisted to
 `config.json` like the model selection T-212 fixed, and probe/test/choose taking the entered
 URL rather than the constant. The `unreachable` hint that recognises a base URL missing `/v1`

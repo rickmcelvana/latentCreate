@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0, 1 and 2 complete**, tagged `phase0-done` (2026-08-23), **`phase1-done` (2026-08-25)** and **`phase2-done` (2026-08-26)**. Phase 2 (Lyrics Studio) shipped T-201 … T-210 plus the T-211 live milestone and its fix-ups (T-212 … T-214): a user fills in a brief, watches lyrics stream from their own LLM, edits across versions, runs an advisory structure lint, optionally accepts a consent-gated optimized prompt, and approves a version for audio. **Verified live on 2026-08-26** against a real Ollama -- a whole song in 6.9-9.2 s with reasoning suppressed (against a 44 s / 85-character baseline), the optimizer preserving its five fixed lines 5/5, and the approved lyric on disk with its `prompt_optimized` consent flag. `mcp-bridge` (88 offline tests) covers the verified comfy-mcp surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Audio generation is Phase 3** -- nothing is wired to a pipeline yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **Phase 3, Audio Studio and the generation pipeline** ([ROADMAP](tasks/ROADMAP.md)). **The phase-start surface verification is DONE (2026-08-27, docs/MCP-SURFACE.md 16)** against ComfyUI v0.34.1 / comfy-cli 1.16.0: the ACE-Step template's 33 slots are byte-identical to what the profiles were written against, MiniMax still needs its one `slot_overrides` fix, and **the `SaveAudioAdvanced.format` blocker is resolved** -- it is a graph edit, `flac` is the only lossless option, and the swap was proven by running it and parsing the FLAC. [tasks/phase-3.md](tasks/phase-3.md) now carries the breakdown, **T-301 … T-314**, ordered so everything testable without a running ComfyUI comes first; per-task briefs are written one at a time as each lands. **T-301 is the suggestion removal** (owner, below). ARCHITECTURE 5a/7 have been corrected by 16.3/16.5 -- read those before T-305. The lyric handoff Phase 3 consumes is `approvedText(doc)` -- a pure store selector, no navigation side effect.
+- **Next up:** **Phase 3, Audio Studio and the generation pipeline** ([ROADMAP](tasks/ROADMAP.md)). **The phase-start surface verification is DONE (2026-08-27, docs/MCP-SURFACE.md 16)** against ComfyUI v0.34.1 / comfy-cli 1.16.0: the ACE-Step template's 33 slots are byte-identical to what the profiles were written against, MiniMax still needs its one `slot_overrides` fix, and **the `SaveAudioAdvanced.format` blocker is resolved** -- it is a graph edit, `flac` is the only lossless option, and the swap was proven by running it and parsing the FLAC. [tasks/phase-3.md](tasks/phase-3.md) now carries the breakdown, **T-301 … T-314**, ordered so everything testable without a running ComfyUI comes first; per-task briefs are written one at a time as each lands. **T-301 landed 2026-08-27** -- the app now recommends no lyric model. **T-301b is next**: the wizard has no endpoint or API-key field at all, so the LLM step can still only reach a local Ollama. ARCHITECTURE 5a/7 have been corrected by 16.3/16.5 -- read those before T-305. The lyric handoff Phase 3 consumes is `approvedText(doc)` -- a pure store selector, no navigation side effect.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -2256,3 +2256,63 @@ non-Ollama endpoint.
 ends it). No code changed -- docs only. `tasks/phase-3.md` does not exist yet; the briefs are
 the next artifact, and they can now be written against a verified surface with the save-node
 mechanism known rather than open.
+
+### 2026-08-27 (later) -- Phase 3 briefed; T-301 landed, and my brief put the copy in a dead state
+
+Phase 3's breakdown is written ([tasks/phase-3.md](tasks/phase-3.md)), **T-301 ... T-314**,
+ordered so everything testable without a running ComfyUI comes first. T-301 is the first
+task to land in the phase.
+
+**T-301 -- the app recommends no lyric model.** The suggestion layer is gone whole:
+`data/lyric-llms.json`, both `suggestions.rs` modules, `Suggested`/`MissingSuggestion`, the
+"recommended for lyrics" chip, and the help text carrying an `ollama pull` command. What
+survives is what was never a recommendation -- the remote-model privacy disclosure,
+`Option<bool>` capabilities with unknown never rendered as false, and `preselect`'s
+**settings** half (a configured model wins; an uninstalled one selects nothing), now three
+tests in `src-tauri`. `app` crate 41 -> 43 tests, vitest 109 -> 108.
+
+**Two things the brief found that the phase entry had not**, both by reading the code rather
+than reasoning about it:
+
+- **`DataDir` had exactly one consumer** -- the suggestion load. Left behind it is dead code,
+  and the gate runs `clippy -D warnings`.
+- **`bundle.resources` listed `"../data/*.json"`** while `data/` held only that one file.
+  Deleting it leaves the glob pointing at a directory a fresh clone will not have, and
+  **`npm run gate` cannot see it**: the gate runs `vite build`, never `tauri build`. Called
+  out as a producer click-through item rather than trusted to CI.
+
+**The defect in this task was mine, and it is the same shape as T-213/T-214.** I wrote the
+new empty-state copy into the `not_configured` branch. `Setup.tsx` always calls `probe` with
+a non-empty `DEFAULT_BASE_URL` constant, so **`not_configured` is unreachable from this
+wizard** -- a user with no local model lands on `unreachable`, which showed only a raw
+connection error. The executor transcribed the brief faithfully; the brief was wrong about
+which state the user reaches. The guidance now renders on `unreachable`, where it also names
+the address, because nothing else on screen reveals it.
+
+Third time in three tasks that the defect was **a correct-looking thing attached to the wrong
+state**, and the second time the state in question was one no test exercised because no test
+could reach it. The Phase 2 lesson said to pull decisions into the store where a test can
+reach them; this adds a corollary for the views that remain: **when writing copy for a state,
+check the state is reachable.**
+
+Also changed after the run: an unrequested sweep replacing every section sign in MODELS.md
+with the word "section", reverted on rows the task never touched; `llm_probe`'s doc comment,
+which described an `Err` arm for reading shipped data it no longer reads and can no longer
+take at all; one `cargo fmt` miss on a call left multi-line after losing an argument -- the
+sixth instance of that class; and a stale comment describing `preselect` as beating a
+suggestion.
+
+**T-301b is the task that actually delivers the owner's decision, and it came out of writing
+T-301's brief.** `DEFAULT_BASE_URL` is hardcoded in five places and **the wizard has no
+endpoint field at all**, nor one for the API key, though `has_key` already rides on
+`LlmStatus::Ready` and `SecretKey::LlmApiKey` has been plumbed since T-004. So the LLM step
+can only ever reach a local Ollama on the default port: a user on a hosted API cannot connect,
+which is the one capability the owner named. Removing the suggestion list without this would
+have left the Ollama assumption fully load-bearing and merely invisible. **Owner decision: the
+field ships prefilled with the Ollama address** -- nothing regresses for local users, and a
+prefilled field still shows everyone else what the app had been assuming.
+
+**Outstanding for T-301:** the producer click-through in the brief -- `npm run dev` starts and
+the step renders (the real check on the `tauri.conf.json` change), the model list and
+disclosure still read correctly against a running Ollama, and the new copy appears with
+nothing listening on 11434.
