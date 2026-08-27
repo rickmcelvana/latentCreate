@@ -2489,3 +2489,35 @@ handles the producer's **163-model** endpoint with no lag) and the streamed-reas
 
 **Next: T-303**, `default_profile_id` persistence and the profile picker -- the last of the
 Phase 2 carry-overs, and the same "never written to config" class as T-212.
+
+### 2026-08-27 (later) -- T-303 verified live; T-304 briefed, and the type was already there
+
+**T-303 passed every check**, including the one it was written around: with ComfyUI stopped
+the profiles still list, tagged "cannot check", and the Audio page carries the not-running
+notice -- readiness stayed information rather than becoming a gate. `default_profile_id` is
+written on selection, changes as the model changes, survives a restart, and the Lyrics Studio
+follows it. **Fourth reader-with-no-writer in this repo, and the first one checked against the
+file rather than the screen.**
+
+**T-304 turned out narrower than the phase file said.** `GenerationSpec`, `InputValue`,
+`LoraRef`, `LyricRef` and the `ResolvedSlots` alias have existed since T-003; what was never
+written is `resolve_slots`. The brief is therefore about the **fan-out** alone -- and the
+fan-out is where the two traps the profile abstraction exists to hide actually live:
+`duration_s` writes `94.duration` **and** `98.seconds`, one seed writes `94.seed` **and**
+`3.seed`. Neither failure shows up until a track exists at the wrong length or refuses to
+reproduce, so the acceptance criteria name the invariant (*every* declared address carries the
+value) rather than the mechanics.
+
+Three decisions the brief settles, each recorded because the opposite is defensible:
+
+- **Only what the spec sets is written.** The template already carries defaults, so writing
+  every declared slot would make a profile's `default` a second source of truth against the
+  template's.
+- **Types are matched exactly, never widened.** `set_workflow_slot`'s structured form
+  preserves the type it is given (MCP-SURFACE 9.1), so an `Int` accepted for a `Float` control
+  lands as an integer in a FLOAT slot -- and a `Seed` demoted to `Int` is the unreproducible
+  track that `InputValue`'s adjacent tagging was introduced to prevent.
+- **`create-core` gains `thiserror`, its second dependency ever.** The crate has been
+  serde-only with no error type at all; `ResolveError` is its first. Noted in the brief rather
+  than done quietly, because "create-core has one dependency" was a property worth noticing
+  before it stopped being true.

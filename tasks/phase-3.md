@@ -180,11 +180,12 @@ Scope: persist the selection, load it, and a picker in AudioStudio that lists th
 profiles with their licence terms (the per-model licence rule from T-111 applies here too —
 users ship these tracks commercially).
 
-### T-304 — `create-core`: `GenerationSpec` and semantic-to-slot resolution  *(pure)*
-The type Phase 3 revolves around and the provenance sidecar records. `GenerationSpec` carries
-profile id, every input value, the LoRA stack, the `LyricRef` and the seed;
-`resolve_slots(&ModelProfile, &GenerationSpec)` turns it into the concrete
-`address -> value` list actually submitted.
+### T-304 — `create-core`: semantic-to-slot resolution  *(pure)*  ([brief](t-304-brief.md))
+The type Phase 3 revolves around and the provenance sidecar records. **`GenerationSpec`,
+`InputValue`, `LoraRef`, `LyricRef` and the `ResolvedSlots` alias already exist** (T-003,
+found while briefing) -- what has never existed is `resolve_slots`, which turns the spec
+into the concrete `address -> value` list actually submitted. The task is the fan-out, not
+the type.
 
 This is where the **two traps the profiles exist to hide** get hidden: duration fans out to
 `94.duration` **and** `98.seconds`, and one UI seed fans out to the planner seed `94.seed`
