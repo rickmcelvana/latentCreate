@@ -7,7 +7,7 @@
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
 - **Phase:** **0, 1 and 2 complete**, tagged `phase0-done` (2026-08-23), **`phase1-done` (2026-08-25)** and **`phase2-done` (2026-08-26)**. Phase 2 (Lyrics Studio) shipped T-201 … T-210 plus the T-211 live milestone and its fix-ups (T-212 … T-214): a user fills in a brief, watches lyrics stream from their own LLM, edits across versions, runs an advisory structure lint, optionally accepts a consent-gated optimized prompt, and approves a version for audio. **Verified live on 2026-08-26** against a real Ollama -- a whole song in 6.9-9.2 s with reasoning suppressed (against a 44 s / 85-character baseline), the optimizer preserving its five fixed lines 5/5, and the approved lyric on disk with its `prompt_optimized` consent flag. `mcp-bridge` (88 offline tests) covers the verified comfy-mcp surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Audio generation is Phase 3** -- nothing is wired to a pipeline yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **Phase 3, Audio Studio and the generation pipeline** ([ROADMAP](tasks/ROADMAP.md)). No briefs written yet -- they are authored at the start of the phase. **Do the surface verification first**: re-check the comfy-mcp tool surface against the live server (docs/MCP-SURFACE.md is the authority, and the open `SaveAudioAdvanced.format` dynamic-combo question sits directly in the pipeline's path), and re-read ARCHITECTURE 5a/5b/7 before writing T-301. The lyric handoff Phase 3 consumes is `approvedText(doc)` -- a pure store selector, no navigation side effect.
+- **Next up:** **Phase 3, Audio Studio and the generation pipeline** ([ROADMAP](tasks/ROADMAP.md)). **The phase-start surface verification is DONE (2026-08-27, docs/MCP-SURFACE.md 16)** against ComfyUI v0.34.1 / comfy-cli 1.16.0: the ACE-Step template's 33 slots are byte-identical to what the profiles were written against, MiniMax still needs its one `slot_overrides` fix, and **the `SaveAudioAdvanced.format` blocker is resolved** -- it is a graph edit, `flac` is the only lossless option, and the swap was proven by running it and parsing the FLAC. Still to do before T-301: **write the Phase 3 briefs** (no `tasks/phase-3.md` yet) and re-read ARCHITECTURE 5a/5b/7, which 16.3 and 16.5 have just corrected. The lyric handoff Phase 3 consumes is `approvedText(doc)` -- a pure store selector, no navigation side effect.
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -212,13 +212,61 @@ cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
   comparison happens on real coverage. What is settled is that "Gemma is best for lyrics" was
   measured in a setting this app does not offer, and `data/lyric-llms.json` should not be
   treated as verified until it is re-measured. Tracked as OQ-7.
+- **2026-08-27 -- `SaveAudioAdvanced.format` is set by graph edit, and the lossless test is
+  the format value.** Closes the Phase 1 open item that blocked the pipeline. The dynamic
+  combo is **not a slot**: `list_workflow_slots` does not surface it and `set_workflow_slot`
+  rejects it with `[workflow_slot_invalid]` (loudly -- not one of 9.1's silent traps). It is a
+  positional `widgets_values` entry, and **the array length varies by format**, so the write
+  truncates rather than overwrites. `flac` is the **only** lossless option (no WAV), and it
+  writes **16-bit/48 kHz with no bit-depth control** -- the UI must not offer 24-bit.
+  Proven end to end: the ACE-Step turbo template's `SaveAudioMP3` retyped to
+  `SaveAudioAdvanced`/`flac`, validated clean, run, and the output parsed as real FLAC
+  (48 kHz, 16-bit, 10.000 s, compression ratio 0.471). **The MiniMax template ships
+  `SaveAudioAdvanced` already set to `mp3`/`V0`**, so ARCHITECTURE 7's node-class test would
+  have passed it and shipped MP3 into the mastering chain; the condition is now the format
+  value. Evidence: [docs/MCP-SURFACE.md 16.1-16.3](docs/MCP-SURFACE.md).
+- **2026-08-27 -- the app recommends no lyric model** (owner, closes OQ-7 by removing its
+  premise). The suggestion list is dropped rather than re-measured. Owner's reasoning, in his
+  terms: he is not here to promote models; the people using this app are already making music
+  and **already have a go-to for lyrics**; and **assuming everyone runs Ollama is not
+  logical** -- a lot of users are on APIs and larger models. What the app owes them is that
+  **they can connect to whatever they already use**, not an opinion about which model to use.
+  This reverses the 2026-08-23 recommendation decision (OQ-2) on better evidence about what
+  the feature was actually for. Consequence: `data/lyric-llms.json`, the `suggestions.rs` in
+  both `create-core` and `library`, the picker's preselect in `app/src/state/llm.ts` and
+  `Setup.tsx`, and the docs/MODELS.md table all come out or change meaning -- Phase 2 code
+  changed by a Phase 3-era decision, so it gets its own T-number rather than riding along.
+  The `pull_command: "ollama pull ..."` field in that JSON is the clearest artifact of the
+  assumption being removed.
+- **2026-08-27 -- breadth of endpoint support beats depth on any one of them.** The direct
+  consequence of the decision above: the measure of the LLM step is how many things a user
+  can point it at, not how well it steers them. **Testing another API is not a blocker or
+  something to wait on** (owner) -- so where a question about a provider comes up, it gets
+  answered by connecting to one rather than by reasoning about it. Same standing offer for
+  ComfyUI's own HTTP API and a cloud endpoint, **neither of which this repo has ever tested**;
+  only local stdio comfy-mcp has been exercised.
+- **2026-08-27 -- first real evidence for OQ-3 (raw ComfyUI API), and it is a point in
+  favour.** Resolving the format question needed the option tree for a
+  `COMFY_DYNAMICCOMBO_V3`. comfy-mcp's `nodes(action="get")` returns `choices: []` for it --
+  the node registry cannot see inside a dynamic combo. A plain GET to the local
+  `/object_info/SaveAudioAdvanced` returned the full nested structure (three formats, each
+  with its own sub-inputs). That is precisely the "arbitrary node-input introspection"
+  limitation OQ-3 was deferred against, now observed rather than hypothesised. It does not
+  by itself justify a second backend -- one read-only lookup during verification is not a
+  runtime dependency -- but it is the first entry in the evidence column, and the pipeline
+  should be written knowing `/object_info` is available when the MCP surface cannot answer.
+
 ## Open questions (owner to decide)
-- **OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?** Open 2026-08-26.
-  Gemma 4 12B is the current preselect, from owner experience gathered with a heavily tuned
-  system prompt on another machine. Unaided against this app's own prompt, qwen produced clean
-  structure-tagged lyrics where gemma produced stray production cues. Owner is pulling a set of
-  models to compare properly. Deciding it means editing the JSON and the docs/MODELS.md table
-  that mirrors it -- no code change.
+- ~~**OQ-7 -- which model should `data/lyric-llms.json` suggest for lyrics?**~~ **RESOLVED
+  2026-08-27 -- the question is withdrawn, not answered.** The owner's decision is that the
+  app should suggest **no** lyric model: users bring their own, many are on APIs rather than
+  Ollama, and the app's job is connecting to whatever they already use. The comparison that
+  was pending (gemma vs qwen against this app's unaided prompt) is therefore moot for
+  shipping purposes -- though it stands as the reason the old recommendation was not
+  trustworthy. For the record, the owner's finding: **local qwen is the best he has tested
+  out of the box**, with no prompt adjustment. See the decisions-log entry above for the
+  files this touches.
+
 - ~~**OQ-6 MiniMax Music 3 profile**~~ — **RESOLVED 2026-08-23.** Owner installed the int8 weights (all three files). The template still fails `local_check` on one line because it hardcodes the **fp16** DiT filename; overriding `37/6.unet_name` makes `validate_workflow` return clean — verified end to end. The profile can be written in Phase 1 without further setup; the fp16 DiT is optional and only for a quality comparison. Superseded detail below kept for context: *(original)* The native template `audio_minimax_music_3` exists and is free/local, but the three model files are not on the main dev box (which has MiniMax **H3**, the video model, instead). **Owner confirmed 2026-08-23:** the Music 3 testing was done on the other PC, and this box is his model-testing machine where new models are installed to try and then removed — so absent weights here mean nothing about the model. Options: install the weights here when the profile is written (multi-GB, owner's call), author it on the other PC, or defer to Phase 3. Update ComfyUI first regardless — core is one release behind and the template threw V3 type warnings consistent with template-newer-than-install.
   - **Standing implication for agents:** never infer "model unsupported/unavailable" from this machine's installed-model list. It is a testing box whose model set churns. Ask, or check the template rather than the weights.
 - **OQ-3 Raw ComfyUI API fallback.** Build a second `ComfyBackend` impl against `/prompt`+websocket if comfy-mcp proves limiting (e.g. arbitrary node-input introspection)? Deferred until Phase 3 evidence exists.
@@ -2131,3 +2179,80 @@ than anything here, so this is the habit to carry, not the exception.
    silently to `ace-step-1.5-turbo`. Phase 3 owns the profile picker and should fix it there.
 
 **Session ends here.** Working tree clean, gate green, everything pushed.
+### 2026-08-27 -- Phase 3 opened: the surface re-verified, and the blocker cleared by running it
+
+Session ritual first: PROJECT.md, ARCHITECTURE.md and the ROADMAP all agreed with `git log`
+at `37cd446`, tree clean, in sync with origin. **No drift to fix** -- the first session in a
+while where that was true on the first check.
+
+**The verification pass, and what it changed.** Full evidence in
+[docs/MCP-SURFACE.md 16](docs/MCP-SURFACE.md).
+
+- **Versions:** comfy-cli **unchanged at 1.16.0** -- which is why the tool *names* held.
+  ComfyUI went v0.33.3 -> **v0.34.1**. Worth knowing for the wizard's health pill: reading
+  `freshness` with the server **down** reported `outdated: true`, and `launch_comfyui` then
+  brought it up current, because the owner updates as part of launching. A stale reading on a
+  stopped server is not a stale install.
+- **What did not move:** the ACE-Step turbo template still `runnable: true` with **33 slots at
+  identical addresses**, both duration slots and both seeds where the profile expects them.
+  MiniMax still fails on exactly one hardcoded `fp16` filename with the same three
+  `COMFY_MATCHTYPE_V3` warnings. Both shipped profiles are still correct as written.
+- **What did move:** the LoRA list went **95 entries to 53** and the case-variant directory
+  disappeared. The picker's design requirements are unaffected -- epoch checkpoints still
+  dominate, `training_state.pt` files are still listed and still not loadable -- but
+  ARCHITECTURE 5a's numbers were stale and are now marked historical. Also four tools exist
+  that MCP-SURFACE 1 never listed (`discover`, `free_memory`, `upload_file`, a local
+  `run_template`), `run_workflow` grew `confirm_spend`/`timeout_seconds`, and **`job` grew
+  `action="error"`** -- a normalized failure view the queue panel should read instead of
+  parsing status.
+
+**The `SaveAudioAdvanced.format` blocker is closed, and the answer was not the expected one.**
+It cannot be set through `set_workflow_slot`: the dynamic combo is not surfaced as a slot at
+all, and the attempt errors `[workflow_slot_invalid]` naming the widgets that do exist. So the
+format is a **graph edit** -- a positional `widgets_values` entry whose **array length varies
+by format**, because `flac` has no sub-widget while `mp3`/`opus` carry a `quality` sub-combo.
+`flac` is the only lossless option the node offers; there is no WAV, and no bit-depth control,
+so the ceiling is 16-bit/48 kHz and the UI must not imply otherwise.
+
+I did not stop at validating it. `validate_workflow` **documents dynamic-combo sub-inputs as
+one of its own blind spots**, so a clean validate proves nothing about the format -- exactly
+the "checked nothing, reported valid" hazard 9.3 already records in another form. So the swap
+was run: template copy, node 107 retyped, 10-second generation, output parsed from the file
+header -- `fLaC` magic, 48 kHz, 16-bit stereo, **480000 samples = 10.000 s exactly**, ratio
+0.471. Real lossless, and the two duration slots stayed in sync through the edit.
+
+**The finding that would have shipped a bug.** The MiniMax template carries
+`SaveAudioAdvanced` **already configured to `mp3`/`V0`**. ARCHITECTURE 7 step 3 said the
+pipeline intervenes where the template disagrees with the profile's `output` block and
+described MiniMax as the one that "already ships `SaveAudioAdvanced`" -- a **node-class**
+test. That test passes MiniMax and hands MP3 to the mastering chain, which is the precise
+outcome the lossless rule exists to prevent. The condition is now the **format value**.
+This is the same shape as T-212 and the two before it: a check written against the thing that
+was easy to observe rather than the thing that mattered.
+
+**Owner decisions this session.**
+
+1. **No lyric-model recommendations at all** -- OQ-7 withdrawn rather than answered. The app
+   is not a place to promote models; its users already have a go-to, many of them on APIs, and
+   **assuming everyone runs Ollama is not logical**. What the app owes them is connecting to
+   whatever they already use. For the record, his own finding was that local **qwen** is the
+   best he has tested with no prompt adjustment -- but it does not become a suggestion.
+2. **Testing another API is not a blocker.** Breadth of endpoint support is the goal; where a
+   provider question arises, connect to one and find out. ComfyUI's HTTP API and any cloud
+   endpoint are equally available -- **neither has ever been tested here**, only local stdio.
+
+**A live consequence of decision 1 that needs deciding, not assuming.**
+`reasoning_effort: "none"` -- the fix for a whole song arriving as 99% chain-of-thought -- is
+sent **only where `thinks` is true**, and `thinks` exists only where Ollama's native
+enrichment answered. That was a safe rule when Ollama was the assumed path. If most users are
+on OpenAI-compatible APIs the app cannot enrich, then **most users never get the field**, and
+the 44-second-before-first-token behaviour is theirs by default. Not a Phase 3 blocker, but it
+is the first thing decision 1 breaks, and it belongs in the same task as the suggestion
+removal. Recorded rather than fixed on a guess -- the repo's rule is that a prompt/parameter
+change against a third-party surface gets measured, and the measurement here needs a
+non-Ollama endpoint.
+
+**State at close:** ComfyUI left running at 127.0.0.1:8188 (I launched it; `stop_comfyui`
+ends it). No code changed -- docs only. `tasks/phase-3.md` does not exist yet; the briefs are
+the next artifact, and they can now be written against a verified surface with the save-node
+mechanism known rather than open.

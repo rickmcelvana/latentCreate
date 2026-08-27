@@ -1,4 +1,7 @@
-# MCP-SURFACE.md — verified against a live local comfy-mcp (2026-08-23)
+# MCP-SURFACE.md — verified against a live local comfy-mcp (2026-08-23, re-verified 2026-08-27)
+
+**Section 16 is the most recent pass** (Phase 3 start, ComfyUI v0.34.1). Where it and an earlier
+section disagree, 16 wins -- it says so at each point.
 
 **This file supersedes docs/RESEARCH.md §1 for anything about tool names.** RESEARCH §1 was written from the *cloud* MCP documentation; the tool surface a **local** `comfy-mcp` exposes is materially different. Everything below was observed against the owner's running install, not read from docs.
 
@@ -64,6 +67,9 @@ Template `audio_ace_step1_5_xl_turbo` (2026-04-10), **`local_check: runnable: tr
 
 ## 4. LoRAs — verified, and messier than assumed
 
+> **Counts re-read 2026-08-27 (16.5): the list is now 53 entries, not 95, and the case-variant
+> directory is gone. The design consequences below all stand; the numbers are historical.**
+
 Enumeration works: `nodes(action="get", name="LoraLoaderModelOnly")` returns `lora_name` as a COMBO whose `choices` are the installed LoRA paths (identical to `search_models(folder="loras")`, 95 entries here). Either call is a valid source; the node schema is the better one because it is what the graph will actually accept.
 
 - The loader is **core `LoraLoaderModelOnly`** (`model` + `lora_name` + `strength_model`), *not* a custom ACE-Step node. The earlier profile example naming `ACEStepLoraLoader` was wrong. Variants present: `LoraLoader` (model+CLIP), `LoraLoaderBypass*`, `LoraModelLoader`.
@@ -83,7 +89,12 @@ Enumeration works: `nodes(action="get", name="LoraLoaderModelOnly")` returns `lo
 
 The turbo template ends in **`SaveAudioMP3`** at quality **V0**, and `SaveAudioMP3`, `SaveAudio` (FLAC) and `SaveAudioOpus` are all marked **DEPRECATED** in this install. The current node is **`SaveAudioAdvanced`**.
 
-For an app whose whole purpose is feeding a mixing/mastering chain, generating lossy MP3 is the wrong default. latentCreate should replace the save node with `SaveAudioAdvanced` writing a lossless format. **Owner-confirmed 2026-08-23:** he swaps this node out of every workflow by habit — so the app doing it automatically removes a manual step that experienced users already know to take, and rescues everyone who does not. Treat lossless output as a correctness requirement, not a preference. Caveat found while verifying: `SaveAudioAdvanced.format` is typed `COMFY_DYNAMICCOMBO_V3` with `is_link: true` — a dynamic combo, not a static enum, so setting it is not a plain string write. **Open item for Phase 3:** determine how to set a V3 dynamic combo through `set_workflow_slot`, or whether the save node must be swapped by graph edit.
+For an app whose whole purpose is feeding a mixing/mastering chain, generating lossy MP3 is the wrong default. latentCreate should replace the save node with `SaveAudioAdvanced` writing a lossless format. **Owner-confirmed 2026-08-23:** he swaps this node out of every workflow by habit — so the app doing it automatically removes a manual step that experienced users already know to take, and rescues everyone who does not. Treat lossless output as a correctness requirement, not a preference. Caveat found while verifying: `SaveAudioAdvanced.format` is typed `COMFY_DYNAMICCOMBO_V3` with `is_link: true` — a dynamic combo, not a static enum, so setting it is not a plain string write. **RESOLVED 2026-08-27 -- see 16.1.** It cannot be set through `set_workflow_slot` at all: the
+dynamic combo is not surfaced as a slot, and the attempt errors with `[workflow_slot_invalid]`.
+The format is a positional `widgets_values` entry set by **graph edit**, `flac` is the only
+lossless option the node offers (there is no WAV), and the swap is proven end to end in 16.2.
+**Also corrected there:** the MiniMax template ships this node already set to `mp3` (16.3), so
+the "does the template use the modern node" test is the wrong test.
 
 ## 6. MiniMax Music 3 — installed, and runnable with one slot change
 
@@ -919,3 +930,149 @@ invalid.
 generation: with no published vocabulary (15.1), a blocking rule would be enforcing a guess
 against the user's own text -- which is also the rule that says this app never modifies
 lyrics without an explicit accept step.
+
+## 16. Phase 3 re-verification -- 2026-08-27
+
+Run at the start of Phase 3, per the phase-start rule. Environment: comfy-cli **1.16.0**
+(unchanged since the original capture), ComfyUI **v0.34.1**, workspace unchanged, RTX 5060 Ti
+/ 15.9 GiB, no custom node packs.
+
+**On versions:** `server_info` with the server down reported core v0.34.0 against latest
+v0.34.1 and `outdated: true`; `launch_comfyui` then brought it up at **v0.34.1**,
+`outdated: false`. The owner updates ComfyUI as part of launching it, so a stale `freshness`
+block read while the server is down is not evidence of a stale install. **comfy-mcp itself is
+the surface that moves** -- it is new, and the tool list below has already drifted.
+
+### 16.1 RESOLVED `SaveAudioAdvanced.format` -- the dynamic combo is not a slot
+
+The Phase 1 open item (5) is settled. `format` is still typed `COMFY_DYNAMICCOMBO_V3` with
+`is_link: true` and `choices: []` from `nodes(action="get")`, but the raw `/object_info`
+carries the real shape:
+
+| `format` option | sub-inputs |
+|---|---|
+| `flac` | **none** -- `{"required": {}}` |
+| `mp3` | `quality` COMBO `V0` (default) / `128k` / `320k` |
+| `opus` | `quality` COMBO `64k` / `96k` / `128k` (default) / `192k` / `320k` |
+
+**There is no WAV option. `flac` is the only lossless format the node offers**, which is what
+the app must select.
+
+**It cannot be set through slots, and the failure is loud.** `list_workflow_slots` on the
+MiniMax template returns 25 slots including `35.filename_prefix` and **no `35.format`** -- the
+dynamic combo is not surfaced as a slot at all. Attempting it anyway:
+
+```
+set_workflow_slot("35.format", "flac")
+=> [workflow_slot_invalid]: widget 'format' not found on SaveAudioAdvanced;
+   available widgets: filename_prefix
+```
+
+An error, not a silent no-op -- unlike the three silent traps in 9.1. **The format is
+therefore set by graph edit**, writing the node's positional `widgets_values`:
+
+```
+["<filename_prefix>", "flac"]            # 2 entries -- flac has no sub-widget
+["<filename_prefix>", "mp3", "V0"]       # 3 entries -- the shipped MiniMax value
+```
+
+WARNING **The array length varies by format.** Writing `[prefix, "flac", "V0"]` leaves a
+stray value from a format that has no sub-widget. The pipeline must truncate, not overwrite
+in place.
+
+WARNING **A clean `validate_workflow` does not prove the format.** comfy-cli documents
+`COMFY_DYNAMICCOMBO_V3` sub-inputs as one of its own four blind spots, so step 4 of the
+pipeline (ARCHITECTURE 7) can confirm the splice and never see a wrong format. Only a real
+run does.
+
+### 16.2 The lossless swap, proven end to end
+
+Not argued -- run. Working copy of `audio_ace_step1_5_xl_turbo`, node **107**
+`SaveAudioMP3` (widgets `["audio/ACE_Step1.5_xl_turbo", "V0"]`) retyped to
+`SaveAudioAdvanced` with widgets `["audio/latentCreate_flac_probe", "flac"]`, duration slots
+set to 10 s, then validated and run:
+
+- `validate_workflow` -> `valid: true`, 0 errors, 0 warnings, `converted_from_ui: true`,
+  11 nodes converted.
+- `run_workflow(wait=false)` -> `job(action="wait")` -> `completed`, output
+  `latentCreate_flac_probe_00001.flac` on node `107`.
+- The file: `fLaC` magic, **48 kHz, 2 ch, 16-bit, 480000 samples = 10.000 s exactly**,
+  903834 bytes against 1920000 bytes of PCM -- **ratio 0.471**, the compression of real
+  lossless coding, not a renamed lossy container.
+
+Two facts worth carrying into the briefs:
+
+- **`107.filename_prefix` was still settable through `set_workflow_slot` after the retype.**
+  The slot mechanism addresses the swapped node normally; only `format` is out of reach. So
+  the pipeline can keep using slots for the prefix and graph-edit only the format.
+- WARNING **Bit depth is not selectable.** `flac`'s sub-inputs are empty, so 16-bit/48 kHz is
+  what the node writes. The app cannot offer 24-bit through `SaveAudioAdvanced`, and should
+  not imply that it can.
+
+### 16.3 WARNING The MiniMax template ships SaveAudioAdvanced set to **mp3**
+
+`audio_minimax_music_3` node 35 `widgets_values` is
+`["audio/audio_minimax_music3", "mp3", "V0"]`. It carries the modern node **already
+configured lossy**.
+
+This corrects ARCHITECTURE 7 step 3 and 6a, which described MiniMax as the template that
+"already ships `SaveAudioAdvanced`" and had the pipeline intervene only where the template
+disagrees with the profile's `output` block *by node class*. **A class-based check passes
+this template and ships MP3 into the mastering chain** -- the exact outcome the lossless rule
+exists to prevent. The condition is the **format widget value**, not the node type.
+
+### 16.4 Templates and slots -- unchanged on v0.34.1
+
+- `audio_ace_step1_5_xl_turbo`: `local_check` **`runnable: true`, 0 errors**. **33 slots,
+  every address identical** to 3 -- both duration slots (`94.duration`, `98.seconds`), both
+  seeds (`94.seed`, `3.seed`), and the save node still `SaveAudioMP3` at `107` quality `V0`.
+  The profile's 17 declared addresses all still resolve.
+- `audio_minimax_music_3`: `runnable: false` with **the same single error** (hardcoded
+  `minimax_music3_dit_fp16.safetensors` in `37/6.unet_name` against the installed int8) and
+  **the same three `COMFY_MATCHTYPE_V3` warnings**. The profile's `slot_overrides` fix is
+  still correct and still needed.
+
+### 16.5 The LoRA list changed -- 95 entries to 53
+
+Re-read from `nodes(action="get", name="LoraLoaderModelOnly")`. The design consequences in 4
+all stand, but the numbers there are stale:
+
+| | 2026-08-23 | 2026-08-27 |
+|---|---|---|
+| Total entries | 95 | **53** |
+| Case-variant dirs (`LoRAgoth` + `loragoth`) | both present | **only `loragoth`** |
+| `training_state.pt` non-adapters | present | **21, still listed** |
+| Distinct usable adapters | ~9 | **~10** (9 ACE-Step + `loragoth/final`) |
+
+Still true and still driving the picker design: entries are **paths with backslashes**,
+`training_state.pt` files are listed but not loadable, one directory
+(`...raspy-vocal-and-instrumental-5-LoRAs`) holds **five** different adapters, 20 epoch
+checkpoints from one training run dominate the list, and unrelated **video** LoRAs
+(`minimax_h3_fl2v_turbo_*`) sit in the same folder. `strength_model` is unchanged:
+FLOAT, -100..100, step 0.01, default 1.0.
+
+**The case-variant duplicate is gone from this install**, so that specific evidence no longer
+exists -- but the requirement stays, because the filesystem that produced it is unchanged.
+The honest statement is "seen once on this machine, not currently present".
+
+### 16.6 Tool-surface drift since 1
+
+The names in 1 are all still present and still correct. Four tools exist that 1 does not
+list, and three tools grew arguments:
+
+- **Not in the table:** `discover` (comfy-cli's self-describing command surface),
+  `free_memory`, `upload_file`, and a **local `run_template`** -- 1 listed `run_template`
+  only in the "cloud docs said" column, but it exists locally.
+- `run_workflow` now takes **`confirm_spend`** and **`timeout_seconds`** (default 110 s,
+  sized to sit under a client's ~120 s budget). A paid workflow fails **closed** with
+  `spend_consent_required`. Nothing in this app's path spends credits, but the wrapper should
+  not pass `confirm_spend` blindly.
+- `job` gained **`action="error"`** -- a normalized failure view (`error_code`, e.g.
+  `server_died` for an OOM kill, `exception_type`/`exception_message`, `node_id`/`node_type`,
+  `traceback_tail`), returning `error: None` when healthy so it is safe to call
+  speculatively. **This is what the queue panel's failed state should read**, rather than
+  parsing `job(action="status")`.
+- `fetch_outputs` gained `inline_images` and `url_only`.
+
+`discover` is the general answer to this drift: comfy-cli publishes its own contract at
+runtime, so a future re-verification can diff it rather than re-reading tool docs by hand.
