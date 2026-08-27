@@ -48,8 +48,9 @@ latentCreate/
 ├── crates/
 │   ├── create-core/          # domain types: Project, Track, LyricDoc, GenerationSpec,
 │   │                         #   ModelProfile, Provenance. Plus the pure transforms over
-│   │                         #   them: slot resolution (T-304) and the workflow graph edits
-│   │                         #   slots cannot express (T-305). No I/O. Serde everywhere.
+│   │                         #   them: slot resolution (T-304), the workflow graph edits
+│   │                         #   slots cannot express (T-305), and the audit of whether a
+│   │                         #   slot write can reach the engine (T-306a). No I/O.
 │   ├── mcp-bridge/           # MCP client (rmcp). Spawns/attaches local comfy-mcp (stdio).
 │   │                         #   Typed wrappers per verified tool (docs/MCP-SURFACE.md).
 │   ├── llm-bridge/           # LLM providers behind one trait. reqwest + SSE streaming.
@@ -265,12 +266,13 @@ Users with a working ComfyUI workflow — including LoRA wiring no shipped profi
 
 1. AudioStudio renders controls from the selected profile's `inputs` (§5) — unsupported controls simply don't render (e.g. **no negative box for ACE-Step 1.5**, which has no such input).
 2. On Generate: `fetch_template` to a per-job working copy → apply the `GenerationSpec` (profile id, all input values, LoRA stack, lyric doc version ref, seed) by `set_slot` per mapped address → `run(wf)`. **Every job gets its own workflow file**; the app never mutates a shared one (the MCP docs warn about TOCTOU on shared paths).
+2a. ⚠ **A slot write is only real if the target input is not driven by a node that survives conversion** (MCP-SURFACE §18.1). `set_workflow_slot` reports an address `applied` whenever it can write the widget; whether the widget is *read* depends on the graph. ACE-Step's `3.seed` and `94.seed` are fed from `PrimitiveInt` 109 and were inert — every track would have used the template's seed while provenance recorded the user's. The profile now writes `109.value`, and `create-core::audit_slots` is the standing check. Note the nuance: a link from a frontend-only `PrimitiveNode` **is** dropped at conversion, so those writes do land — flagging every link would be a false alarm. Values reach the wire through `InputValue::to_slot_value`, never `serde_json::to_value`, which would send the adjacent tag.
 3. **Graph edits** happen on that working copy before the run, for the two cases slots cannot express: splicing `LoraLoaderModelOnly` nodes after the profile's `attach_after` node, and making the save node write lossless. Shipping lossy MP3 into a mastering chain would undercut the whole suite.
    - **The test is the format value, not the node class** (verified 2026-08-27, MCP-SURFACE §16.3). ACE-Step's template ships `SaveAudioMP3`; MiniMax's ships `SaveAudioAdvanced` **already set to `mp3`/`V0`**. A check that only asks "is this the modern node" passes MiniMax and ships MP3 — the outcome this rule exists to prevent.
    - **`format` is set by graph edit, never by slot** (MCP-SURFACE §16.1): it is a `COMFY_DYNAMICCOMBO_V3` that `list_workflow_slots` does not surface and `set_workflow_slot` rejects with `[workflow_slot_invalid]`. It is a positional entry in the node's `widgets_values`, and **the array length varies by format** — `flac` has no sub-widget (2 entries), `mp3`/`opus` carry a `quality` sub-combo (3). Truncate; do not overwrite in place.
    - **`flac` is the only lossless option** the node offers — there is no WAV — and it writes **16-bit/48 kHz with no bit-depth control**. The UI must not offer 24-bit.
    - `filename_prefix` on the swapped node is still a normal slot, so only the format needs the graph edit.
-4. `validate_workflow` on the edited copy before submitting — cheap, and it catches a bad splice before a GPU-minutes-long failure.
+4. `validate_workflow` on the edited copy before submitting — cheap, and worth being precise about. **Measured on the live install (MCP-SURFACE §17–18):** it catches `unknown_enum_value`, `above_max` and `required_input_missing` before any GPU time. It is **blind to reachability** — a LoRA chain spliced in but feeding nothing validates clean, runs, and writes audio with no LoRA applied (§17.1) — and documented blind to `COMFY_DYNAMICCOMBO_V3` sub-inputs, which is the save format. **A clean validation is not evidence that a graph edit took effect.** Reachability is asserted in `create-core`'s own tests, before submission. Treat `Verdict::Vacuous` as failure, not success.
 5. Job lifecycle streamed to a **queue panel** (pending/running/progress %/failed with error text) via `job(action="status"|"watch")`. Multiple queued jobs allowed; batch = N seeds of the same spec.
 6. On completion: `fetch_outputs` → audio copied into the library (§8) with a **provenance sidecar** that includes the resolved slot values actually submitted, not just the UI values.
 

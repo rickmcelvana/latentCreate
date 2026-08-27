@@ -5,9 +5,11 @@
 ## Snapshot
 - **Project:** latentCreate — open-source, desktop-only (Tauri 2) AI music creation front-end. Orchestrates user-provided ComfyUI (via Comfy MCP) for audio/image generation and a user-provided LLM for lyrics. **Ships no models.** Complements the closed-source siblings `../latent-mixing` and `../latent-mastering` (send-to targets) and the in-development latentPlayer.
 - **Repo:** public, Apache-2.0, `github.com/rickmcelvana/latentCreate`. CI green on ubuntu/windows/macos.
-- **Phase:** **0, 1 and 2 complete**, tagged `phase0-done` (2026-08-23), **`phase1-done` (2026-08-25)** and **`phase2-done` (2026-08-26)**. Phase 2 (Lyrics Studio) shipped T-201 … T-210 plus the T-211 live milestone and its fix-ups (T-212 … T-214): a user fills in a brief, watches lyrics stream from their own LLM, edits across versions, runs an advisory structure lint, optionally accepts a consent-gated optimized prompt, and approves a version for audio. **Verified live on 2026-08-26** against a real Ollama -- a whole song in 6.9-9.2 s with reasoning suppressed (against a 44 s / 85-character baseline), the optimizer preserving its five fixed lines 5/5, and the approved lyric on disk with its `prompt_optimized` consent flag. `mcp-bridge` (88 offline tests) covers the verified comfy-mcp surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Audio generation is Phase 3** -- nothing is wired to a pipeline yet.
+- **Phase:** **0, 1 and 2 complete**, tagged `phase0-done` (2026-08-23), **`phase1-done` (2026-08-25)** and **`phase2-done` (2026-08-26)**. Phase 2 (Lyrics Studio) shipped T-201 … T-210 plus the T-211 live milestone and its fix-ups (T-212 … T-214): a user fills in a brief, watches lyrics stream from their own LLM, edits across versions, runs an advisory structure lint, optionally accepts a consent-gated optimized prompt, and approves a version for audio. **Verified live on 2026-08-26** against a real Ollama -- a whole song in 6.9-9.2 s with reasoning suppressed (against a 44 s / 85-character baseline), the optimizer preserving its five fixed lines 5/5, and the approved lyric on disk with its `prompt_optimized` consent flag. `mcp-bridge` (88 offline tests) covers the verified comfy-mcp surface; `llm-bridge` (35 + 4 live) covers OpenAI-compatible streaming plus Ollama's native API. **Phase 3 is in progress** -- its pure half is done (slot resolution, both graph edits, the slot audit); the `src-tauri` pipeline that runs them is T-306b and nothing generates audio through the app yet.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
-- **Next up:** **Phase 3, Audio Studio and the generation pipeline** ([ROADMAP](tasks/ROADMAP.md)). **The phase-start surface verification is DONE (2026-08-27, docs/MCP-SURFACE.md 16)** against ComfyUI v0.34.1 / comfy-cli 1.16.0: the ACE-Step template's 33 slots are byte-identical to what the profiles were written against, MiniMax still needs its one `slot_overrides` fix, and **the `SaveAudioAdvanced.format` blocker is resolved** -- it is a graph edit, `flac` is the only lossless option, and the swap was proven by running it and parsing the FLAC. [tasks/phase-3.md](tasks/phase-3.md) now carries the breakdown, **T-301 … T-314**, ordered so everything testable without a running ComfyUI comes first; per-task briefs are written one at a time as each lands. **T-301 landed 2026-08-27** -- the app now recommends no lyric model. **T-301b is next**: the wizard has no endpoint or API-key field at all, so the LLM step can still only reach a local Ollama. ARCHITECTURE 5a/7 have been corrected by 16.3/16.5 -- read those before T-305. The lyric handoff Phase 3 consumes is `approvedText(doc)` -- a pure store selector, no navigation side effect.
+- **Landed in Phase 3 so far** (all 2026-08-27): the phase-start surface re-verification (docs/MCP-SURFACE.md §16), then **T-301** (no lyric model is recommended), **T-301b** (endpoint + API-key fields, so any OpenAI-compatible provider works -- verified live against QwenCloud), **T-302** (measured the cost of the conservative `reasoning_effort` rule: 11.8x billed tokens), **T-302b** (the app discovers acceptance per endpoint instead of inferring it -- 33 s became 1-2 s), **T-303** (`default_profile_id` persists; profile picker), **T-304** (`resolve_slots`: semantic inputs fanned out to slot addresses), **T-305a** (`ensure_lossless_output`), **T-305b** (`splice_loras`), **T-306a** (`to_slot_value` + `audit_slots`, and the ACE-Step seed fix). `create-core` is 126 tests.
+- **Next up: T-306b, the pipeline command** ([brief not yet written](tasks/phase-3.md)). `generate_audio(spec)` in `src-tauri`: `fetch_template` to a per-job working copy -> `set_slots` -> the T-305 graph edits -> `validate_workflow` -> submit into the **existing** `jobs::run_workflow` pump rather than a second lifecycle. Then T-307 … T-314. **Audio generation still does not run end to end** -- every piece exists and nothing is wired together yet.
+- ⚠ **Three findings from Phase 3 constrain everything downstream**, all verified live and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §§17-18. Read them before touching the pipeline: **(1)** a LoRA splice that feeds nothing validates clean, runs and writes audio -- `validate_workflow` is a schema check, not a reachability check (§17.1). **(2)** `set_workflow_slot` reporting an address `applied` does not mean the value reaches the engine (§18.1). **(3)** ACE-Step is **not reproducible run-to-run** even with a fixed seed -- two identical runs differ in 98.1% of bytes -- so no test or check may rest on two runs matching, and provenance reproduces the *inputs*, not the waveform (§17.3). `GET /history/<prompt_id>` is the only surface that shows what actually ran (§17.2).
 - **Stack (as built):** Rust 1.97 workspace (`create-core`, `mcp-bridge`, `llm-bridge`, `library`, `src-tauri`) + Tauri 2.11; React 19.2 + TS 6 strict + Vite 8 + Zustand + vitest 3 + oxlint. Plain CSS, one `theme.css`. `app` is an **npm workspace** — one `npm install` at the root.
 
 ## Working commands
@@ -17,6 +19,12 @@ npm run dev     # desktop app (Tauri); run from the repo ROOT, not app/
 npm run gate    # everything CI runs, in CI's order -- the pre-commit check
 cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 ```
+
+**13 `#[ignore]` tests** across the workspace are live harnesses -- they need a running Ollama,
+a hosted endpoint with a stored key, the OS keychain, or gigabytes of download, so CI never runs
+them. Each carries its reason in the attribute. `cargo test -p <crate> -- --ignored` runs a
+crate's set; two of them (`src-tauri/src/lyrics.rs`) **spend API credits**, so read the reason
+before running one.
 
 **Where the app writes** (Tauri `app_config_dir()`, identifier `com.latentbeats.create`):
 
@@ -2788,3 +2796,52 @@ would have been harder to half-apply.
 Also moved the two `to_slot_value` tests from `audit.rs` to `generation.rs`, beside the method
 they cover. Every module in this crate keeps its own tests; a test that lives one module away
 from its subject is one the next editor will not see.
+
+### 2026-08-27 (session close) -- handoff: what the next session should carry forward
+
+Phase 3's **pure half is done**. `create-core` can resolve a spec to slot values, make the save
+node write FLAC, splice a LoRA stack into the MODEL chain, and tell you whether a slot write
+will actually reach the engine. **Nothing generates audio through the app yet** -- T-306b is the
+seam that wires it, and it is unbriefed.
+
+**Read before writing any pipeline code.** Three things were established by running them, and
+each contradicts a reasonable assumption:
+
+1. **A clean `validate_workflow` does not mean an edit took effect.** A LoRA chain spliced in but
+   feeding nothing validates clean, runs, and writes audio with no LoRA applied. It *is* good for
+   enum, range and missing-input errors. MCP-SURFACE 17.1.
+2. **`applied` from `set_workflow_slot` does not mean the value is read.** ACE-Step's seed wrote
+   two addresses that the engine ignored. Fixed, and `audit_slots` is the standing guard --
+   but it reports subgraph interiors as `unchecked`, so **MiniMax's seed is unverified, not
+   working** (18.5, backlogged).
+3. **ACE-Step is not reproducible run-to-run.** Two identical runs, fixed seed, greedy sampling:
+   98.1% of bytes differ. No check may rest on two runs matching, and whatever the UI says about
+   seeds must not promise the same waveform back. 17.3.
+
+`GET /history/<prompt_id>` is the only surface that shows what the engine actually ran (17.2).
+It settled all three. Reach for it whenever the question is "did that edit land".
+
+**Operational notes for the executor lane:**
+
+- **Aider now runs with `--edit-format diff`.** The default `whole` format re-emits every
+  `--file` in full and stalled T-306a twice; `graph.rs` alone is 49 KB. Keep `diff`, and keep
+  briefs' file sets small. **The executor lane has a working-set budget** and briefs have to be
+  written against it, the same way they are written against the ~400-line diff limit.
+- **Name each edit on its own line.** T-306a's site list put two address swaps in one sentence
+  and only one was applied. The gate caught it, but the shape is worth avoiding.
+- **Mutation testing after every correctness task is now standing practice**, and it has found a
+  real hole six times (T-110, T-304, twice in T-305a, T-305b, T-306a). The mutations a brief
+  names test what the brief already understood; the ones that find something are aimed at **what
+  the tests assume**. Three tasks running, the same flaw appeared: an assertion of the form
+  "nothing bad was found" passing because nothing was looked at. Check for vacuity explicitly.
+
+**Two `.md` files are the authority over anything remembered or inferred:**
+[docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) for anything comfy-mcp or ComfyUI (18 sections now),
+and [docs/LLM-SURFACE.md](docs/LLM-SURFACE.md) for endpoints and streaming. ARCHITECTURE 7 has
+been corrected twice this phase by findings in those files; if it disagrees with them, they win.
+
+**Left deliberately undone:** MiniMax seed verification and a declared range for
+`InputSpec::Seed` (both in the backlog); the two styling items in
+[docs/CSS-TODO.md](docs/CSS-TODO.md). Test tracks named `T305B_*`, `det_*`, `poison_*`,
+`stale_anchor` and `null_input` are sitting in the producer's ComfyUI `output/audio` and can be
+deleted.
