@@ -150,7 +150,7 @@ a parameter change against a third-party surface gets measured like one — and 
 said testing another API is not a blocker. Outcome is a decision entry plus, if warranted, a
 small change to when the field is sent. **Not a Phase 3 blocker; it blocks nothing below it.**
 
-### T-302b — discover whether an endpoint accepts `reasoning_effort`  ([brief](t-302b-brief.md))
+### T-302b — discover whether an endpoint accepts `reasoning_effort`  — **LANDED** ([brief](t-302b-brief.md))
 T-302's measurement (LLM-SURFACE 13.1) found **QwenCloud honours the field**: 33.12 s -> 1.13 s
 to first content and **2771 -> 235 completion tokens**, for a song no worse. The app never
 sends it there, because `thinks` only exists where Ollama's native enrichment answered -- so

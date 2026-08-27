@@ -2459,3 +2459,33 @@ tolerable goes to the backlog rather than a task. And QwenCloud publishes an
 **Anthropic-compatible** endpoint alongside the OpenAI-compatible one -- which is the second
 wire format `LlmProvider` has been deferred against since T-109, now available whenever that
 question is picked up.
+
+### 2026-08-27 (session close) -- T-302b verified live: 33 seconds became 1 to 2
+
+The payoff T-302 measured is real in the app. The producer ran the wizard's test call against
+QwenCloud and generated a lyric: **back in 1-2 seconds**, against the 33.12 s to first content
+that the same endpoint gave with the field unsent (LLM-SURFACE 13.1). `config.json` carries
+`"accepts_reasoning_effort": true`, so the verdict reached disk -- the half of this that the
+T-212 class of bug lives in, checked rather than assumed.
+
+**An unplanned confirmation of the design's central distinction.** By the time the check ran
+the producer had switched models, from `qwen3.8-flash` to **`glm-5.2`** -- a different
+vendor's model on the same gateway -- and the verdict was still there and still applied. That
+is exactly what "acceptance is per endpoint, honouring is per model" (LLM-SURFACE 13.4) was
+built for: the endpoint fact survives a model change, `choose` preserves it while
+`saveEndpoint` clears it, and a third model on a second vendor honoured the field without
+anything being re-probed.
+
+**The arc, end to end.** T-301 removed the app's opinion about which model; T-301b removed the
+assumption about where it runs; T-302 measured what that assumption had been costing; T-302b
+made the app find out for itself instead of inferring. The through-line is the same one the
+repo keeps rediscovering: **the app should verify a third-party fact rather than derive it
+from something adjacent.** `thinks` was a good proxy for one provider and wrong as a rule.
+
+Also this session: [docs/CSS-TODO.md](docs/CSS-TODO.md) opened, so styling gaps get written
+down when they are noticed instead of being rediscovered at the Phase 5 polish pass. Two
+entries, both from click-throughs -- the model list's unstyled scrollbar (the list itself
+handles the producer's **163-model** endpoint with no lag) and the streamed-reasoning panel.
+
+**Next: T-303**, `default_profile_id` persistence and the profile picker -- the last of the
+Phase 2 carry-overs, and the same "never written to config" class as T-212.
