@@ -77,7 +77,7 @@ then the live milestone. This is the same shape that made Phase 1's `mcp-bridge`
 tests possible, and it is what keeps the pipeline's hard part — graph surgery — out of the
 "you had to be there" category.
 
-### T-301 — remove the lyric-model suggestions
+### T-301 — remove the lyric-model suggestions  ([brief](t-301-brief.md))
 **First, and deliberately so.** It is Phase 2 code changed by an owner decision
 (2026-08-27, PROJECT.md): **the app recommends no lyric model**. Users already have a go-to,
 many are not on Ollama, and what the app owes them is connecting to whatever they already use.
@@ -96,12 +96,37 @@ privacy disclosure, `Option<bool>` capabilities with "capabilities unknown" neve
 false, and a model the user already configured always winning. None of those are opinions
 about which model is good.
 
-**The hole this opens, and the brief must fill it.** The suggestion block was also the empty
-state: a user with nothing configured currently gets a named model and a command to run.
-Afterwards they get an empty picker. The replacement is guidance about **connecting** — an
-endpoint URL, an API key, what an OpenAI-compatible base URL looks like — naming no model.
-Getting this wrong turns a considered decision into a regression, and it is the part a
-reviewer should look at hardest.
+**The hole this opens.** The suggestion block was also the empty state: a user with nothing
+configured currently gets a named model and a command to run. Afterwards they get an empty
+picker. T-301 replaces it with copy that says what the app talks to and what address it just
+tried, naming no model — which is the honest minimum, but only the minimum. The rest is
+T-301b.
+
+**Also removed, because nothing else uses it:** `DataDir` in `src-tauri`, whose only consumer
+is the suggestion load, and the `"../data/*.json"` bundle glob, which would otherwise point at
+a directory that no longer exists in a fresh clone. **The gate cannot catch that one** —
+`npm run gate` runs `vite build`, never `tauri build`.
+
+### T-301b — let the user set the endpoint and the API key
+**This is the task that actually delivers the owner's decision**, and T-301 is only its
+clearing-up. Found while writing T-301's brief:
+`DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1'` is a **hardcoded constant in five places in
+`Setup.tsx`, and the wizard has no field for the endpoint at all** — nor for the API key,
+although `has_key` already rides on `LlmStatus::Ready` and `SecretKey::LlmApiKey` is already
+plumbed through the keychain from T-004.
+
+So today the LLM step can only ever talk to a local Ollama on the default port. A user on
+OpenAI, Anthropic, OpenRouter, LM Studio, vLLM or a LAN box **cannot connect at all**, which
+is the exact capability the owner named as the one thing the app owes them. Removing the
+suggestion list without this would leave the Ollama assumption fully load-bearing and merely
+invisible.
+
+Scope: an endpoint field defaulting to the current constant (so nothing regresses for Ollama
+users), an API-key field that writes through the existing keychain path and **never reads
+back** — the value must not cross the boundary, only `has_key` (T-004) — both persisted to
+`config.json` like the model selection T-212 fixed, and probe/test/choose taking the entered
+URL rather than the constant. The `unreachable` hint that recognises a base URL missing `/v1`
+(LLM-SURFACE 11.3) becomes considerably more valuable once users are typing URLs.
 
 ### T-302 — `reasoning_effort` where the app cannot enrich  *(verification)*
 The direct consequence of T-301, and the reason it is second. `reasoning_effort: "none"` — the
