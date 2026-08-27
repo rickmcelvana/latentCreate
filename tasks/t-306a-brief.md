@@ -3,9 +3,12 @@
 **Depends:** T-305b | **Crate/dir:** `crates/create-core` (pure) plus one profile JSON
 **Files to modify:**
 - `crates/create-core/src/generation.rs`
-- `crates/create-core/src/graph.rs`
+- `crates/create-core/src/audit.rs` *(new)*
+- `crates/create-core/src/lib.rs` — two lines declaring the module
 - `crates/create-core/src/profile.rs` — **tests and one doc comment only**, see §4
 - `profiles/ace-step-1.5-turbo.json`
+
+⚠ **`graph.rs` is not in this task.** An earlier draft put `audit_slots` there; see §2.
 
 **T-306 is split.** This half is the pure seam between T-304's resolved slots and the wire, and
 it lands a **bug fix to the shipped ACE-Step profile**. **T-306b** is the Tauri pipeline command
@@ -90,11 +93,24 @@ declared range is a separate question, recorded in the backlog.
 
 Goes on the existing `impl InputValue`, above `kind`.
 
-### 2. `audit_slots` — `graph.rs`
+### 2. `audit_slots` — a new module, `audit.rs`
 
 Pure, over the same workflow `Value` the T-305 edits take. It reports what it found **and what
 it could not check**; a guard that silently ignores what it cannot see is how the seed bug
 would survive a second time.
+
+⚠ **Corrected after the second run stalled.** The first draft of this brief put `audit_slots`
+in `graph.rs`. Two reasons it moves:
+
+- **It does not belong there.** `graph.rs`'s own module doc says *"pure workflow graph **edits**
+  that slots cannot express"*. `audit_slots` edits nothing; it answers a question about a graph.
+- **`graph.rs` is 48 KB**, up from 18 KB before T-305b. Aider is running in `whole` edit format,
+  so every `--file` is re-emitted in full — this task as originally scoped meant emitting
+  ~102 KB across three large files before writing a line of new code, and the run did not get
+  there. Splitting keeps every file in the executor lane small enough to rewrite.
+
+`lib.rs` gains `pub mod audit;`, `pub use audit::*;` and one line in the module-list doc comment,
+matching the existing entries.
 
 `unchecked` covers subgraph-interior addresses (`37/6.unet_name`) and addresses naming a node
 the top-level graph does not have. Resolving a subgraph interior means walking from the instance
@@ -149,6 +165,9 @@ reader believing the old fan-out story.
 2. The `InputSpec` doc comment (~line 30) uses the seed as its fan-out example: *"separate
    planner/sampler seeds in `94.seed` and `3.seed`"*. That example is now false. Drop the seed
    clause and keep duration, which is still a genuine one-control-many-slots case.
+   **This is the only doc comment in `profile.rs` that names the old addresses** — asked and
+   answered on the second run; everything else at line 325+ is inside `mod tests`. The other
+   four sites in this list are the whole of the rest.
 3. `test_fixture_matches_verified_slot_addresses` — the `seed` arm expects two addresses. It
    becomes the single `109.value`. **Leave the `duration_s` arm exactly as it is**; it is the
    contrast case and it still passes.
@@ -207,9 +226,25 @@ pub fn to_slot_value(&self) -> serde_json::Value {
 }
 ```
 
-### `graph.rs`
+### `audit.rs`
+
+New file. The module doc comment is part of the deliverable — it is where the reason this
+module exists gets recorded, and `lib.rs`'s module list needs a one-line match for it.
 
 ```rust
+//! Whether a resolved slot write can actually reach the engine.
+//!
+//! `set_workflow_slot` reports an address `applied` whenever it can write the
+//! widget. Whether the widget is *read* depends on the graph, and the tool
+//! never says: in the ACE-Step template `3.seed` and `94.seed` are driven by a
+//! link from `PrimitiveInt` 109, so writing them is accepted, persisted, and
+//! ignored (MCP-SURFACE 18.1). This module is the standing check.
+//!
+//! Separate from [`crate::graph`] on purpose: that module *edits* a workflow,
+//! this one only asks questions about one.
+
+use serde_json::Value;
+
 /// One resolved slot address whose target input is driven by a link.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinkFed {
@@ -343,10 +378,40 @@ fn split_address(address: &str) -> Option<(&str, &str)> {
 }
 ```
 
+### Loading the fixtures in tests
+
+`graph.rs`'s test helpers are private to its own `mod tests` and it is not in this run, so
+`audit.rs` needs its own. This is the shape already used across the crate:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::generation::{GenerationSpec, InputValue};
+    use crate::profile::ModelProfile;
+    use std::path::PathBuf;
+
+    /// The real captured template, read from disk at test time.
+    fn fixture(name: &str) -> Value {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/workflows")
+            .join(name);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        serde_json::from_str(&text).unwrap()
+    }
+
+    /// The shipped profile, compiled in the way `profile.rs`'s tests do.
+    fn ace() -> ModelProfile {
+        serde_json::from_str(include_str!("../../../profiles/ace-step-1.5-turbo.json")).unwrap()
+    }
+}
+```
+
 ## Acceptance criteria
 
 Fixtures are the real `testdata/workflows/ace_step_1_5_xl_turbo.json` and the real
-`profiles/*.json`, loaded the way `graph.rs`'s existing tests do.
+`profiles/*.json`, loaded with the helpers above.
 
 - [ ] `to_slot_value` tested per variant: `Text`/`Enum` → JSON string, `Int` → number,
       `Float` → number, `Bool` → bool, and **`Seed(u64::MAX)` → the exact integer**, not a float
@@ -375,7 +440,10 @@ Fixtures are the real `testdata/workflows/ace_step_1_5_xl_turbo.json` and the re
 - [ ] `VERIFIED_ACE_STEP_SLOTS` still contains `3.seed` and `94.seed` **and** gains
       `109.value`. Removing the first two would be wrong: the constant records the template's
       slots, not the profile's choices.
-- [ ] `npm run gate` clean; no changes outside the four listed files.
+- [ ] `audit.rs` carries a module doc comment saying what it is for, and `lib.rs`'s module list
+      gains a matching line. A new module with no entry there is invisible to the next reader.
+- [ ] `npm run gate` clean; **`graph.rs` is not modified at all**; no changes outside the five
+      listed files.
 
 **Mutation check before you call it done.** Each must turn the suite red:
 
@@ -398,7 +466,8 @@ Fixtures are the real `testdata/workflows/ace_step_1_5_xl_turbo.json` and the re
   this reports.
 - Do not add a seed range check (see above — validation catches it).
 - Do not resolve subgraph interiors.
-- Do not touch `resolve_slots`, `ensure_lossless_output` or `splice_loras`.
+- Do not touch `resolve_slots`, `ensure_lossless_output` or `splice_loras`, and **do not open
+  `graph.rs`**. Nothing in this task needs it; the audit is self-contained.
 
 ## If unclear
 
@@ -407,9 +476,15 @@ Do not guess. Output a numbered list of questions and stop.
 ## Aider launch
 
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read docs/MCP-SURFACE.md --read tasks/t-306a-brief.md --read testdata/workflows/README.md --read profiles/minimax-music-3.json --file crates/create-core/src/generation.rs --file crates/create-core/src/graph.rs --file crates/create-core/src/profile.rs --file profiles/ace-step-1.5-turbo.json
+aider --no-auto-commits --edit-format diff --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read docs/MCP-SURFACE.md --read tasks/t-306a-brief.md --read testdata/workflows/README.md --read profiles/minimax-music-3.json --file crates/create-core/src/generation.rs --file crates/create-core/src/audit.rs --file crates/create-core/src/lib.rs --file crates/create-core/src/profile.rs --file profiles/ace-step-1.5-turbo.json
 ```
 
-`profile.rs` is now `--file`, not `--read`: the seed change breaks four sites in it (§4). The
+`profile.rs` is `--file`, not `--read`: the seed change breaks four sites in it (§4). The
 MiniMax profile is `--read` because one acceptance criterion uses its real `slot_overrides`
-address and the executor should not invent one.
+address and the executor should not invent one. `graph.rs` is **not passed at all** — the audit
+needs nothing from it, and 48 KB of read context buys nothing here.
+
+`--edit-format diff` is new. Every run so far has used Aider's default `whole` format, which
+re-emits each `--file` in full; that was fine when these files were small and is what stalled
+the second attempt at this task. If the diff format misbehaves with this model, fall back to
+`whole` — the file list above is now small enough for it either way.

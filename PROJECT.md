@@ -2729,3 +2729,35 @@ than the node class; T-305b asked whether the chain reached the consumer rather 
 nodes existed; this asks whether a write is read rather than whether it was accepted. Every one
 of them is the same question -- *does the thing downstream actually see this?* -- and every time
 the convenient signal said yes.
+
+### 2026-08-27 (later still) -- T-306a stalled twice on my brief, not on the code
+
+Two runs, no edits. Both stops were mine.
+
+**Run one** asked for `profile.rs`: my file list named three files and the seed change reaches
+five sites. Corrected, and the correction found a site the executor had not: adding
+`109.value` to `VERIFIED_ACE_STEP_SLOTS`, without which the typo guard fails after the gate.
+
+**Run two** asked whether line 30 was the only doc comment to change (it is), and then said it
+would output the full updated files -- and stopped. That question was answerable; the real
+problem was underneath it. **Aider runs in `whole` edit format**, re-emitting every `--file` in
+full, and I had scoped a task across `generation.rs` (27 KB), `profile.rs` (27 KB) and
+`graph.rs` (49 KB): ~102 KB to emit before writing a line of new code.
+
+`graph.rs` went 18 KB -> 49 KB in a single task (T-305b) and I did not look at what that meant
+for the next brief. **The executor lane has a working-set budget and briefs have to be written
+against it**, the same way they are written against the ~400-line diff limit.
+
+The fix was also the better design: `audit_slots` moves to a new `audit.rs`. `graph.rs`'s own
+module doc says *"pure workflow graph **edits**"*, and an audit edits nothing -- so the module
+boundary was wrong on merit before it was wrong on size. `graph.rs` now drops out of the task
+entirely, and the run's working set falls to ~60 KB. Reference code compiled and linted
+standalone in the new module before the brief went back.
+
+Also switching this run to `--edit-format diff`, with a note to fall back to `whole` if the
+model handles it badly. `whole` will not survive the crate getting bigger.
+
+**Worth keeping:** two stalls cost nothing but time, because the executor asked instead of
+guessing -- the "If unclear, do not guess" clause earning its place twice in one task. The
+failure mode to watch is the opposite one, where a brief is *just* answerable enough that the
+executor proceeds on a wrong assumption.
