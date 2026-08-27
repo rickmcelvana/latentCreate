@@ -18,6 +18,18 @@ npm run gate    # everything CI runs, in CI's order -- the pre-commit check
 cargo test -p library -- --ignored   # the live-keychain test, excluded from CI
 ```
 
+**Where the app writes** (Tauri `app_config_dir()`, identifier `com.latentbeats.create`):
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| App data root | `%APPDATA%\com.latentbeats.create\` | `~/Library/Application Support/com.latentbeats.create/` | `~/.config/com.latentbeats.create/` |
+
+Inside it: **`config.json`** (non-secret config -- endpoint, model, `default_profile_id`),
+`session.log`, and `projects/<slug>/` holding each project's `project.json`, `lyrics/` and
+later its `tracks/`. **`config.json` sits beside `projects/`, not inside it** -- the one
+place people look first and it is not there. API keys are **not** in `config.json`; they are
+in the OS keychain (T-004), and no Tauri command returns a secret value.
+
 ## How work happens
 - WORKFLOW.md defines the Claude(architect)/Aider(executor)/human(producer) loop, adapted from latent-mastering. This repo is almost entirely plumbing/UI → default executor `ollama_chat/kimi-k2.7-code:cloud`. No DSP lane exists here (the visualizer is AnalyserNode + canvas, not custom math).
 - Tasks live in `tasks/phase-N.md`; anything non-trivial gets its own `tasks/t-NNN-brief.md` with a ready-to-paste Aider launch command. One brief per run, ≤ ~400-line diffs.
