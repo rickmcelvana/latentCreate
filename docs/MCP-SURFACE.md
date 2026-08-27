@@ -1187,3 +1187,33 @@ applied rather than an error the user can see.
 
 **`widgets_values` is `[lora_name, strength_model]`** -- the non-linked inputs in declaration
 order, the same positional rule as 16.1's `format`.
+
+### 17.8 `inputs[].link` is load-bearing; `outputs[].links` is the editor's view
+
+A frontend-format workflow records every edge three times -- in the `links` array, in the
+destination's `inputs[].link`, and in the source's `outputs[].links`. They are not equally
+authoritative, which matters because a graph edit has to update all three and a test has to
+know which one to check.
+
+Two runs on the live install settle it:
+
+| Deliberate inconsistency | `validate_workflow` | Executed prompt |
+|---|---|---|
+| Anchor's `outputs[].links` left stale (still naming the pre-splice link) | `valid: true` | **identical to the correct splice** -- `104 -> 111 -> 112 -> 78 -> 3` |
+| Loaders' `inputs[0].link` set to `null`, `links` array correct | **`valid: false`** | never ran |
+
+The second returns `required_input_missing` on node 112: *"required input 'model' is missing --
+the server will reject this node"*.
+
+So **the UI-to-API converter builds the graph from `inputs[].link`.** A correct `links` array
+with a null input is rejected; a stale `outputs[].links` executes correctly and only renders
+wrong if the user opens the workflow in ComfyUI -- which the owner does routinely.
+
+**Consequence for the tests:** a chain assertion that reads only the `links` array is checking
+the one representation the engine ignores. `create-core`'s `assert_model_chain` checks all
+three, and it was strengthened to do so after a `splice_loras` that nulled every loader input
+passed 118 tests (see the session log for 2026-08-27).
+
+Unlike 17.1 this one fails **loudly** -- validation catches it before submission. It is
+recorded next to 17.1 precisely because the pair marks the boundary: wiring the destination
+wrong is caught, wiring the *consumer* wrong is not.

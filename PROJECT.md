@@ -2630,3 +2630,41 @@ Also settled while in there: `widgets_values` is `[lora_name, strength_model]` (
 spliced loaders become ordinary addressable slots so T-308 can change a strength without
 re-splicing (17.5), and `last_node_id` can exceed the top-level maximum -- MiniMax declares 43
 against a top-level max of 40 -- so id allocation takes the max of declared and present.
+
+### 2026-08-27 (later still) -- T-305b landed; the chain test was checking the field the engine ignores
+
+`splice_loras` exists. `create-core` 104 -> 118 tests. The executor reproduced the reference
+implementation faithfully and its own test coverage was good -- fourteen tests, every acceptance
+criterion, including the fan-out case and a synthetic stale-high-water-mark graph I had only
+described in prose.
+
+**All four briefed mutations died**, and the first one died hard: the dangling splice took out
+five tests including both chain tests. That is the failure the whole brief was built around, so
+it mattering was the point.
+
+**Then a fifth mutation found the hole, and it was in the chain test itself.** Setting every
+loader's `inputs[0].link` to null -- leaving the `links` array perfectly correct -- **passed all
+118 tests.** `assert_model_chain` read only the `links` array.
+
+Two runs on the live install established which representation actually matters (17.8):
+
+- Anchor's `outputs[].links` left stale -> `valid: true`, and the **executed prompt is identical
+  to the correct splice**. Cosmetic; it only renders wrong if the graph is opened in ComfyUI,
+  which the owner does routinely.
+- Loaders' `inputs[0].link` null -> **`valid: false`**, `required_input_missing` on node 112.
+
+So the UI-to-API converter builds from `inputs[].link`, and the chain test was asserting the one
+of the three edge records the engine ignores. It now checks all three, with the two live results
+written into the doc comment so the next person does not re-derive them. Both mutations now fail.
+
+**Worth naming, because it is a pattern now.** The brief demanded a chain test *because* a
+field-by-field check would pass the dangling graph -- and the chain test that resulted had the
+same shape of flaw one level down: it verified the representation that was convenient to read
+rather than the one that is load-bearing. Making a test 'about the real invariant' does not make
+it about the real invariant; only checking what the consumer consumes does. Fifth and sixth holes
+mutation testing has found (T-110, T-304, twice in T-305a, now here).
+
+Also this run: the ninth `cargo fmt` miss, the same `clippy::needless_lifetimes` on a test helper
+as last time, and two drive-bys reverted -- a `section`-wording sweep across T-305a's landed doc
+comments (against the crate's own `(MCP-SURFACE 9.1)` convention) and `SaveNodeChange` shuffled
+above the error enum for no reason.
