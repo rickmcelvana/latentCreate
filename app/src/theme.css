@@ -1194,3 +1194,235 @@ body {
 .param-options-retry:hover {
   background: var(--panel-hover);
 }
+
+/* --- LoRA stack (T-309b) --- */
+
+.lora-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-lg);
+}
+
+.lora-stack-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.lora-stack-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lora-stack-retry {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.lora-stack-retry:hover {
+  background: var(--panel-hover);
+  border-color: var(--accent);
+}
+
+.lora-stack-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lora-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.lora-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto auto auto;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.lora-row-missing {
+  border-color: var(--warning);
+}
+
+.lora-row-bypassed {
+  opacity: 0.65;
+  color: var(--text-muted);
+}
+
+.lora-row-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.lora-row-bypassed .lora-row-label {
+  color: var(--text-muted);
+}
+
+.lora-row-strength {
+  width: 120px;
+  accent-color: var(--accent);
+}
+
+.lora-row-value {
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: right;
+}
+
+.lora-row-move {
+  padding: var(--gap-xs) var(--gap-sm);
+  background: var(--panel-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.lora-row-move:hover:not(:disabled) {
+  background: var(--panel);
+  border-color: var(--accent);
+}
+
+.lora-row-move:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lora-row-bypass {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lora-row-bypassed .lora-row-bypass {
+  color: var(--text-muted);
+}
+
+.lora-row-remove {
+  padding: var(--gap-xs) var(--gap-sm);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.lora-row-remove:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.lora-row-note {
+  margin: 0;
+  grid-column: 1 / -1;
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lora-stack-add {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.lora-picker {
+  flex: 1;
+  min-width: 0;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color var(--transition);
+}
+
+.lora-picker:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.lora-picker:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lora-stack-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.lora-checkpoints-toggle {
+  align-self: flex-start;
+  padding: var(--gap-sm) var(--gap-md);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.lora-checkpoints-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.lora-checkpoints-toggle[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.lora-stack-excluded {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}

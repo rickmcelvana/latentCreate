@@ -99,6 +99,26 @@ describe('pickerGroups', () => {
   })
 
   /**
+   * Protects: a checkpoint says which epoch it is, and a plain adapter does not.
+   *
+   * Twenty checkpoints of one run otherwise appear under one repeated name --
+   * `final`, twenty-one times -- and the user picks blind. This wording was in
+   * the `<option>` first, where no test could read it.
+   */
+  it('test_a_checkpoint_offer_shows_its_epoch_and_a_plain_one_does_not', () => {
+    const all = pickerGroups(loaded(), [], true).flatMap((group) => group.entries)
+    const checkpoints = all.filter((entry) => entry.superseded)
+    const plain = all.filter((entry) => !entry.superseded)
+
+    expect(checkpoints).toHaveLength(20)
+    expect(checkpoints.every((entry) => entry.epoch !== null)).toBe(true)
+    expect(checkpoints.every((entry) => entry.display === `${entry.label} (epoch ${entry.epoch})`)).toBe(
+      true,
+    )
+    expect(plain.every((entry) => entry.display === entry.label)).toBe(true)
+  })
+
+  /**
    * Protects: an entry already stacked is not offered a second time.
    *
    * Two loader nodes for one file is a strength the user could have set once,

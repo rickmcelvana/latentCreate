@@ -392,9 +392,17 @@ and the JSX half is where the tokens go:
   Both now run against a second profile with different numbers. The Rust half had the same hole
   one level up: `lora_panel` reads `loras.strength` with the node's own `-100..=100` in scope at
   the same call site, and nothing tested the choice -- `panel_for` was extracted so it could be.
-- **T-309b**, Aider: `<LoraStack>`, `theme.css`, AudioStudio wiring. Its click-through carries
-  the label question T-307 deferred here — the owner looks at the twelve mechanical labels and
-  decides whether cosmetic renaming is wanted.
+- **T-309b** ([brief](t-309b-brief.md)), Aider: `<LoraStack>`, `theme.css`, AudioStudio wiring.
+  **LANDED 2026-08-28, click-through pending.** The run came back clean -- three files, 241
+  added lines, no rule in `theme.css` changed, every class ruled, tokens only, and the test
+  count held at 205 exactly as the brief required. Review found two things. The `<option>`
+  composed `${label} (epoch ${n})` in JSX, which is **conditional wording** and therefore
+  unreadable by a DOM-less vitest -- and it was in the brief's own reference, the second time
+  this phase a brief specified the defect. `PickerEntry` now carries `display`, with both
+  directions mutated. Three buttons also lacked `type="button"`; harmless with no `<form>` in
+  the tree, and a submit the moment one appears. Frontend 205 -> 206.
+  Its click-through carries the label question T-307 deferred here — the owner looks at the
+  twelve mechanical labels and decides whether cosmetic renaming is wanted.
 - **T-309c**: favourites and user display names. Deferred again on purpose; both are persisted
   user state keyed on the entry path, so they are a config-schema change, and neither can be
   designed before the labels question is answered.

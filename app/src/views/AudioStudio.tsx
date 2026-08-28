@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { JobQueue } from '../components/JobQueue'
+import { LoraStack } from '../components/LoraStack'
 import { ParamPanel } from '../components/ParamPanel'
 import { useConfigStore } from '../state/config'
 import { useJobsStore } from '../state/jobs'
+import { useLoraPanelStore } from '../state/loraPanel'
 import { useModelsStore } from '../state/models'
 import { useParamPanelStore } from '../state/paramPanel'
 import {
@@ -20,6 +22,7 @@ export function AudioStudio() {
   const config = useConfigStore((state) => state.config)
   const save = useConfigStore((state) => state.save)
   const load = useParamPanelStore((state) => state.load)
+  const loadLoras = useLoraPanelStore((state) => state.load)
 
   useEffect(() => {
     void startListening()
@@ -36,6 +39,10 @@ export function AudioStudio() {
   useEffect(() => {
     void load(effectiveId)
   }, [effectiveId, load])
+
+  useEffect(() => {
+    void loadLoras(effectiveId)
+  }, [effectiveId, loadLoras])
 
   return (
     <>
@@ -78,6 +85,8 @@ export function AudioStudio() {
       </section>
 
       <ParamPanel />
+
+      <LoraStack />
 
       <JobQueue />
     </>

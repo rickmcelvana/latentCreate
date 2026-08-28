@@ -32,6 +32,16 @@ export interface StackRow {
 export interface PickerEntry {
   path: string
   label: string
+  /**
+   * What the picker actually shows.
+   *
+   * A checkpoint has to say which epoch it is -- 20 of them otherwise appear
+   * under one repeated name. Composed here rather than in the `<option>`,
+   * because it is a **conditional** piece of wording, and wording that depends
+   * on state is wording a DOM-less vitest cannot read. Plain interpolation
+   * ("2 of 4") stays in the view; a rule about what to say does not.
+   */
+  display: string
   /** A superseded training step, shown only when the user asks for them. */
   superseded: boolean
   epoch: number | null
@@ -117,8 +127,22 @@ export function pickerGroups(
     .filter((group) => group.entries.length > 0)
 }
 
+/**
+ * One catalog entry as an offer.
+ *
+ * A superseded entry always carries an epoch: `collapse_training_run` sends
+ * every entry with no epoch to `primary`, so the two travel together by
+ * construction. That is asserted rather than guarded against -- a `?? ''`
+ * here would be a branch nothing can reach.
+ */
 function offer(entry: LoraEntry, superseded: boolean): PickerEntry {
-  return { path: entry.path, label: entry.label, superseded, epoch: entry.epoch }
+  return {
+    path: entry.path,
+    label: entry.label,
+    display: superseded ? `${entry.label} (epoch ${entry.epoch})` : entry.label,
+    superseded,
+    epoch: entry.epoch,
+  }
 }
 
 /** How many training checkpoints are hidden behind the disclosure. */
