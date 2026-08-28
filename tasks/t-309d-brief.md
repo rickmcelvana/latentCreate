@@ -77,13 +77,27 @@ export async function generateAudio(spec: GenerationSpec): Promise<Submission>
 
 ### `app/src/state/generate.ts` — pure
 
-- **`specFor(profileId, model, values, stack, doc): GenerationSpec`** — assembles from
-  `specInputs(model, values)` and `specLoras(stack)`. It composes; it derives nothing new.
-- **`blockers(model, values): string[]`** — why Generate is off. Each entry is a sentence the
-  user reads.
-- **`lyricRefFor(doc, values): LyricRef | null`** — see below.
-- **`approvedOffer(doc, values): string | null`** — the "use the approved lyric" line, or null.
-- **`submissionNotes(submission): string[]`** — what to say after a successful queue.
+As landed — these are the exact signatures, and they differ from this brief's first draft
+because the lyrics and seed controls are found by **kind** rather than by the names `"lyrics"`
+and `"seed"`, which needs the model:
+
+```ts
+specFor(profileId: string, model: PanelModel, values: Record<string, ControlValue>,
+        stack: StackRow[], doc: LyricDoc | null): GenerationSpec
+blockers(profileId: string | null, model: PanelModel | null,
+         values: Record<string, ControlValue>): string[]
+lyricRefFor(doc: LyricDoc | null, model: PanelModel,
+            values: Record<string, ControlValue>): LyricRef | null
+approvedOffer(doc: LyricDoc | null, model: PanelModel | null,
+              values: Record<string, ControlValue>): string | null
+submissionNotes(submission: Submission): string[]
+export const QUEUED: string
+export const USE_APPROVED = 'Use it'   // the button label
+```
+
+A profile names its own inputs, and a custom-imported workflow (ARCHITECTURE 5b) may well call
+its lyrics field something else; matching a hardcoded key would silently stop attaching lyric
+provenance for exactly those users.
 
 ### The invariants
 
@@ -164,6 +178,27 @@ wrapped around it.
 No logic. Every string comes from `generate.ts`; every decision comes off the store or a pure
 function. **If a value needs deriving, this brief is wrong** — say so rather than deriving it.
 
+### The stores' surface
+
+```ts
+// from ../state/generatePanel
+const busy = useGenerateStore((s) => s.busy)                 // boolean
+const error = useGenerateStore((s) => s.error)               // string | null
+const last = useGenerateStore((s) => s.last)                 // Submission | null
+const submit = useGenerateStore((s) => s.submit)             // () => Promise<void>
+const useApprovedLyric = useGenerateStore((s) => s.useApprovedLyric)
+
+// read for the pure functions above
+const profileId = useParamPanelStore((s) => s.profileId)
+const model = useParamPanelStore((s) => s.model)
+const values = useParamPanelStore((s) => s.values)
+const doc = useLyricsStore((s) => s.doc)
+```
+
+Selectors, never the bare store (WORKFLOW §4.10). The component calls
+`blockers(profileId, model, values)`, `approvedOffer(doc, model, values)` and, when `last` is
+not null, `submissionNotes(last)` — each once, into a local.
+
 ### Structure
 
 ```
@@ -171,7 +206,7 @@ function. **If a value needs deriving, this brief is wrong** — say so rather t
   approvedOffer(doc, values) !== null →
     <p className="generate-lyric-offer">
       {offer}
-      <button type="button" className="generate-use-lyric" onClick={useApprovedLyric}>Use it</button>
+      <button type="button" className="generate-use-lyric" onClick={useApprovedLyric}>{USE_APPROVED}</button>
     </p>
 
   blockers.map(reason => <p className="generate-blocked" key={reason}>{reason}</p>)
