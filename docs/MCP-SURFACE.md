@@ -1479,3 +1479,45 @@ webview and `create-core` disagreed about what a grouped input is called (`cfg_s
 `planner.cfg_scale`), so `resolve_slots` rejected the spec before any MCP call. MiniMax declares
 no groups, which is why it succeeded and hid the defect. Fixed, with the flattened-name list now
 a committed contract both languages assert against.
+
+### 20.1 The ACE-Step run, and three findings it settles at once
+
+Run after the fix, with **two LoRAs stacked**. Read from `GET /history`:
+
+**The LoRA splice is reachable, live.** Two `LoraLoaderModelOnly` nodes in a chain that actually
+carries: `104` (UNETLoader) → `111.model` → `112.model` → `78` (ModelSamplingAuraFlow) →
+`3` (KSampler). This is the first live evidence against **17.1**, which is precisely the case of
+a splice that validates clean, runs, writes audio, and feeds nothing. The executed prompt is the
+only surface that can show the difference (17.2), and it shows the chain intact, both files
+verbatim with their backslashes, both at `strength_model: 1.0`.
+
+**The save-node retype works on ACE-Step.** Its template ships **`SaveAudioMP3`** -- a different
+case from MiniMax, where the node class was already modern and only the format was wrong. The
+executed prompt has `SaveAudioAdvanced` with `format: "flac"`, output
+`ACE_Step1.5_xl_turbo_00001.flac`. Both halves of the 16.3 rule are now proven live.
+
+**The seed redirect works.** The template's `PrimitiveInt` 109 defaults to `0`; the executed
+value is the app's. `3.seed` and `94.seed` are both `["109", 0]`, exactly as **18.1** described,
+and the profile writing `109.value` is what makes the user's seed real. Together with the
+MiniMax run carrying a full 53-bit `8578771011914929` intact, both halves of the seed story are
+now verified: wide seeds survive the bridge, and the redirect reaches the sampler.
+
+**The planner group reached the engine** -- `94.cfg_scale: 2.0`, `temperature: 0.85`,
+`top_p: 0.9`, `top_k: 0`, `min_p: 0.0` -- confirming the dotted-name fix end to end.
+
+### 20.2 WARNING An empty text field silently inherits the template's demo content
+
+Same run: `94.tags` came back **byte-identical to the template's own widget value** --
+`"Late Night Trap, 95 BPM, Heavy 808 Bass, Wet Synths, ..."` -- because the tags box was left
+empty. `94.lyrics` differed, because the user typed lyrics.
+
+`specInputs` skips a control whose value is `''`, and `resolve_slots` writes only what the spec
+sets, so the template's demo prompt survives into the run. The reasoning behind each half is
+sound on its own and the comment in `params.ts` even states the goal -- *"sending a value nobody
+chose is how a form quietly overrides the workflow"*. The observed effect is the exact inverse:
+**the workflow quietly overrides the form.** An empty box on screen produced a track prompted by
+somebody else's song description, with nothing anywhere saying so.
+
+It matters for text and not for numbers. A template's default `steps` is a sensible value to
+inherit; a template's default `tags` is *demo content*. Nobody decided this -- it is emergent
+from two independently reasonable rules meeting, which is the third time in two tasks.
