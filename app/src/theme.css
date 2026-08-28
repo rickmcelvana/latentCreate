@@ -1178,3 +1178,19 @@ body {
   background: var(--panel);
   border-color: var(--accent);
 }
+
+.param-options-retry {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.param-options-retry:hover {
+  background: var(--panel-hover);
+}

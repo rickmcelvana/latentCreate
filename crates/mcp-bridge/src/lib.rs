@@ -26,7 +26,7 @@ pub use health::{
 pub use jobs::{JobCancel, JobRun, JobStatus, OutputBatch, OutputFile};
 pub use local::{with_timeout, LocalComfy};
 pub use models::{ModelFile, ModelFolder, ModelFolderEntry, ModelFolders, ModelHit, ModelSearch};
-pub use nodes::{NodeInput, NodeOptions, NodeOutput, NodeSchema};
+pub use nodes::{NodeInput, NodeOptions, NodeOutput, NodeSchema, NodeWarning};
 pub use preflight::{node_id_to_instance, Finding, Note, NoteList, Validation, Verdict};
 pub use session_log::SessionLog;
 pub use slots::{split_address, Slot, SlotList, SlotOverride, SlotWrite};

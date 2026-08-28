@@ -9,6 +9,7 @@ export function ParamPanel() {
   const setValue = useParamPanelStore((s) => s.setValue)
   const rerollSeed = useParamPanelStore((s) => s.rerollSeed)
   const toggleAdvanced = useParamPanelStore((s) => s.toggleAdvanced)
+  const refreshChoices = useParamPanelStore((s) => s.refreshChoices)
 
   return (
     <section className="panel param-panel">
@@ -25,6 +26,7 @@ export function ParamPanel() {
               value={values[control.name]}
               onChange={(value) => setValue(control.name, value)}
               onReroll={control.kind === 'seed' ? rerollSeed : undefined}
+              onRetryOptions={() => void refreshChoices()}
             />
           ))}
 
@@ -50,6 +52,7 @@ export function ParamPanel() {
                         value={values[control.name]}
                         onChange={(value) => setValue(control.name, value)}
                         onReroll={control.kind === 'seed' ? rerollSeed : undefined}
+                        onRetryOptions={() => void refreshChoices()}
                       />
                     ))}
 
@@ -65,6 +68,7 @@ export function ParamPanel() {
                             value={values[control.name]}
                             onChange={(value) => setValue(control.name, value)}
                             onReroll={control.kind === 'seed' ? rerollSeed : undefined}
+                            onRetryOptions={() => void refreshChoices()}
                           />
                         ))}
                     </fieldset>
@@ -99,9 +103,16 @@ interface ParamFieldProps {
   value: ControlValue | undefined
   onChange: (value: ControlValue) => void
   onReroll?: () => void
+  onRetryOptions?: () => void
 }
 
-function ParamField({ control, value, onChange, onReroll }: ParamFieldProps) {
+function ParamField({
+  control,
+  value,
+  onChange,
+  onReroll,
+  onRetryOptions,
+}: ParamFieldProps) {
   const inputId = control.name
 
   return (
@@ -142,9 +153,9 @@ function ParamField({ control, value, onChange, onReroll }: ParamFieldProps) {
             id={inputId}
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
-            disabled={control.fromNode && control.choices.length === 0}
+            disabled={control.choices.length === 0}
           >
-            {control.fromNode && control.choices.length === 0 ? (
+            {control.choices.length === 0 ? (
               <option value="">Not loaded</option>
             ) : (
               control.choices.map((choice) => (
@@ -154,9 +165,12 @@ function ParamField({ control, value, onChange, onReroll }: ParamFieldProps) {
               ))
             )}
           </select>
-          {control.fromNode && control.choices.length === 0 ? (
+          {control.optionsNote !== null ? (
             <span className="param-field-hint">
-              Options come from your ComfyUI. Start it to choose a value.
+              {control.optionsNote}
+              <button type="button" className="param-options-retry" onClick={onRetryOptions}>
+                Retry
+              </button>
             </span>
           ) : null}
         </>

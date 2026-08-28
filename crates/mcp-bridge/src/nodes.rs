@@ -114,6 +114,51 @@ pub struct NodeSchema {
     /// The outputs.
     #[serde(default)]
     pub outputs: Vec<NodeOutput>,
+    /// Whether comfy-cli answered from its cache rather than from ComfyUI.
+    ///
+    /// **Tri-state on purpose, like `local_check` (MCP-SURFACE 6).**
+    /// `Some(true)` is a schema comfy-cli served from its own `object_info`
+    /// cache because it could not reach the server; `Some(false)` is a live
+    /// read; `None` means the response did not say, which is **not** the same
+    /// as fresh and must never be shown as fresh.
+    ///
+    /// This matters because `nodes(action="get")` **succeeds with ComfyUI
+    /// down** -- verified 2026-08-28, the whole 53-entry LoRA list came back
+    /// from cache with `stale: true`. A caller that ignores this presents a
+    /// cached `lora_name` list as the installed one: LoRAs the user deleted
+    /// are still offered, ones they just added are missing, and picking a
+    /// deleted one does not fail -- ComfyUI warns on unmatched keys and
+    /// completes, writing a track with no LoRA on it (MCP-SURFACE 17.6).
+    #[serde(default)]
+    pub stale: Option<bool>,
+    /// Envelope warnings, e.g. `object_info_stale` with the reason.
+    ///
+    /// Carried rather than dropped: the warning is the only place the reason
+    /// appears ("cannot reach http://127.0.0.1:8188/object_info"), and a UI
+    /// that has to explain why a list may be wrong needs it.
+    #[serde(default)]
+    pub warnings: Vec<NodeWarning>,
+}
+
+/// One envelope warning attached to a node schema.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeWarning {
+    /// Machine code, e.g. `object_info_stale`.
+    #[serde(default)]
+    pub code: String,
+    /// Human text, including the reason the live read failed.
+    #[serde(default)]
+    pub message: String,
+}
+
+impl NodeSchema {
+    /// Whether these choices are known to have come from a cache.
+    ///
+    /// `None` reads as **not known to be fresh**, so a caller that wants to
+    /// warn should use this rather than `stale == Some(true)`.
+    pub fn is_known_fresh(&self) -> bool {
+        self.stale == Some(false)
+    }
 }
 
 impl NodeSchema {
@@ -148,6 +193,67 @@ mod tests {
     use crate::local::test_helpers::client_and_log;
     use crate::mock::Reply;
     use crate::nodes::NodeSchema;
+
+    /// Protects: a cached answer is recognisable as one.
+    ///
+    /// `nodes(action="get")` **succeeds with ComfyUI down** -- comfy-cli serves
+    /// its own `object_info` cache and flags it. Verified 2026-08-28 against
+    /// this exact payload, which is the fixture T-307 was built on: the entire
+    /// 53-entry LoRA list came back with `stale: true` and an
+    /// `object_info_stale` warning naming the connection that failed.
+    ///
+    /// Dropping those two fields is what makes the failure silent. A picker
+    /// filled from a cache offers LoRAs the user has deleted and hides the one
+    /// they just trained, and choosing a deleted one does not error -- ComfyUI
+    /// warns about unmatched keys and finishes, writing a track with no LoRA
+    /// and nothing anywhere saying so (MCP-SURFACE 17.6).
+    #[tokio::test]
+    async fn test_a_cached_schema_says_it_is_cached() {
+        let captured: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
+        ))
+        .expect("the captured node schema decodes");
+
+        let (client, _recorded) = client_and_log(vec![Reply::Json(captured)]).await;
+        let schema: NodeSchema = client
+            .node_schema("LoraLoaderModelOnly")
+            .await
+            .expect("schema");
+
+        assert_eq!(schema.stale, Some(true));
+        assert!(!schema.is_known_fresh());
+        assert_eq!(schema.warnings.len(), 1);
+        assert_eq!(schema.warnings[0].code, "object_info_stale");
+        assert!(schema.warnings[0].message.contains("cannot reach"));
+        assert_eq!(
+            schema.choices_for("lora_name").map(<[String]>::len),
+            Some(53),
+            "the cache still answers in full, which is exactly why it is easy to trust"
+        );
+    }
+
+    /// Protects: a response that says nothing about staleness is **not** fresh.
+    ///
+    /// Only the cached shape has been observed; whether a live read sends
+    /// `stale: false` or omits the key is unverified (T-314 settles it for
+    /// free). Until then `None` must not read as fresh -- the same tri-state
+    /// rule `local_check` follows, for the same reason.
+    #[tokio::test]
+    async fn test_an_unstated_staleness_is_not_treated_as_fresh() {
+        let (client, _recorded) = client_and_log(vec![Reply::Json(json!({
+            "id": "LoraLoaderModelOnly", "name": "LoraLoaderModelOnly"
+        }))])
+        .await;
+
+        let schema: NodeSchema = client
+            .node_schema("LoraLoaderModelOnly")
+            .await
+            .expect("schema");
+
+        assert_eq!(schema.stale, None);
+        assert!(!schema.is_known_fresh());
+        assert!(schema.warnings.is_empty());
+    }
 
     /// Protects: the argument set -- `action="get"` and `name` go out verbatim.
     /// comfy-mcp rejects a misspelled argument outright (MCP-SURFACE 8.7).

@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 use create_core::profile::{InputSpec, ModelProfile, PromptExample};
 use serde::Serialize;
+use tauri::State as TauriState;
 use tauri::State;
 
 use crate::{ConfigDir, ProfilesDir};
@@ -92,6 +93,138 @@ fn example_view(example: &PromptExample) -> PromptExampleView {
     }
 }
 
+/// Live options for one `from_node_choices` enum.
+///
+/// A tagged union rather than an optional list, because the three situations
+/// read completely differently to a user and the backend is the half that can
+/// tell them apart (the same rule [`crate::comfy::ComfyStatus`] follows).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum EnumOptions {
+    /// Read from the node registry.
+    Loaded {
+        choices: Vec<String>,
+        /// Whether comfy-cli answered from its cache. **Tri-state**: `None`
+        /// means the response did not say, which is not the same as fresh.
+        stale: Option<bool>,
+        /// The `object_info_stale` warning text, when there was one.
+        note: Option<String>,
+    },
+    /// The profile asks for live choices but names no node class, so there is
+    /// nothing to ask. A profile-authoring mistake, surfaced rather than
+    /// guessed at.
+    Undeclared,
+    /// ComfyUI could not be asked at all.
+    Unavailable { detail: String },
+}
+
+/// Which node class and input each `from_node_choices` enum needs.
+///
+/// Pure, and separate from the call so the mapping is testable without a
+/// backend. The input name is the **field part of the first slot address** --
+/// `"94.keyscale"` is instance 94's `keyscale` -- which is why only the class
+/// had to be added to the schema.
+fn enum_requests(profile: &ModelProfile) -> BTreeMap<String, Option<(String, String)>> {
+    let mut wanted = BTreeMap::new();
+    collect_enums(&profile.inputs, &mut wanted);
+    wanted
+}
+
+fn collect_enums(
+    inputs: &BTreeMap<String, InputSpec>,
+    into: &mut BTreeMap<String, Option<(String, String)>>,
+) {
+    for (name, spec) in inputs {
+        match spec {
+            InputSpec::Group { members, .. } => collect_enums(members, into),
+            InputSpec::Enum {
+                slots,
+                from_node_choices: true,
+                node,
+                ..
+            } => {
+                let field = slots
+                    .first()
+                    .and_then(|a| a.0.rsplit_once('.'))
+                    .map(|(_, field)| field.to_string());
+                into.insert(name.clone(), node.clone().zip(field));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Live choices for every `from_node_choices` enum the profile declares.
+///
+/// One schema read per distinct node class, not per input: ACE-Step's key
+/// scale, time signature and language all live on
+/// `TextEncodeAceStepAudio1.5`.
+#[tauri::command]
+pub async fn enum_choices(
+    state: TauriState<'_, crate::jobs::ComfyState>,
+    profiles_dir: TauriState<'_, ProfilesDir>,
+    config_dir: TauriState<'_, ConfigDir>,
+    profile_id: String,
+) -> Result<BTreeMap<String, EnumOptions>, String> {
+    let set = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"));
+    let Some(loaded) = set.profiles.get(&profile_id) else {
+        return Ok(BTreeMap::new());
+    };
+    let wanted = enum_requests(&loaded.profile);
+
+    let Some(comfy) = state.connected().await else {
+        return Ok(wanted
+            .into_keys()
+            .map(|name| {
+                (
+                    name,
+                    EnumOptions::Unavailable {
+                        detail: "ComfyUI is not connected.".to_string(),
+                    },
+                )
+            })
+            .collect());
+    };
+
+    let mut schemas: BTreeMap<String, Result<mcp_bridge::NodeSchema, String>> = BTreeMap::new();
+    let mut out = BTreeMap::new();
+    for (name, request) in wanted {
+        let Some((class, field)) = request else {
+            out.insert(name, EnumOptions::Undeclared);
+            continue;
+        };
+        if !schemas.contains_key(&class) {
+            let read = comfy.node_schema(&class).await.map_err(|e| e.to_string());
+            schemas.insert(class.clone(), read);
+        }
+        out.insert(name, options_for(&schemas[&class], &field));
+    }
+    Ok(out)
+}
+
+/// Project one schema read into what the panel shows for one input.
+fn options_for(read: &Result<mcp_bridge::NodeSchema, String>, field: &str) -> EnumOptions {
+    match read {
+        Err(detail) => EnumOptions::Unavailable {
+            detail: detail.clone(),
+        },
+        Ok(schema) => match schema.choices_for(field) {
+            None => EnumOptions::Unavailable {
+                detail: format!("{} has no input named {field}.", schema.name),
+            },
+            Some(choices) => EnumOptions::Loaded {
+                choices: choices.to_vec(),
+                stale: schema.stale,
+                note: schema
+                    .warnings
+                    .iter()
+                    .find(|w| w.code == "object_info_stale")
+                    .map(|w| w.message.clone()),
+            },
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +299,99 @@ mod tests {
             .as_str()
             .expect("a recorded reason");
         assert!(reason.contains("no negative"), "reason was: {reason}");
+    }
+
+    /// Protects: every live enum resolves to a node class and an input name.
+    ///
+    /// The class had to be added to the schema because a slot address names a
+    /// node *instance* (`"94.keyscale"`), and nothing outside the workflow file
+    /// turns 94 into `TextEncodeAceStepAudio1.5`. The field part was already
+    /// there, which is why that is the half this reads from the address.
+    #[test]
+    fn test_every_live_enum_names_a_class_and_an_input() {
+        let profile: ModelProfile = serde_json::from_str(ACE).expect("profile decodes");
+        let wanted = enum_requests(&profile);
+
+        assert_eq!(
+            wanted.keys().collect::<Vec<_>>(),
+            vec!["keyscale", "language", "timesignature"]
+        );
+        assert_eq!(
+            wanted["keyscale"],
+            Some((
+                "TextEncodeAceStepAudio1.5".to_string(),
+                "keyscale".to_string()
+            ))
+        );
+        assert!(
+            wanted.values().all(|r| r.is_some()),
+            "a live enum with no class would render an empty picker"
+        );
+    }
+
+    /// Protects: a profile that asks for live choices without naming a class
+    /// says so instead of being guessed at.
+    #[test]
+    fn test_a_live_enum_with_no_class_is_reported_not_guessed() {
+        let mut profile: ModelProfile = serde_json::from_str(ACE).expect("profile decodes");
+        profile.inputs.insert(
+            "mystery".to_string(),
+            InputSpec::Enum {
+                slots: vec![create_core::profile::SlotAddress("12.mystery".to_string())],
+                from_node_choices: true,
+                node: None,
+                choices: vec![],
+                label: None,
+                advanced: false,
+            },
+        );
+
+        assert_eq!(enum_requests(&profile)["mystery"], None);
+    }
+
+    /// Protects: a cached schema is reported as cached, all the way to the UI.
+    ///
+    /// `nodes(action="get")` succeeds with ComfyUI down -- comfy-cli answers
+    /// from its own cache and flags it. If that flag stops here, the panel
+    /// shows a cached list as the installed one. Harmless for key signatures;
+    /// the same path feeds the LoRA picker in T-309, where a cached list offers
+    /// LoRAs the user deleted and picking one writes a track with no LoRA on it
+    /// rather than failing (MCP-SURFACE 17.6).
+    #[test]
+    fn test_a_cached_schema_reaches_the_panel_as_cached() {
+        let captured: mcp_bridge::NodeSchema = serde_json::from_str(include_str!(
+            "../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
+        ))
+        .expect("the captured schema decodes");
+
+        let options = options_for(&Ok(captured), "lora_name");
+        match options {
+            EnumOptions::Loaded {
+                choices,
+                stale,
+                note,
+            } => {
+                assert_eq!(choices.len(), 53);
+                assert_eq!(stale, Some(true));
+                assert!(note.expect("the reason").contains("cannot reach"));
+            }
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    /// Protects: an input the class does not have is a reported failure, not an
+    /// empty list. An empty list is indistinguishable from "this model offers
+    /// no choices", which is a different thing entirely.
+    #[test]
+    fn test_an_unknown_input_name_is_unavailable_not_empty() {
+        let captured: mcp_bridge::NodeSchema = serde_json::from_str(include_str!(
+            "../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
+        ))
+        .expect("the captured schema decodes");
+
+        match options_for(&Ok(captured), "keyscale") {
+            EnumOptions::Unavailable { detail } => assert!(detail.contains("keyscale")),
+            other => panic!("expected Unavailable, got {other:?}"),
+        }
     }
 }

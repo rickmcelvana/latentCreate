@@ -8,7 +8,9 @@ import {
   panelModel,
   seedError,
   specInputs,
+  withChoices,
   type Control,
+  type EnumOptions,
 } from './params'
 
 /**
@@ -184,6 +186,112 @@ describe('panelModel', () => {
     )
     expect(values.bpm).toBe(120)
     expect(values.tags).toBe('')
+  })
+})
+
+describe('withChoices', () => {
+  const loaded = (choices: string[], stale: boolean | null, note: string | null = null) =>
+    ({ state: 'loaded', choices, stale, note }) satisfies EnumOptions
+
+  function keyscale(options: Record<string, EnumOptions>) {
+    const model = withChoices(panelModel(aceInputs), options)
+    return named(model.basic, 'keyscale')
+  }
+
+  /** Protects: a live answer fills the dropdown and clears the note. */
+  it('test_a_live_answer_fills_the_options_and_says_nothing', () => {
+    const control = keyscale({ keyscale: loaded(['C major', 'A minor'], false) })
+
+    expect(control.kind).toBe('enum')
+    expect(control.choices).toEqual(['C major', 'A minor'])
+    expect(control.kind === 'enum' && control.optionsNote).toBeNull()
+  })
+
+  /**
+   * Protects: a cached answer is offered **with a warning**, not as fact.
+   *
+   * `nodes(action="get")` succeeds while ComfyUI is down -- comfy-cli serves
+   * its own `object_info` cache and flags it, which is exactly how the 53-entry
+   * LoRA fixture was captured. Treating that as a live read is harmless for key
+   * signatures and not harmless at all for the LoRA picker T-309 puts on the
+   * same path: a cached list offers files the user deleted, and picking one
+   * does not fail -- ComfyUI warns on unmatched keys and finishes, writing a
+   * track with no LoRA on it (MCP-SURFACE 17.6).
+   */
+  it('test_a_cached_answer_is_offered_with_a_warning', () => {
+    const control = keyscale({
+      keyscale: loaded(['C major'], true, 'cannot reach http://127.0.0.1:8188/object_info'),
+    })
+
+    expect(control.choices).toEqual(['C major'])
+    const note = control.kind === 'enum' ? control.optionsNote : null
+    expect(note).toContain('cache')
+    expect(note).toContain('cannot reach')
+    expect(note).toContain('Start ComfyUI')
+  })
+
+  /**
+   * Protects: staleness is tri-state, and unknown is not fresh.
+   *
+   * Only the cached shape has been observed live; whether a fresh read sends
+   * `stale: false` or omits the field is unverified. Reading `null` as fresh
+   * would present a cache as the installed truth on the first ComfyUI version
+   * that stops sending the flag.
+   */
+  it('test_an_unstated_staleness_still_warns', () => {
+    const control = keyscale({ keyscale: loaded(['C major'], null) })
+
+    expect(control.kind === 'enum' && control.optionsNote).not.toBeNull()
+  })
+
+  /** Protects: a profile that names no node class says so. */
+  it('test_an_undeclared_node_class_is_explained', () => {
+    const control = keyscale({ keyscale: { state: 'undeclared' } })
+
+    expect(control.choices).toEqual([])
+    const note = control.kind === 'enum' ? control.optionsNote : null
+    expect(note).toContain('does not say which ComfyUI node')
+  })
+
+  /** Protects: an unreachable backend says what to do next (CONVENTIONS). */
+  it('test_an_unavailable_backend_says_what_to_do_next', () => {
+    const control = keyscale({
+      keyscale: { state: 'unavailable', detail: 'ComfyUI is not connected.' },
+    })
+
+    const note = control.kind === 'enum' ? control.optionsNote : null
+    expect(note).toContain('ComfyUI is not connected.')
+    expect(note).toContain('Start ComfyUI')
+  })
+
+  /** Protects: inputs with no answer keep the note they already had. */
+  it('test_an_input_with_no_answer_is_left_alone', () => {
+    const model = withChoices(panelModel(aceInputs), {
+      keyscale: loaded(['C major'], false),
+    })
+
+    const language = named(model.basic, 'language')
+    expect(language.choices).toEqual([])
+    expect(language.kind === 'enum' && language.optionsNote).toContain('Start it')
+  })
+
+  /** Protects: a fixed-choice enum is never overwritten by a live answer. */
+  it('test_a_profile_declared_enum_ignores_live_options', () => {
+    const model = withChoices(
+      panelModel({
+        ...aceInputs,
+        fixed: {
+          type: 'enum',
+          slots: ['1.f'],
+          from_node_choices: false,
+          choices: ['a', 'b'],
+          advanced: false,
+        },
+      }),
+      { fixed: loaded(['x', 'y'], false) },
+    )
+
+    expect(named(model.basic, 'fixed').choices).toEqual(['a', 'b'])
   })
 })
 

@@ -90,3 +90,19 @@ export type ProfileInputs = Record<string, InputSpec>
 export async function getProfileInputs(profileId: string): Promise<ProfileInputs | null> {
   return await invoke<ProfileInputs | null>('profile_inputs', { profileId })
 }
+
+/** One enum's live options, mirroring Rust `EnumOptions` in src-tauri. */
+export type EnumOptions =
+  | { state: 'loaded'; choices: string[]; stale: boolean | null; note: string | null }
+  | { state: 'undeclared' }
+  | { state: 'unavailable'; detail: string }
+
+/**
+ * Live options for every `from_node_choices` enum the profile declares, keyed
+ * by input name. Empty for an unknown profile.
+ */
+export async function getEnumChoices(
+  profileId: string,
+): Promise<Record<string, EnumOptions>> {
+  return await invoke<Record<string, EnumOptions>>('enum_choices', { profileId })
+}

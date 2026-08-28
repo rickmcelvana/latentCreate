@@ -86,6 +86,20 @@ pub enum InputSpec {
         slots: Vec<SlotAddress>,
         #[serde(default)]
         from_node_choices: bool,
+        /// Node **class** whose input supplies the live choices.
+        ///
+        /// Required in practice whenever `from_node_choices` is set, because a
+        /// slot address names a node *instance* inside this profile's template
+        /// (`"94.keyscale"`), and nothing can turn `94` into
+        /// `TextEncodeAceStepAudio1.5` without reading the workflow file. The
+        /// input name is the address's field part, so the class is the only
+        /// thing that was ever missing.
+        ///
+        /// `Option` rather than required so a profile written before this
+        /// field still loads; a profile that sets `from_node_choices` without
+        /// it gets an empty picker that says why, never a guess.
+        #[serde(default)]
+        node: Option<String>,
         #[serde(default)]
         choices: Vec<String>,
         #[serde(default)]

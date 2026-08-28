@@ -1322,3 +1322,54 @@ as unverified rather than working.
 Structural note for whoever does it: **subgraph links are objects**
 (`{"id", "origin_id", "origin_slot", "target_id", "target_slot", "type"}`), not the
 six-element arrays the top-level graph uses. Code that walks links has to handle both.
+
+## 19. `nodes` answers with ComfyUI down -- 2026-08-28
+
+### 19.1 WARNING A cached schema is a successful call
+
+`nodes(action="get", name=...)` **succeeds while ComfyUI is not running.** comfy-cli serves
+the class from its own `object_info` cache and says so in the envelope:
+
+```json
+"stale": true,
+"warnings": [{ "code": "object_info_stale",
+  "message": "served from cache (http://127.0.0.1:8188): cannot reach ..." }]
+```
+
+Verified 2026-08-28 with the server down: the whole 53-entry `lora_name` list and the full
+`TextEncodeAceStepAudio1.5` schema both came back complete. The response is indistinguishable
+from a live one **except** for those two fields, and `mcp-bridge` was dropping both -- so every
+caller was treating a cache as the installed truth without any way to know.
+
+Now decoded, and **tri-state like `local_check`** (6): `Some(true)` cached, `Some(false)` live,
+`None` the response did not say. `None` is not fresh. Only the cached shape has been observed;
+whether a live read sends `stale: false` or omits the key is **unverified** and T-314 settles
+it for free.
+
+**Why it matters more than it looks.** For key/scale and language a stale list is nearly
+harmless -- that vocabulary rarely changes. The same call is how LoRAs are enumerated (4,
+12.2), and there a cached list offers files the user has deleted and hides the one they trained
+an hour ago. Picking a deleted one **does not fail**: ComfyUI warns about unmatched keys and
+completes, writing a track with no LoRA on it and nothing anywhere saying so (17.6). That is
+17.1's failure mode reached through a cache rather than through a bad splice.
+
+### 19.2 The profile names a node instance, not a class
+
+A profile's `from_node_choices` enum declares `slots: ["94.keyscale"]`. `94` is a node
+**instance id inside that profile's template**; turning it into `TextEncodeAceStepAudio1.5`
+requires reading the workflow file, which would put an MCP round trip and a file write behind
+opening a settings panel.
+
+Fixed in the schema rather than at runtime: `InputSpec::Enum` gained an optional `node` field
+naming the class, consistent with a schema that already names `save_node` and
+`loras.loader_node`. The **input name is the address's field part**, so the class was the only
+thing ever missing. A profile that sets `from_node_choices` without `node` reports that state
+rather than guessing.
+
+Confirmed live on `TextEncodeAceStepAudio1.5` (cached read, 2026-08-28): `keyscale` 34 choices,
+`language` 51 with default `"en"`, `timesignature` **4 -- `"2" "3" "4" "6"`, numerators
+rather than `"4/4"`**. That node's `seed` reports `max: 18446744073709551615`, confirming 11's
+note that `options` can exceed `i64` and independently confirming why the panel refuses seeds
+above `Number.MAX_SAFE_INTEGER`. Its `duration` runs to **2000.0** while the ACE-Step profile
+caps `duration_s` at 300 -- the profile is deliberately narrower and is not a mistake to
+correct.

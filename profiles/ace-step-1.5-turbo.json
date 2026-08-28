@@ -59,18 +59,21 @@
     },
     "keyscale": {
       "type": "enum",
+      "node": "TextEncodeAceStepAudio1.5",
       "slots": ["94.keyscale"],
       "from_node_choices": true,
       "label": "Key"
     },
     "timesignature": {
       "type": "enum",
+      "node": "TextEncodeAceStepAudio1.5",
       "slots": ["94.timesignature"],
       "from_node_choices": true,
       "label": "Time signature"
     },
     "language": {
       "type": "enum",
+      "node": "TextEncodeAceStepAudio1.5",
       "slots": ["94.language"],
       "from_node_choices": true,
       "label": "Language"

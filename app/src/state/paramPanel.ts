@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { isTauri } from '../bridge/comfy'
-import { getProfileInputs } from '../bridge/profiles'
+import { getEnumChoices, getProfileInputs } from '../bridge/profiles'
 import {
   MAX_SAFE_SEED,
   defaults,
   panelModel,
+  withChoices,
   type ControlValue,
   type PanelModel,
 } from './params'
@@ -70,6 +71,7 @@ interface ParamPanelState {
   setValue: (name: string, value: ControlValue) => void
   rerollSeed: () => void
   toggleAdvanced: () => void
+  refreshChoices: () => Promise<void>
 }
 
 export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
@@ -107,6 +109,27 @@ export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
       set({ profileId, model, values: initialValues(model), error: null })
     } finally {
       set({ busy: false })
+    }
+    await get().refreshChoices()
+  },
+
+  /**
+   * Ask the node registry for the live enum options, and fold them in.
+   *
+   * Separate from `load` and safe to call again, because ComfyUI is very often
+   * started *after* the app -- an options list that can only be fetched once
+   * leaves the user with three dead dropdowns and no way back. A failure here
+   * leaves the panel exactly as it was: the controls already carry a sentence
+   * saying the options are not loaded, which is more useful than replacing a
+   * working panel with an error.
+   */
+  refreshChoices: async () => {
+    const { profileId, model } = get()
+    if (!isTauri() || profileId === null || model === null) return
+    try {
+      set({ model: withChoices(model, await getEnumChoices(profileId)) })
+    } catch {
+      // Left as it was, note intact.
     }
   },
 

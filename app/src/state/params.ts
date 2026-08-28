@@ -120,11 +120,19 @@ export type Control =
        * ACE-Step's key/scale, time signature and language are all declared
        * `from_node_choices` with **no** local list -- 34 and 51 values that
        * would rot the first time ComfyUI updates (MCP-SURFACE 11). So
-       * `choices` is empty here and stays empty until something asks the node
-       * registry. A control in this state is not the same as one the model
-       * does not support, and the panel must not render them alike.
+       * `choices` is empty until [`withChoices`] fills it, and a control in
+       * this state is not the same as one the model does not support.
        */
       fromNode: boolean
+      /**
+       * Why this list is empty, or why it should not be fully trusted.
+       *
+       * `null` only when the options are known good. Every other state has a
+       * sentence, and the sentence lives here rather than in the view because
+       * vitest runs in `node` with no DOM: wording put in JSX is wording no
+       * test can read.
+       */
+      optionsNote: string | null
     })
 
 /**
@@ -246,6 +254,7 @@ function control(
         kind: 'enum',
         choices: spec.from_node_choices ? [] : spec.choices,
         fromNode: spec.from_node_choices,
+        optionsNote: spec.from_node_choices ? NOT_LOADED : null,
         default: spec.from_node_choices ? '' : (spec.choices[0] ?? ''),
       }
   }
@@ -286,6 +295,71 @@ export function groupsOf(controls: Control[]): string[] {
     }
   }
   return groups
+}
+
+/** Shown before anything has asked the node registry. */
+const NOT_LOADED = 'Options come from your ComfyUI. Start it to choose a value.'
+
+/** One enum's live options, mirroring Rust `EnumOptions`. */
+export type EnumOptions =
+  | { state: 'loaded'; choices: string[]; stale: boolean | null; note: string | null }
+  | { state: 'undeclared' }
+  | { state: 'unavailable'; detail: string }
+
+/**
+ * Fill in the live options a `from_node_choices` enum was waiting for.
+ *
+ * Returns a new model; nothing is mutated. Controls with no entry are left
+ * exactly as they were, so a partial answer fills what it can.
+ *
+ * **A cached answer is not a good answer.** `nodes(action="get")` succeeds with
+ * ComfyUI down -- comfy-cli serves its own `object_info` cache and flags it --
+ * so `stale` is tri-state and only an explicit `false` clears the note. `null`
+ * means the response did not say, which is not the same as fresh. For key
+ * signatures the risk is small; the same path feeds the LoRA picker in T-309,
+ * where a cached list offers files the user has deleted and choosing one writes
+ * a track with no LoRA rather than failing (MCP-SURFACE 17.6).
+ */
+export function withChoices(
+  model: PanelModel,
+  options: Record<string, EnumOptions>,
+): PanelModel {
+  const apply = (entry: Control): Control => {
+    if (entry.kind !== 'enum' || !entry.fromNode) return entry
+    const answer = options[entry.name]
+    if (answer === undefined) return entry
+
+    switch (answer.state) {
+      case 'loaded':
+        return {
+          ...entry,
+          choices: answer.choices,
+          optionsNote:
+            answer.stale === false
+              ? null
+              : `These options came from ComfyUI's cache and may be out of date.${
+                  answer.note === null ? '' : ` ${answer.note}`
+                } Start ComfyUI and retry to refresh them.`,
+        }
+      case 'undeclared':
+        return {
+          ...entry,
+          optionsNote:
+            'This model profile does not say which ComfyUI node supplies these options, so they cannot be loaded.',
+        }
+      case 'unavailable':
+        return {
+          ...entry,
+          optionsNote: `${answer.detail} Start ComfyUI and retry.`,
+        }
+    }
+  }
+
+  return {
+    basic: model.basic.map(apply),
+    advanced: model.advanced.map(apply),
+    omitted: model.omitted,
+  }
 }
 
 /** The value every control starts at, keyed by input name. */
