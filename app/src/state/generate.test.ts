@@ -4,11 +4,14 @@ import type { Submission } from '../bridge/generate'
 import type { LyricDoc, LyricVersion } from '../bridge/lyricdoc'
 import type { ProfileInputs } from '../bridge/profiles'
 import {
+  GENERATE,
   QUEUED,
+  QUEUEING,
   approvedFill,
   approvedOffer,
   blockers,
   lyricRefFor,
+  notesFor,
   specFor,
   submissionNotes,
 } from './generate'
@@ -267,5 +270,35 @@ describe('submissionNotes', () => {
     expect(submissionNotes(submission()).some((n) => n.includes('could not be checked'))).toBe(
       false,
     )
+  })
+})
+
+describe('notesFor', () => {
+  /**
+   * Protects: a submission's notes do not outlive the settings that made them.
+   *
+   * The misleading case is concrete -- generate two LoRAs on ACE-Step, switch
+   * to MiniMax, and `2 LoRAs applied.` sits under a model with no LoRA support
+   * and no panel to show for it.
+   */
+  it('test_notes_are_dropped_once_the_profile_changes', () => {
+    const queued = submission({ lora_nodes: ['200', '201'] })
+
+    expect(notesFor(queued, 'ace-step-1.5-turbo', 'ace-step-1.5-turbo')).toContain(
+      '2 LoRAs applied.',
+    )
+    expect(notesFor(queued, 'ace-step-1.5-turbo', 'minimax-music-3')).toEqual([])
+  })
+
+  it('test_nothing_queued_says_nothing', () => {
+    expect(notesFor(null, null, 'ace-step-1.5-turbo')).toEqual([])
+    expect(notesFor(submission(), null, 'ace-step-1.5-turbo')).toEqual([])
+  })
+
+  /** Protects: the button says something in both states. */
+  it('test_the_button_has_a_label_either_way', () => {
+    expect(GENERATE).not.toBe('')
+    expect(QUEUEING).not.toBe('')
+    expect(GENERATE).not.toBe(QUEUEING)
   })
 })

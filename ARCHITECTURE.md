@@ -265,6 +265,16 @@ Users with a working ComfyUI workflow — including LoRA wiring no shipped profi
 ## 7. Audio generation pipeline
 
 1. AudioStudio renders controls from the selected profile's `inputs` (§5) — unsupported controls simply don't render (e.g. **no negative box for ACE-Step 1.5**, which has no such input).
+1a. **Generate assembles the spec in the frontend, and two rules govern it** (T-309d).
+`specInputs` tags each value from its control's declared *kind* (never from `typeof`), `specLoras`
+carries the stack **including bypassed rows** so a bypass stays distinguishable from a delete,
+and the `LyricRef` is attached **only when the submitted lyric text is byte-identical to the
+approved version's** -- the spec carries text and ref side by side with nothing downstream
+reconciling them, so a ref naming v2 beside v3's words would be a sidecar that lies. The
+lyrics and seed controls are located by kind, not by the names `lyrics` and `seed`, so a
+custom-imported workflow (5b) does not silently lose lyric provenance. Generate is **not**
+gated on ComfyUI being connected: `generate_audio` calls `ensure_connected`, which starts
+comfy-mcp itself, so such a gate would leave the button dead on every cold start.
 2. On Generate: `fetch_template` to a per-job working copy → apply the `GenerationSpec` (profile id, all input values, LoRA stack, lyric doc version ref, seed) by `set_slot` per mapped address → `run(wf)`. **Every job gets its own workflow file**; the app never mutates a shared one (the MCP docs warn about TOCTOU on shared paths).
 2a. ⚠ **A slot write is only real if the target input is not driven by a node that survives conversion** (MCP-SURFACE §18.1). `set_workflow_slot` reports an address `applied` whenever it can write the widget; whether the widget is *read* depends on the graph. ACE-Step's `3.seed` and `94.seed` are fed from `PrimitiveInt` 109 and were inert — every track would have used the template's seed while provenance recorded the user's. The profile now writes `109.value`, and `create-core::audit_slots` is the standing check. Note the nuance: a link from a frontend-only `PrimitiveNode` **is** dropped at conversion, so those writes do land — flagging every link would be a false alarm. Values reach the wire through `InputValue::to_slot_value`, never `serde_json::to_value`, which would send the adjacent tag.
 3. **Graph edits** happen on that working copy before the run, for the two cases slots cannot express: splicing `LoraLoaderModelOnly` nodes after the profile's `attach_after` node, and making the save node write lossless. Shipping lossy MP3 into a mastering chain would undercut the whole suite.
@@ -274,6 +284,8 @@ Users with a working ComfyUI workflow — including LoRA wiring no shipped profi
    - `filename_prefix` on the swapped node is still a normal slot, so only the format needs the graph edit.
 4. `validate_workflow` on the edited copy before submitting — cheap, and worth being precise about. **Measured on the live install (MCP-SURFACE §17–18):** it catches `unknown_enum_value`, `above_max` and `required_input_missing` before any GPU time. It is **blind to reachability** — a LoRA chain spliced in but feeding nothing validates clean, runs, and writes audio with no LoRA applied (§17.1) — and documented blind to `COMFY_DYNAMICCOMBO_V3` sub-inputs, which is the save format. **A clean validation is not evidence that a graph edit took effect.** Reachability is asserted in `create-core`'s own tests, before submission. Treat `Verdict::Vacuous` as failure, not success.
 5. Job lifecycle streamed to a **queue panel** (pending/running/progress %/failed with error text) via `job(action="status"|"watch")`. Multiple queued jobs allowed; batch = N seeds of the same spec.
+   - ⚠ **The submitter must register the returned `prompt_id` with the frontend jobs store.** `generate_audio` starts the pump itself rather than going through `run_workflow`, and the store's reducer ignores events for ids it does not know -- correctly, or a foreign job would invent an entry. Both halves are right alone and deaf together: without `useJobsStore.register`, a generation runs to completion on the GPU and every progress, done and failed event is discarded, leaving an empty queue and no error anywhere (T-309d).
+   - A known, accepted gap: the pump can emit before `register` runs, so an early status may be missed. Terminal events always arrive after, so nothing hangs. Closing it means a new `job://queued` event from the backend, for a cosmetic gain.
 6. On completion: `fetch_outputs` → audio copied into the library (§8) with a **provenance sidecar** that includes the resolved slot values actually submitted, not just the UI values.
 
 ## 8. Library, provenance, storage

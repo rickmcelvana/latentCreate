@@ -18,6 +18,10 @@ export const QUEUED = 'Queued. Watch it in the queue below.'
 /** The button that fills the lyrics field from the approved version. */
 export const USE_APPROVED = 'Use it'
 
+/** The submit button, idle and in flight. */
+export const GENERATE = 'Generate'
+export const QUEUEING = 'Queueing…'
+
 /**
  * The lyrics control this profile declares, or `null` when it has none.
  *
@@ -185,4 +189,27 @@ export function submissionNotes(submission: Submission): string[] {
     )
   }
   return notes
+}
+
+/**
+ * The notes for a submission, but only while they still describe what is on
+ * screen.
+ *
+ * A submission's notes outlive the settings that produced them, and the most
+ * misleading case is concrete: generate with two LoRAs on ACE-Step, switch to
+ * MiniMax Music 3, and `2 LoRAs applied.` sits under a model that has no LoRA
+ * support at all and no panel to show for it. The queue below still carries the
+ * job, so nothing is lost by dropping the line.
+ *
+ * Keyed on the profile rather than cleared on mount: a view re-mounts on every
+ * tab switch, and clearing there would wipe the notes for anyone who generated,
+ * looked at their lyrics, and came back.
+ */
+export function notesFor(
+  last: Submission | null,
+  lastProfileId: string | null,
+  profileId: string | null,
+): string[] {
+  if (last === null || lastProfileId === null || lastProfileId !== profileId) return []
+  return submissionNotes(last)
 }

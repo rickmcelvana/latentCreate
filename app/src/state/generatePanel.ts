@@ -21,6 +21,8 @@ interface GenerateState {
   error: string | null
   /** What was queued last, or `null` before anything was. */
   last: Submission | null
+  /** The profile `last` was generated for -- see `notesFor`. */
+  lastProfileId: string | null
   submit: () => Promise<void>
   useApprovedLyric: () => void
 }
@@ -29,6 +31,7 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
   busy: false,
   error: null,
   last: null,
+  lastProfileId: null,
 
   /**
    * Queue one generation.
@@ -56,12 +59,12 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
     try {
       const submission = await generateAudio(specFor(profileId, model, values, stack, doc))
       useJobsStore.getState().register(submission.prompt_id)
-      set({ last: submission })
+      set({ last: submission, lastProfileId: profileId })
     } catch (e) {
       // Verbatim. The param panel once shipped a note with comfy-cli's raw
       // transport error spliced into the middle of a sentence, and it took
       // somebody reading the screen to find it while every test passed.
-      set({ error: String(e), last: null })
+      set({ error: String(e), last: null, lastProfileId: null })
     } finally {
       set({ busy: false })
     }

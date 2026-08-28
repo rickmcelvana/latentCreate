@@ -7,7 +7,7 @@ submit store, and one addition to the jobs store. Small, and every line of it is
 what reaches ComfyUI — this is the first task in the phase whose defects are *wrong tracks*
 rather than wrong screens, so none of it goes out to an executor.
 
-**Part 2 — the Aider run.** `<GenerateBar>`, its `theme.css` block, the AudioStudio wiring.
+**Part 2 — the Aider run. LANDED.** `<GenerateBar>`, its `theme.css` block, the AudioStudio wiring.
 
 ---
 
@@ -239,7 +239,9 @@ because a user who cannot tell it is disabled reads a broken app.
 ## Acceptance criteria
 
 1. `npm run gate` green, and **the test count does not change: 236**. Part 2 adds no testable
-   logic; adding a test means something went in the wrong file.
+   logic; adding a test means something went in the wrong file. *(Met. Review then added
+   `notesFor` and its three tests, taking the total to 239 -- a rule the brief had missed, not
+   logic the run misplaced.)*
 2. `oxlint` adds no warnings.
 3. Every new `className` has a rule in `theme.css`.
 4. No `invoke` or `listen` outside `app/src/bridge/`.

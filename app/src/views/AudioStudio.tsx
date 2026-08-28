@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { GenerateBar } from '../components/GenerateBar'
 import { JobQueue } from '../components/JobQueue'
 import { LoraStack } from '../components/LoraStack'
 import { ParamPanel } from '../components/ParamPanel'
@@ -87,6 +88,8 @@ export function AudioStudio() {
       <ParamPanel />
 
       <LoraStack />
+
+      <GenerateBar />
 
       <JobQueue />
     </>

@@ -420,11 +420,25 @@ no-op. 17.6's silence belongs to the *non-adapter* case, which validates clean b
 real member of the enum. A stale list is therefore a **short** list, and the panel's cache note
 says what is missing rather than cautioning about what is shown.
 
-### T-309d — Generate: the panel becomes a job  — **Part 1 LANDED 2026-08-28** ([brief](t-309d-brief.md))
-Part 1 (spec assembly, blockers, submit store, `jobs.register`) is in; Part 2 (`<GenerateBar>`,
-CSS, wiring) is the Aider run. Frontend 206 -> **236 tests**, eleven mutations, eleven killed --
-including the one that reproduces the shipping bug: delete the `register` call and the queue
-never hears about the job.
+### T-309d — Generate: the panel becomes a job  — **LANDED 2026-08-28**, click-through pending ([brief](t-309d-brief.md))
+Part 1 (spec assembly, blockers, submit store, `jobs.register`) architect-direct; Part 2
+(`<GenerateBar>`, CSS, wiring) the Aider run. Frontend 206 -> **239 tests**, fourteen mutations,
+fourteen killed -- including the one that reproduces the shipping bug: delete the `register` call
+and the queue never hears about the job.
+
+**The Aider run came back clean** and held the test count at 236 exactly as the criterion asked.
+Review added one thing the brief had not thought of: a submission's notes outlived the settings
+that produced them, so generating two LoRAs on ACE-Step and then switching to MiniMax left
+`2 LoRAs applied.` sitting under a model with no LoRA support and no panel to show for it.
+`notesFor` keys them on the profile -- rather than clearing on mount, which would wipe them for
+anyone who generated, checked their lyrics and came back. The two button labels also moved into
+`generate.ts`; that one is consistency with the T-309b rule rather than a defect, since unlike
+the epoch label they carry no information a test needs to check.
+
+**A sequencing mistake worth not repeating:** the brief shipped with an Aider launch command
+while its architect-direct Part 1 was still unwritten, so the executor stopped and asked for four
+files that did not exist. It was right to. A two-part brief must say which part lands first, and
+the launch command belongs with the part that is actually runnable.
 
 Found while closing T-309b. **Nothing in the UI can start a generation.** `generate_audio(spec)`
 has had no caller since T-306b, `specInputs` none since T-308a, `specLoras` none since T-309a --

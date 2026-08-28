@@ -1426,3 +1426,85 @@ body {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* --- Generate (T-309d) --- */
+
+.generate-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-lg);
+}
+
+.generate-lyric-offer {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.generate-use-lyric {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.generate-use-lyric:hover {
+  color: var(--accent-hover);
+}
+
+.generate-blocked {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.generate-button {
+  align-self: flex-start;
+  padding: var(--gap-sm) var(--gap-lg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--bg);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.generate-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.generate-button:disabled {
+  background: var(--panel-hover);
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.generate-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.generate-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}

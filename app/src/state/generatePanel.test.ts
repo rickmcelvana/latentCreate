@@ -37,7 +37,7 @@ beforeEach(() => {
     lora_nodes: [],
     output_format: 'flac',
   }
-  useGenerateStore.setState({ busy: false, error: null, last: null })
+  useGenerateStore.setState({ busy: false, error: null, last: null, lastProfileId: null })
   useJobsStore.setState({ jobs: {} })
   useLoraPanelStore.setState({ stack: [] })
   useLyricsStore.setState({ doc: null })
@@ -56,6 +56,7 @@ describe('useGenerateStore.submit', () => {
     expect(sent?.profile_id).toBe('ace-step-1.5-turbo')
     expect(sent?.inputs.seed).toEqual({ type: 'seed', value: 4242 })
     expect(useGenerateStore.getState().last?.prompt_id).toBe('prompt-abc')
+    expect(useGenerateStore.getState().lastProfileId).toBe('ace-step-1.5-turbo')
     expect(useGenerateStore.getState().error).toBeNull()
   })
 
