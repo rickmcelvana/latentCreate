@@ -3,11 +3,11 @@ import { isTauri } from '../bridge/comfy'
 import { getLoraPanel, type LoraPanel } from '../bridge/loras'
 import {
   add,
+  entryFor,
   move,
   removeAt,
   setStrengthAt,
   toggleAt,
-  type PickerEntry,
   type StackRow,
 } from './loras'
 
@@ -29,7 +29,7 @@ interface LoraPanelState {
   busy: boolean
   load: (profileId: string) => Promise<void>
   refresh: () => Promise<void>
-  addEntry: (entry: PickerEntry) => void
+  addPath: (path: string) => void
   removeRow: (index: number) => void
   toggleRow: (index: number) => void
   setStrength: (index: number, strength: number) => void
@@ -93,9 +93,20 @@ export const useLoraPanelStore = create<LoraPanelState>((set, get) => ({
     }
   },
 
-  addEntry: (entry: PickerEntry) => {
+  /**
+   * Stack the entry a picker handed back, by path.
+   *
+   * By path rather than by entry because a `<select>` yields a string, and
+   * resolving it against the catalog in the component would be a lookup no test
+   * can reach. An unknown path is ignored -- it cannot arrive from the picker,
+   * and inventing a row for it would put a LoRA in the stack that the installed
+   * list does not have.
+   */
+  addPath: (path: string) => {
     const { panel, stack } = get()
     if (panel === null) return
+    const entry = entryFor(panel.catalog, path)
+    if (entry === null) return
     set({ stack: add(stack, entry, panel) })
   },
 

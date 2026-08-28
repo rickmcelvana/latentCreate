@@ -224,9 +224,55 @@ export function missingFrom(stack: StackRow[], catalog: CatalogState): StackRow[
   return stack.filter((row) => !known.has(row.path))
 }
 
-/** How a missing row explains itself. */
-export function missingNote(row: StackRow): string {
+/** How a missing row explains itself. Rendered through [`stackRows`]. */
+function missingNote(row: StackRow): string {
   return `${row.label} is no longer in your loras folder.`
+}
+
+/** One offer, found by the path a `<select>` hands back. */
+export function entryFor(catalog: CatalogState, path: string): PickerEntry | null {
+  if (catalog.state !== 'loaded') return null
+  for (const group of catalog.groups) {
+    const primary = group.primary.find((entry) => entry.path === path)
+    if (primary !== undefined) return offer(primary, false)
+    const superseded = group.superseded.find((entry) => entry.path === path)
+    if (superseded !== undefined) return offer(superseded, true)
+  }
+  return null
+}
+
+/** One stacked row, with everything the view would otherwise work out itself. */
+export interface StackRowView {
+  row: StackRow
+  index: number
+  /** This LoRA is no longer in the installed list. */
+  missing: boolean
+  /** The sentence saying so, or `null`. */
+  note: string | null
+  canMoveUp: boolean
+  canMoveDown: boolean
+}
+
+/**
+ * The stack as the panel renders it.
+ *
+ * Every one of these is a decision -- whether a row is still installed, what it
+ * says about that, whether its move buttons do anything -- and each is one line
+ * in a component and unreachable from a test the moment it lives there. The
+ * repo has paid for that lesson at every panel so far, so the component below
+ * this is a `map` over this list and nothing else.
+ */
+export function stackRows(stack: StackRow[], catalog: CatalogState): StackRowView[] {
+  const missing = new Set(missingFrom(stack, catalog).map((row) => row.path))
+
+  return stack.map((row, index) => ({
+    row,
+    index,
+    missing: missing.has(row.path),
+    note: missing.has(row.path) ? missingNote(row) : null,
+    canMoveUp: index > 0,
+    canMoveDown: index < stack.length - 1,
+  }))
 }
 
 /** One LoRA in a spec, mirroring Rust `create_core::generation::LoraRef`. */

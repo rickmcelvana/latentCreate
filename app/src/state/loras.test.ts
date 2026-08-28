@@ -9,13 +9,14 @@ import {
   addable,
   catalogNote,
   excludedNote,
+  entryFor,
   missingFrom,
-  missingNote,
   move,
   pickerGroups,
   removeAt,
   setStrengthAt,
   specLoras,
+  stackRows,
   supersededCount,
   toggleAt,
   type PickerEntry,
@@ -341,7 +342,6 @@ describe('missingFrom', () => {
 
     expect(missing).toHaveLength(1)
     expect(missing[0].label).toBe('gone')
-    expect(missingNote(missing[0])).toContain('no longer in your loras folder')
   })
 
   /**
@@ -402,5 +402,98 @@ describe('specLoras', () => {
 
     expect(spec[0].file).toBe(stack[0].path)
     expect(spec[0].file).toContain('\\')
+  })
+})
+
+describe('entryFor', () => {
+  /**
+   * Protects: a path from a `<select>` resolves to the entry behind it.
+   *
+   * The picker hands back a string; the stack needs a label. Resolving that in
+   * the component would be a lookup no test can reach, which is how the last
+   * three panels acquired their untestable lines.
+   */
+  it('test_a_path_resolves_to_its_offer', () => {
+    const [first] = firstEntries(1)
+    const found = entryFor(loaded(), first.path)
+
+    expect(found?.label).toBe(first.label)
+    expect(found?.superseded).toBe(false)
+  })
+
+  /** Protects: a superseded checkpoint resolves, and knows that it is one. */
+  it('test_a_checkpoint_resolves_and_is_marked_superseded', () => {
+    const checkpoint = pickerGroups(loaded(), [], true)
+      .flatMap((group) => group.entries)
+      .find((entry) => entry.superseded)
+    expect(checkpoint).toBeDefined()
+
+    const found = entryFor(loaded(), checkpoint!.path)
+
+    expect(found?.superseded).toBe(true)
+    expect(found?.epoch).toBe(checkpoint!.epoch)
+  })
+
+  /**
+   * Protects: an unknown path resolves to nothing rather than to a made-up row.
+   *
+   * A row invented here would reach `GenerationSpec.loras` and the provenance
+   * sidecar naming a LoRA the install does not have.
+   */
+  it('test_an_unknown_path_resolves_to_nothing', () => {
+    expect(entryFor(loaded(), 'nothing/like/this.safetensors')).toBeNull()
+    expect(entryFor({ state: 'unavailable', detail: 'down' }, firstEntries(1)[0].path)).toBeNull()
+  })
+})
+
+describe('stackRows', () => {
+  /**
+   * Protects: the view gets its decisions made for it.
+   *
+   * `missing`, the sentence, and whether each move button does anything are all
+   * one line apiece in a component -- and unreachable from any test the moment
+   * they live there, because vitest runs in `node` with no DOM.
+   */
+  it('test_the_rows_carry_their_own_move_affordances', () => {
+    const rows = stackRows(stackOf(...firstEntries(3)), loaded())
+
+    expect(rows.map((view) => view.canMoveUp)).toEqual([false, true, true])
+    expect(rows.map((view) => view.canMoveDown)).toEqual([true, true, false])
+    expect(rows.map((view) => view.index)).toEqual([0, 1, 2])
+  })
+
+  /** Protects: a single row can move nowhere, rather than up onto itself. */
+  it('test_a_lone_row_can_move_neither_way', () => {
+    const [only] = stackRows(stackOf(...firstEntries(1)), loaded())
+
+    expect(only.canMoveUp).toBe(false)
+    expect(only.canMoveDown).toBe(false)
+  })
+
+  /** Protects: a row the catalog no longer offers carries its own sentence. */
+  it('test_a_missing_row_carries_its_note', () => {
+    const stack: StackRow[] = [
+      ...stackOf(...firstEntries(1)),
+      { path: 'gone/adapter_model.safetensors', label: 'gone', strength: 1, enabled: true },
+    ]
+
+    const [present, absent] = stackRows(stack, loaded())
+
+    expect(present.missing).toBe(false)
+    expect(present.note).toBeNull()
+    expect(absent.missing).toBe(true)
+    expect(absent.note).toContain('gone')
+    expect(absent.note).toContain('no longer in your loras folder')
+  })
+
+  /** Protects: ComfyUI being down does not mark the whole stack missing. */
+  it('test_an_unreadable_catalog_marks_no_row_missing', () => {
+    const rows = stackRows(stackOf(...firstEntries(2)), {
+      state: 'unavailable',
+      detail: 'down',
+    })
+
+    expect(rows.every((view) => !view.missing)).toBe(true)
+    expect(rows.every((view) => view.note === null)).toBe(true)
   })
 })

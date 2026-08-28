@@ -80,7 +80,7 @@ describe('useLoraPanelStore', () => {
    */
   it('test_reloading_the_same_profile_keeps_the_stack', async () => {
     await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
-    useLoraPanelStore.getState().addEntry(offers(1)[0])
+    useLoraPanelStore.getState().addPath(offers(1)[0].path)
     expect(useLoraPanelStore.getState().stack).toHaveLength(1)
 
     await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
@@ -98,7 +98,7 @@ describe('useLoraPanelStore', () => {
    */
   it('test_switching_profiles_clears_the_stack', async () => {
     await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
-    useLoraPanelStore.getState().addEntry(offers(1)[0])
+    useLoraPanelStore.getState().addPath(offers(1)[0].path)
 
     mockPanel = null
     await useLoraPanelStore.getState().load('minimax-music-3')
@@ -117,7 +117,7 @@ describe('useLoraPanelStore', () => {
    */
   it('test_refresh_rereads_the_list_and_keeps_the_stack', async () => {
     await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
-    useLoraPanelStore.getState().addEntry(offers(1)[0])
+    useLoraPanelStore.getState().addPath(offers(1)[0].path)
 
     await useLoraPanelStore.getState().refresh()
 
@@ -128,14 +128,14 @@ describe('useLoraPanelStore', () => {
   /** Protects: the store's edits go through the pure rules, cap included. */
   it('test_the_store_will_not_stack_past_the_profiles_cap', async () => {
     await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
-    for (const entry of offers(6)) useLoraPanelStore.getState().addEntry(entry)
+    for (const entry of offers(6)) useLoraPanelStore.getState().addPath(entry.path)
 
     expect(useLoraPanelStore.getState().stack).toHaveLength(4)
   })
 
   it('test_the_store_moves_toggles_and_removes_rows', async () => {
     await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
-    for (const entry of offers(3)) useLoraPanelStore.getState().addEntry(entry)
+    for (const entry of offers(3)) useLoraPanelStore.getState().addPath(entry.path)
     const paths = useLoraPanelStore.getState().stack.map((row) => row.path)
 
     useLoraPanelStore.getState().moveRow(2, 0)
@@ -153,6 +153,21 @@ describe('useLoraPanelStore', () => {
 
     useLoraPanelStore.getState().removeRow(0)
     expect(useLoraPanelStore.getState().stack).toHaveLength(2)
+  })
+
+  /**
+   * Protects: a path the catalog does not offer never becomes a row.
+   *
+   * The picker cannot produce one, but the store takes a bare string, so this
+   * is the layer where a stale or hand-edited value would arrive. Inventing a
+   * row for it would put a LoRA in the stack -- and in the provenance sidecar
+   * -- that the installed list does not have.
+   */
+  it('test_an_unknown_path_is_not_stacked', async () => {
+    await useLoraPanelStore.getState().load('ace-step-1.5-turbo')
+    useLoraPanelStore.getState().addPath('nothing/like/this.safetensors')
+
+    expect(useLoraPanelStore.getState().stack).toEqual([])
   })
 
   it('test_the_checkpoint_disclosure_toggles', async () => {
