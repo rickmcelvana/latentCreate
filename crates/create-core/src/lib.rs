@@ -7,6 +7,7 @@
 //! [`generation`] holds what the user asked for before it is fanned out to slots.
 //! [`graph`] holds pure workflow graph edits that slots cannot express (T-305a).
 //! [`audit`] checks whether a resolved slot write can actually reach the engine (T-306a).
+//! [`loras`] turns the installed-LoRA list into something a person can pick from (T-307).
 //! [`project`] holds the library's project, lyric and track-id types.
 //! [`provenance`] holds the reproducible recipe for one generated asset.
 //! [`readiness`] decides whether a profile's model files are present.
@@ -15,6 +16,7 @@
 pub mod audit;
 pub mod generation;
 pub mod graph;
+pub mod loras;
 pub mod lyrics;
 pub mod profile;
 pub mod project;
@@ -24,6 +26,7 @@ pub mod readiness;
 pub use audit::*;
 pub use generation::*;
 pub use graph::*;
+pub use loras::*;
 pub use lyrics::*;
 pub use profile::*;
 pub use project::*;
