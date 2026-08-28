@@ -93,7 +93,7 @@ export async function getProfileInputs(profileId: string): Promise<ProfileInputs
 
 /** One enum's live options, mirroring Rust `EnumOptions` in src-tauri. */
 export type EnumOptions =
-  | { state: 'loaded'; choices: string[]; stale: boolean | null; note: string | null }
+  | { state: 'loaded'; choices: string[]; cached: boolean }
   | { state: 'undeclared' }
   | { state: 'unavailable'; detail: string }
 

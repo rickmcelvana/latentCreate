@@ -300,9 +300,24 @@ export function groupsOf(controls: Control[]): string[] {
 /** Shown before anything has asked the node registry. */
 const NOT_LOADED = 'Options come from your ComfyUI. Start it to choose a value.'
 
+/**
+ * Shown when the options arrived from comfy-cli's cache instead of ComfyUI.
+ *
+ * The transport error that came with it is deliberately **not** in this
+ * sentence. Splicing it in produced, on a real screen: "...may be out of date.
+ * served from cache (http://127.0.0.1:8188): cannot reach
+ * http://127.0.0.1:8188/object_info: [WinError 10061] No connection could be
+ * made because the target machine actively refused it Start ComfyUI and retry
+ * to refresh them." Lowercase, unterminated, the URL twice, a Windows error
+ * number, and the actual instruction stranded past all of it. Which endpoint
+ * failed is what the ComfyUI status pill is for.
+ */
+const FROM_CACHE =
+  "These options came from ComfyUI's cache and may be out of date. Start ComfyUI, then Retry."
+
 /** One enum's live options, mirroring Rust `EnumOptions`. */
 export type EnumOptions =
-  | { state: 'loaded'; choices: string[]; stale: boolean | null; note: string | null }
+  | { state: 'loaded'; choices: string[]; cached: boolean }
   | { state: 'undeclared' }
   | { state: 'unavailable'; detail: string }
 
@@ -334,12 +349,7 @@ export function withChoices(
         return {
           ...entry,
           choices: answer.choices,
-          optionsNote:
-            answer.stale === false
-              ? null
-              : `These options came from ComfyUI's cache and may be out of date.${
-                  answer.note === null ? '' : ` ${answer.note}`
-                } Start ComfyUI and retry to refresh them.`,
+          optionsNote: answer.cached ? FROM_CACHE : null,
         }
       case 'undeclared':
         return {

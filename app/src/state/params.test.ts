@@ -189,9 +189,10 @@ describe('panelModel', () => {
   })
 })
 
+const loaded = (choices: string[], cached = false) =>
+  ({ state: 'loaded', choices, cached }) satisfies EnumOptions
+
 describe('withChoices', () => {
-  const loaded = (choices: string[], stale: boolean | null, note: string | null = null) =>
-    ({ state: 'loaded', choices, stale, note }) satisfies EnumOptions
 
   function keyscale(options: Record<string, EnumOptions>) {
     const model = withChoices(panelModel(aceInputs), options)
@@ -200,7 +201,7 @@ describe('withChoices', () => {
 
   /** Protects: a live answer fills the dropdown and clears the note. */
   it('test_a_live_answer_fills_the_options_and_says_nothing', () => {
-    const control = keyscale({ keyscale: loaded(['C major', 'A minor'], false) })
+    const control = keyscale({ keyscale: loaded(['C major', 'A minor']) })
 
     expect(control.kind).toBe('enum')
     expect(control.choices).toEqual(['C major', 'A minor'])
@@ -219,29 +220,51 @@ describe('withChoices', () => {
    * track with no LoRA on it (MCP-SURFACE 17.6).
    */
   it('test_a_cached_answer_is_offered_with_a_warning', () => {
-    const control = keyscale({
-      keyscale: loaded(['C major'], true, 'cannot reach http://127.0.0.1:8188/object_info'),
-    })
+    const control = keyscale({ keyscale: loaded(['C major'], true) })
 
     expect(control.choices).toEqual(['C major'])
     const note = control.kind === 'enum' ? control.optionsNote : null
     expect(note).toContain('cache')
-    expect(note).toContain('cannot reach')
     expect(note).toContain('Start ComfyUI')
   })
 
   /**
-   * Protects: staleness is tri-state, and unknown is not fresh.
+   * Protects: the note is a sentence, not a transport error with a sentence
+   * wrapped around it.
    *
-   * Only the cached shape has been observed live; whether a fresh read sends
-   * `stale: false` or omits the field is unverified. Reading `null` as fresh
-   * would present a cache as the installed truth on the first ComfyUI version
-   * that stops sending the flag.
+   * The first version spliced comfy-cli's raw warning into the middle and put
+   * this on a real screen: "...may be out of date. served from cache
+   * (http://127.0.0.1:8188): cannot reach http://127.0.0.1:8188/object_info:
+   * [WinError 10061] No connection could be made because the target machine
+   * actively refused it Start ComfyUI and retry to refresh them." The
+   * instruction was stranded past a Windows error number. Which endpoint failed
+   * is the ComfyUI status pill's job.
    */
-  it('test_an_unstated_staleness_still_warns', () => {
-    const control = keyscale({ keyscale: loaded(['C major'], null) })
+  it('test_the_cache_note_reads_as_one_sentence', () => {
+    const note = (() => {
+      const control = keyscale({ keyscale: loaded(['C major'], true) })
+      return control.kind === 'enum' ? (control.optionsNote ?? '') : ''
+    })()
 
-    expect(control.kind === 'enum' && control.optionsNote).not.toBeNull()
+    expect(note).not.toContain('http')
+    expect(note).not.toContain('WinError')
+    expect(note.endsWith('.')).toBe(true)
+    expect(note.split('. ').length).toBeLessThanOrEqual(2)
+  })
+
+  /**
+   * Protects: a live read is not warned about.
+   *
+   * Observed 2026-08-28 by running the panel both ways: a live response carries
+   * **no** `stale` key and no warning -- there is no `stale: false`. The first
+   * version read "did not say" as "not fresh" and therefore warned on every
+   * healthy install, which is a caution nobody reads by the time the LoRA
+   * picker needs one.
+   */
+  it('test_a_live_answer_is_not_warned_about', () => {
+    const control = keyscale({ keyscale: loaded(['C major'], false) })
+
+    expect(control.kind === 'enum' && control.optionsNote).toBeNull()
   })
 
   /** Protects: a profile that names no node class says so. */
@@ -267,7 +290,7 @@ describe('withChoices', () => {
   /** Protects: inputs with no answer keep the note they already had. */
   it('test_an_input_with_no_answer_is_left_alone', () => {
     const model = withChoices(panelModel(aceInputs), {
-      keyscale: loaded(['C major'], false),
+      keyscale: loaded(['C major']),
     })
 
     const language = named(model.basic, 'language')
@@ -288,7 +311,7 @@ describe('withChoices', () => {
           advanced: false,
         },
       }),
-      { fixed: loaded(['x', 'y'], false) },
+      { fixed: loaded(['x', 'y']) },
     )
 
     expect(named(model.basic, 'fixed').choices).toEqual(['a', 'b'])

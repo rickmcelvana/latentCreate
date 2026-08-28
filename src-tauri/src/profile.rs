@@ -104,11 +104,13 @@ pub enum EnumOptions {
     /// Read from the node registry.
     Loaded {
         choices: Vec<String>,
-        /// Whether comfy-cli answered from its cache. **Tri-state**: `None`
-        /// means the response did not say, which is not the same as fresh.
-        stale: Option<bool>,
-        /// The `object_info_stale` warning text, when there was one.
-        note: Option<String>,
+        /// Whether comfy-cli answered from its cache rather than ComfyUI.
+        ///
+        /// A plain bool, classified here: a live read sends no `stale` key and
+        /// no warning, so the webview would have to know both signals and how
+        /// their absence reads. That is the backend's job (the rule
+        /// [`crate::comfy::ComfyStatus`] already follows).
+        cached: bool,
     },
     /// The profile asks for live choices but names no node class, so there is
     /// nothing to ask. A profile-authoring mistake, surfaced rather than
@@ -214,12 +216,7 @@ fn options_for(read: &Result<mcp_bridge::NodeSchema, String>, field: &str) -> En
             },
             Some(choices) => EnumOptions::Loaded {
                 choices: choices.to_vec(),
-                stale: schema.stale,
-                note: schema
-                    .warnings
-                    .iter()
-                    .find(|w| w.code == "object_info_stale")
-                    .map(|w| w.message.clone()),
+                cached: schema.is_cached(),
             },
         },
     }
@@ -366,14 +363,9 @@ mod tests {
 
         let options = options_for(&Ok(captured), "lora_name");
         match options {
-            EnumOptions::Loaded {
-                choices,
-                stale,
-                note,
-            } => {
+            EnumOptions::Loaded { choices, cached } => {
                 assert_eq!(choices.len(), 53);
-                assert_eq!(stale, Some(true));
-                assert!(note.expect("the reason").contains("cannot reach"));
+                assert!(cached);
             }
             other => panic!("expected Loaded, got {other:?}"),
         }

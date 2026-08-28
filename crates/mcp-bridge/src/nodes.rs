@@ -151,13 +151,33 @@ pub struct NodeWarning {
     pub message: String,
 }
 
+/// The warning code comfy-cli attaches when it answers from its cache.
+pub const OBJECT_INFO_STALE: &str = "object_info_stale";
+
 impl NodeSchema {
-    /// Whether these choices are known to have come from a cache.
+    /// Whether this schema came from comfy-cli's cache rather than ComfyUI.
     ///
-    /// `None` reads as **not known to be fresh**, so a caller that wants to
-    /// warn should use this rather than `stale == Some(true)`.
-    pub fn is_known_fresh(&self) -> bool {
-        self.stale == Some(false)
+    /// **Both signals, because the live shape omits `stale` entirely.**
+    /// Observed 2026-08-28 by running it both ways: with ComfyUI down the
+    /// response carries `stale: true` *and* an [`OBJECT_INFO_STALE`] warning;
+    /// with ComfyUI up it carries **neither** -- there is no `stale: false`.
+    ///
+    /// So absence is now evidence, not an assumption, and the earlier
+    /// tri-state reading (`None` is not fresh) has to go: it warned on every
+    /// healthy install, and a caution that is always on is one nobody reads by
+    /// the time it matters. The warning is still the more reliable of the two
+    /// signals -- it carries the reason -- so a cache that stopped setting the
+    /// flag would still be caught.
+    pub fn is_cached(&self) -> bool {
+        self.stale == Some(true) || self.warnings.iter().any(|w| w.code == OBJECT_INFO_STALE)
+    }
+
+    /// Why the live read failed, when it did.
+    pub fn cache_reason(&self) -> Option<&str> {
+        self.warnings
+            .iter()
+            .find(|w| w.code == OBJECT_INFO_STALE)
+            .map(|w| w.message.as_str())
     }
 }
 
@@ -221,7 +241,8 @@ mod tests {
             .expect("schema");
 
         assert_eq!(schema.stale, Some(true));
-        assert!(!schema.is_known_fresh());
+        assert!(schema.is_cached());
+        assert!(schema.cache_reason().is_some());
         assert_eq!(schema.warnings.len(), 1);
         assert_eq!(schema.warnings[0].code, "object_info_stale");
         assert!(schema.warnings[0].message.contains("cannot reach"));
@@ -232,14 +253,16 @@ mod tests {
         );
     }
 
-    /// Protects: a response that says nothing about staleness is **not** fresh.
+    /// Protects: a live read is recognised as live.
     ///
-    /// Only the cached shape has been observed; whether a live read sends
-    /// `stale: false` or omits the key is unverified (T-314 settles it for
-    /// free). Until then `None` must not read as fresh -- the same tri-state
-    /// rule `local_check` follows, for the same reason.
+    /// **This is the shape a running ComfyUI returns** -- no `stale` key and no
+    /// warning, confirmed 2026-08-28 by running the panel both ways. There is
+    /// no `stale: false`, so a reading that only trusted an explicit `false`
+    /// warned on every healthy install; the earlier version of this test
+    /// asserted exactly that behaviour and was wrong about the world, not
+    /// about the code.
     #[tokio::test]
-    async fn test_an_unstated_staleness_is_not_treated_as_fresh() {
+    async fn test_a_live_read_carries_neither_signal_and_is_not_cached() {
         let (client, _recorded) = client_and_log(vec![Reply::Json(json!({
             "id": "LoraLoaderModelOnly", "name": "LoraLoaderModelOnly"
         }))])
@@ -251,8 +274,48 @@ mod tests {
             .expect("schema");
 
         assert_eq!(schema.stale, None);
-        assert!(!schema.is_known_fresh());
         assert!(schema.warnings.is_empty());
+        assert!(!schema.is_cached());
+        assert_eq!(schema.cache_reason(), None);
+    }
+
+    /// Protects: the flag alone is enough.
+    ///
+    /// The symmetric case, and the one that was missing: both signals arrive
+    /// together on every response observed so far, so a reading that consulted
+    /// only the warning passed the whole suite. Either signal on its own means
+    /// cached, and neither means live.
+    #[tokio::test]
+    async fn test_the_stale_flag_alone_marks_a_cached_schema() {
+        let (client, _recorded) = client_and_log(vec![Reply::Json(json!({
+            "id": "X", "name": "X", "stale": true
+        }))])
+        .await;
+
+        let schema: NodeSchema = client.node_schema("X").await.expect("schema");
+
+        assert!(schema.warnings.is_empty());
+        assert!(schema.is_cached());
+        assert_eq!(schema.cache_reason(), None);
+    }
+
+    /// Protects: the warning alone is enough.
+    ///
+    /// The two signals arrive together today. The warning carries the reason
+    /// and is the harder of the two to drop by accident, so a cache that
+    /// stopped setting the flag must still be caught.
+    #[tokio::test]
+    async fn test_the_stale_warning_alone_marks_a_cached_schema() {
+        let (client, _recorded) = client_and_log(vec![Reply::Json(json!({
+            "id": "X", "name": "X",
+            "warnings": [{ "code": "object_info_stale", "message": "served from cache" }]
+        }))])
+        .await;
+
+        let schema: NodeSchema = client.node_schema("X").await.expect("schema");
+
+        assert_eq!(schema.stale, None);
+        assert!(schema.is_cached());
     }
 
     /// Protects: the argument set -- `action="get"` and `name` go out verbatim.

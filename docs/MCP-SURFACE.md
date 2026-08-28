@@ -1341,10 +1341,25 @@ Verified 2026-08-28 with the server down: the whole 53-entry `lora_name` list an
 from a live one **except** for those two fields, and `mcp-bridge` was dropping both -- so every
 caller was treating a cache as the installed truth without any way to know.
 
-Now decoded, and **tri-state like `local_check`** (6): `Some(true)` cached, `Some(false)` live,
-`None` the response did not say. `None` is not fresh. Only the cached shape has been observed;
-whether a live read sends `stale: false` or omits the key is **unverified** and T-314 settles
-it for free.
+**CORRECTED same day, by running the panel both ways.** A live read carries **neither
+signal** -- no `stale` key at all, and no warning. There is no `stale: false`. So the shape is
+binary in practice:
+
+| | ComfyUI running | ComfyUI down |
+|---|---|---|
+| `stale` | **absent** | `true` |
+| `object_info_stale` warning | **absent** | present, with the reason |
+| choices | complete | complete |
+
+The first cut read this as a tri-state (`None` is "did not say", therefore not fresh) and
+**warned on every healthy install**. That is worse than useless: a caution that is always on is
+one nobody reads by the time the LoRA picker actually needs it. `is_cached()` now means
+`stale == Some(true) || an object_info_stale warning is present`, and absence is evidence
+rather than an assumption -- because the live shape has now been observed, not guessed at.
+
+Both signals are consulted, not just one. They have arrived together on every response seen so
+far, so either alone would pass; each has its own test for the case where the other is
+missing.
 
 **Why it matters more than it looks.** For key/scale and language a stale list is nearly
 harmless -- that vocabulary rarely changes. The same call is how LoRAs are enumerated (4,
