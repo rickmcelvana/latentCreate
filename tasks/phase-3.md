@@ -285,7 +285,7 @@ that is worth more than a test asserting a guarantee that does not exist.
 Also the natural place for the OQ-3 evidence to accumulate: if the pipeline needs a node fact
 the MCP surface cannot answer, record it here rather than reaching for `/object_info` silently.
 
-### T-307 — the LoRA list: filtering, grouping, dedupe  *(pure)*  — **brief written** ([brief](t-307-brief.md))
+### T-307 — the LoRA list: filtering, grouping, dedupe  *(pure)*  — **LANDED** ([brief](t-307-brief.md))
 The 53-entry list is unusable raw (16.5, ARCHITECTURE 5a). A pure function over the captured
 list: drop `training_state.pt` and other non-adapters, group by directory, collapse the
 20-epoch checkpoint series to latest/`final` with the rest behind an expander, dedupe
@@ -312,6 +312,19 @@ supersedes every epoch checkpoint -- so on the captured data the epoch number is
 compared to anything, and the likeliest bug in the module (comparing `checkpoint-epoch-N` as
 text, where 90 beats 300) is invisible to it. The test that catches it replays the same real
 paths with `final/` removed: a training run still in progress.
+
+**LANDED 2026-08-28.** `create-core` 126 -> 137 tests. The executor reproduced the brief's
+reference byte for byte, so the whole value of the run was the review after it -- and the review
+found two more sorts the captured list cannot test. ComfyUI returns `choices` already sorted, so
+the group ordering and the within-group ordering are both satisfied by accident on the fixture:
+delete either sort outright and all fourteen other tests still pass. Closed with
+`test_the_catalog_does_not_depend_on_arrival_order`, which runs the same real list reversed and
+asserts the groups come out identical. Ten of ten mutations killed.
+
+Same shape as the epoch trap above, and the third task running where a suite proved an absence
+and never the presence. Worth stating as a rule for T-308 onward: **when the input a fixture
+captures already satisfies a rule, the rule is untested** -- feed it the same real data with
+that property removed.
 
 ### T-308 — AudioStudio: the profile-driven param panel
 Controls rendered from the profile's `inputs`, unsupported ones simply absent — **no negative

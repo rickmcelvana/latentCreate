@@ -11,6 +11,33 @@
 
 **Run reference code through `cargo fmt` before it goes in the brief.** T-101 and T-102 each landed a correct diff whose only gate failure was formatting the architect had never checked — the executor transcribes reference code faithfully, hand-formatting included. Compiling and running it is not enough; the brief's own scratch crate must be `cargo fmt`-clean, or every run pays for it.
 
+**When a task goes through Aider at all (owner, 2026-08-28).** Aider's *only* purpose in this
+repo is to save architect tokens so a session runs longer. It is not a review gate, not a
+second opinion, and not a correctness step -- nothing about a task is safer for having passed
+through it.
+
+So the question to ask before writing a brief is which lane the task is in:
+
+- **Architect-direct.** The architect has already written the implementation and verified it --
+  compiled, tested, formatted, mutated. There is nothing left for an executor to save. Put it in
+  the working tree, run the gate, commit. This is the normal lane for small pure functions,
+  where writing the reference *is* writing the task.
+- **Aider.** The architect deliberately does **not** pre-write it: broad mechanical work across
+  many files, UI wiring, transcription and file-juggling that would otherwise burn the context
+  the architect needs for review.
+
+**Decide the lane before writing the brief, not after.** A brief carrying a complete, verified
+reference implementation has already spent exactly the tokens Aider exists to save, and sending
+it out is a round trip that cannot change the outcome. T-306b and T-307 both came back **byte
+for byte identical** to their brief's reference -- two full runs, zero difference. In both cases
+the value came entirely from the architect's review pass afterwards, which found a vacuous test
+each time.
+
+This does not weaken the brief. A task in the architect-direct lane still gets its brief written
+first, still names the invariant behind every test, and still gets reviewed against that brief
+as if someone else had written it -- because the review is what catches things, and the author
+reviewing their own work is precisely when it has to be done deliberately.
+
 **Model routing:** everything here is plumbing/UI → kimi lane by default. If a task class racks up repeated failed fix-up rounds (3+ attempts on one T-number), stop and ask the producer to try a different model — record the switch in the decisions log.
 
 ## 2. The loop (per task)
@@ -131,6 +158,31 @@ Unit tests must not require a running ComfyUI/LLM. Rules:
 - Default branch work: direct commits fine (solo repo); tag `phase0-done` etc. at milestones.
 - Commit format: `T-013: setup wizard comfy step` / `docs: session log 2026-08-30`.
 - **Docs discipline (hard rule):** every session starts by checking PROJECT.md/ARCHITECTURE.md against commits since the last session-log entry, and ends by updating the session log. A merged task that changed behavior described in a doc updates that doc *in the same commit or the review fails*.
+- **A doc's claim is verified against the repo, not against another doc (2026-08-28).** The rule
+  above catches *drift* -- a doc that was right and fell behind a commit. It cannot catch a doc
+  that was **wrong when it was written**, because no `git log` diff will ever show it. That has
+  now cost two tasks in a row:
+
+  - **T-306b:** `tasks/phase-3.md` specified a `local_check` gate before running. Implementing it
+    as written would have made a fully installed MiniMax Music 3 ungenerable, because the check
+    runs at fetch time, before the profile's slot overrides are applied.
+  - **T-307:** the same file said the 53-entry LoRA list was "captured into `testdata/mcp/`".
+    Nothing was ever captured. Three MCP-SURFACE sections describe the list in prose and every
+    rule in the task was about to be built against a remembered one.
+
+  So: **when a doc's claim is load-bearing for what you are about to write, check the claim**.
+  It names a file -> open it. It names a test, a gate or a behaviour -> grep for it. It states a
+  count or a surface fact -> read the most recently dated section, not the first one you find;
+  MCP-SURFACE carries three different LoRA counts and only the newest pair is current.
+
+- **A doc line that says "trust the other doc if we disagree" is a defect, not a safeguard.**
+  It pre-authorises its own staleness and guarantees the next reader loses time deciding which
+  half to believe. AGENTS.md item 5 carried one for weeks while it described Phase 3 as not yet
+  started. Fix the line; the pointer to the authoritative doc stays, the permission to be wrong
+  goes.
+
+- **Date every count.** Test counts, entry counts, file counts and version numbers go stale
+  silently and are the most-copied lines in the repo. Write them with the date they were true.
 
 ## 7. When models disagree
 If Aider pushes back with a technically valid point, bring it to the architect verbatim. The architect amends brief + ARCHITECTURE.md, or explains why the original stands. Architecture never changes silently inside an Aider run.
