@@ -529,12 +529,25 @@ third time in this project an absent key was being read as a value.
 (`JobProgress` is `{id, status, outputs}`), so the panel shows **elapsed time**, timestamped
 locally at `register` because `submitted_at` exists on only one of comfy-cli's two stores.
 
-**Still unmeasured, and the reason the phase file reached for that surface at all:** every "error"
-in the queue is a cancel, so the `server_died`-versus-node-failure distinction T-314's
-kill-ComfyUI-mid-job check turns on is not settled. It costs about a second of GPU (a workflow
-naming a model file that does not exist fails at the loader) but it is a deliberate write to the
-owner's ComfyUI, so it is his call. **T-310's failure rendering is provisional until then**, and
-labelled so in the code.
+**The failure case was then produced deliberately** (owner's go-ahead, MCP-SURFACE §24): an
+ACE-Step graph pointed at MiniMax's VAE -- a legitimate enum member and the wrong file, so it
+validates, runs, and throws at `VAEDecodeAudio`. That softens the line above in one direction:
+**T-310 needs both surfaces.** The *outcome* comes from `action="status"`; the failure *detail*
+(`node_id`, `node_type`, `exception_type`, `exception_message`) comes from `action="error"`, which
+is the only surface carrying it in named fields. `traceback_tail` is never rendered.
+
+It also found that `error` inside `action="status"` has **two shapes that share no key** -- `code`
+is absent on the failure shape, `exception_message` absent on the cancel shape -- so classifying an
+outcome by reading `error.code` silently returns nothing for every real failure. `mcp-bridge`'s
+docs said this payload's shape was "NOT yet captured"; it is captured now, verbatim, in
+`testdata/mcp/job_outcomes.json`, and the failure test's hand-written fixture (which matched
+neither real shape) was replaced with the payload the server actually sends. mcp-bridge 94 -> 96.
+
+**Two things still unmeasured.** `server_died` -- producing it means actually killing ComfyUI,
+which is T-314's own check. And the fallback this entry assumed: `get_logs` returned a file a day
+stale, reporting v0.34.1 against a running v0.34.2, while comfy-cli's own trust signals both said
+it was fine -- **a server restarted by hand has no log for `get_logs` to read**, and nothing in the
+response says so (§24.5).
 
 The panel today is **32 lines** written incidentally across T-309d and the cancel fix: a raw status
 string, error text, and a Cancel button. A row cannot say *which* job it is, which is why during the

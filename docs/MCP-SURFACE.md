@@ -1663,7 +1663,13 @@ truncated to `A/B`, which would answer a question about a different node. That h
 instruction -- report, do not guess -- stands unchanged; what changed is that a subgraph interior
 is no longer something the audit has to guess about.
 
-## 23. `job(action="error")` measured, and it is not the surface T-310 was told to use -- 2026-08-28
+## 23. `job(action="error")` measured against cancels -- 2026-08-28
+
+> **Amended by 24**, written an hour later once a genuine node failure had been produced. This
+> section's data is about **cancels**, and its conclusion -- that `action="status"` is the reliable
+> source of a job's *outcome* -- stands. But its title and framing dismissed `action="error()` too
+> broadly: for a real failure that surface is correct, and it is the only one carrying `node_type`
+> and `exception_message`. T-310 needs both surfaces, for different questions. See 24.2.
 
 Read against the live install (ComfyUI **v0.34.2**, comfy-cli **1.16.0**) with ten real jobs in
 the queue, three of them cancelled. Read-only: no job was submitted for this.
@@ -1724,7 +1730,10 @@ interrupted **while running**; the two short-shape jobs were cancelled around a 
 untested** -- it needs two deliberate cancels to confirm, and is worth doing before anything relies
 on the error detail being there.
 
-### 23.4 What is still unmeasured, and it is the case the surface exists for
+### 23.4 RESOLVED What was unmeasured here, and it is the case the surface exists for
+
+**Resolved the same day by section 24** -- a failure was produced deliberately. The paragraph
+below is what was true before that, kept because it is the reason the run happened.
 
 **Every "error" in this queue is a cancel.** There is no genuine node failure and no `server_died`
 in the data, so nothing here says what `action="error"` reports for an OOM kill versus an ordinary
@@ -1753,3 +1762,97 @@ needs a measurement during a real run.
 `action="queue"` carries `queue_position` (null for terminal jobs) -- that is the pending ordering
 the panel needs, and it does not come from the event stream. It also carries `outputs` as a
 **count** where `action="status"` carries the output **list**; T-311 wants the list.
+
+## 24. A genuine node failure, produced on purpose -- 2026-08-28
+
+Section 23 could not say what a real failure looks like, because every "error" in the queue was a
+cancel. So one was made, with the owner's go-ahead.
+
+**The recipe, and it is a good one to keep.** An unknown model filename does *not* work: comfy-cli
+checks enum membership against the server before submitting and refuses with
+`[workflow_unknown_nodes]`, so there is **no `prompt_id` and no job** (24.4). What works is a value
+that is a legitimate enum member but the wrong file: point an ACE-Step graph's `VAELoader` at
+MiniMax's `minimax_music3_dav.safetensors`. It validates, runs, and throws at decode. About
+20 seconds, no crash, no GPU risk.
+
+```
+node 18 VAEDecodeAudio -- RuntimeError
+shape '[2, 64, 250]' is invalid for input of size 16000
+```
+
+All four outcomes are now captured verbatim in `testdata/mcp/job_outcomes.json`.
+
+### 24.1 `error_code` is the discriminator -- on `action="queue"`
+
+| outcome | `queue.status` | `queue.error_code` |
+|---|---|---|
+| finished | `completed` | `null` |
+| node failure | `error` | **`execution_error`** |
+| cancelled | `error` *or* `cancelled` | **`cancelled`** |
+| crash/OOM | *(unobserved)* | `server_died` per the tool docs |
+
+`queue.status` is `"error"` for a cancel **and** for a failure, which is precisely why
+`error_code` exists. On `action="error"` the same key means something different -- it is
+comfy-cli's *transport-level* code, `null` for an ordinary node failure and `"cancelled"` for a
+cancel. **The same key name, two meanings, on two surfaces.**
+
+### 24.2 So T-310 needs both surfaces, for different questions
+
+- **The outcome comes from `action="status"`.** It answered `"cancelled"` for all three cancels
+  (23.1) and `"error"` for this failure. It is the only field that has never disagreed with itself.
+- **The failure *detail* comes from `action="error"`**, which is the only surface carrying
+  `node_id`, `node_type`, `exception_type` and `exception_message` in named fields. That is what a
+  queue row should show: `VAEDecodeAudio failed: shape '[2, 64, 250]' is invalid for input of
+  size 16000`.
+- **`traceback_tail` is never rendered.** Twelve frames of absolute paths into the user's ComfyUI
+  install. It belongs in a log, not a row.
+
+Section 23's title said this surface "is not the one T-310 was told to use". Too broad, and
+corrected here: it is the wrong source for the *outcome* and the right source for the *detail*.
+
+### 24.3 `error` inside `action="status"` has two shapes too, and they share no key
+
+```jsonc
+// a cancel -- comfy-cli's normalized record
+{ "code": "cancelled", "message": "Job was interrupted/cancelled.", "details": {} }
+
+// a node failure -- ComfyUI's raw history record, with NO `code`
+{ "node_id": "18", "node_type": "VAEDecodeAudio", "exception_type": "RuntimeError",
+  "exception_message": "shape '[2, 64, 250]' is invalid for input of size 16000\n",
+  "executed": ["106","98","3"], "traceback": [...], "current_inputs": {...} }
+```
+
+**Neither key covers both.** `code` is absent on the failure shape; `exception_message` is absent
+on the cancel shape. So classifying an outcome by reading `error["code"]` silently returns nothing
+for every real failure -- the third occurrence in this project of an absent key being read as a
+value, after `stale` (T-308c) and `local_check` (T-306b). `mcp-bridge` now has a test asserting
+the two shapes share no discriminator, and `is_cancelled` keys on `status` where it belongs; a
+mutation confirms that reading the error payload instead misreports the cancels of 23.1.
+
+Also worth knowing: `current_inputs` dumps the actual tensor as a string. Never log it whole.
+
+### 24.4 A rejected submission is not a job, and has no row
+
+```
+comfy run ... failed [workflow_unknown_nodes]: Workflow has 1 validation error(s) against server
+hint: node 104: 'latentcreate_probe_no_such_model.safetensors' not in 3 known options for
+      unet_name (did you mean: acestep_v1.5_xl_turbo_bf16.safetensors, ...)
+```
+
+No `prompt_id`, nothing in the queue, nothing for the panel to render -- it surfaces as
+`generate_audio`'s own error and always has. Worth stating because the queue panel is about to grow
+a failed state, and this failure legitimately has none. The `did you mean` hint is good copy and
+should be passed through verbatim rather than summarised.
+
+### 24.5 `server_died` remains unobserved, and `get_logs` may not help
+
+The OOM/crash path is still untested; producing it means actually killing ComfyUI, which is
+T-314's kill-mid-job check, not something to do while briefing a panel.
+
+**And the fallback the phase file assumed may not be there.** `get_logs` on this install returned a
+file whose `mtime` was a day old, reporting ComfyUI **v0.34.1** while the running server is
+**v0.34.2** -- yet `source: "explicit_port"` and `port_mismatch: false`, i.e. comfy-cli's own
+trust signals both said it was fine. The cause is ordinary: the server was restarted by hand rather
+than through comfy-cli, so comfy-cli's captured log is not the live server's. **A server started
+outside comfy-cli has no log for `get_logs` to read**, and it says so in no way the caller can
+detect. T-314 should not plan to read across a crash without checking `mtime` first.

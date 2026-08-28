@@ -59,9 +59,18 @@ pub struct JobStatus {
     /// Output URLs keyed by node id (e.g. the save node).
     #[serde(default)]
     pub outputs_by_node: BTreeMap<String, Vec<String>>,
-    /// Non-null when the job failed. The failure payload's shape is NOT yet
-    /// captured (needs a job that passes validation but fails a node), so it is
-    /// kept as `Value` rather than narrowed.
+    /// Non-null when the job failed -- but it carries **two different shapes**,
+    /// which is why it stays a `Value` (MCP-SURFACE 24, captured verbatim in
+    /// `testdata/mcp/job_outcomes.json`):
+    ///
+    /// - comfy-cli's normalized record, `{code, message, details}` -- a cancel
+    ///   arrives this way, with `code: "cancelled"`.
+    /// - ComfyUI's raw history record, with `node_id`, `node_type`,
+    ///   `exception_type`, `exception_message`, `traceback` and **no `code`
+    ///   key at all** -- an ordinary node failure arrives this way.
+    ///
+    /// So `error["code"]` is absent on the shape that describes a real failure.
+    /// Do not read a missing key as a value; discriminate on the shape.
     #[serde(default)]
     pub error: Option<Value>,
 }
@@ -69,8 +78,15 @@ pub struct JobStatus {
 impl JobStatus {
     /// Whether the job has reached a terminal state and no more polling is needed.
     ///
-    /// `"completed"` and **`"cancelled"`** are verified live; `"error"` and
-    /// `"failed"` are still inferred from ComfyUI's status vocabulary.
+    /// `"completed"`, **`"cancelled"`** and **`"error"`** are verified live.
+    /// `"failed"` is still inferred from ComfyUI's status vocabulary and has
+    /// never been observed -- it is kept because dropping an inferred terminal
+    /// value can only cost a job that polls for ever, which is exactly what
+    /// the missing `"cancelled"` did.
+    ///
+    /// `"error"` was reproduced on 2026-08-28 by pointing an ACE-Step graph at
+    /// MiniMax's VAE: it passes enum validation and throws a shape mismatch at
+    /// `VAEDecodeAudio` (MCP-SURFACE 24).
     ///
     /// `"cancelled"` was missing until 2026-08-28, and its absence is what made
     /// a cancelled job poll for ever: comfy-cli reports
@@ -339,20 +355,100 @@ mod tests {
         assert!(status.is_success());
     }
 
-    /// Protects: a failure is terminal but not success. `"error"` is inferred
-    /// (the failure path was not reproduced live -- see the `error` field docs).
+    /// Protects: a failure is terminal but not success -- against the payload
+    /// the server really sends.
+    ///
+    /// This test used to assert against a hand-written `{"message": "node
+    /// failed"}`, which matches **neither** shape comfy-cli produces. The
+    /// failure path was reproduced live on 2026-08-28 and captured in
+    /// `testdata/mcp/job_outcomes.json`; this is that record.
     #[test]
-    fn test_error_is_terminal_but_not_success() {
+    fn test_a_real_execution_error_is_terminal_but_not_success() {
         let status = JobStatus {
             prompt_id: Some(PROMPT_ID.to_string()),
             status: "error".to_string(),
             workflow_size: None,
             outputs: vec![],
             outputs_by_node: BTreeMap::new(),
-            error: Some(json!({ "message": "node failed" })),
+            // ComfyUI's raw history record. Note: no `code` key.
+            error: Some(json!({
+                "node_id": "18",
+                "node_type": "VAEDecodeAudio",
+                "exception_type": "RuntimeError",
+                "exception_message": "shape '[2, 64, 250]' is invalid for input of size 16000
+            ",
+                "executed": ["106", "98", "3"]
+            })),
         };
         assert!(status.is_terminal());
         assert!(!status.is_success());
+        assert!(!status.is_cancelled(), "a node failure is not a cancel");
+    }
+
+    /// Protects: the two `error` shapes are genuinely different, and the one
+    /// that describes a real failure has no `code` key.
+    ///
+    /// Reading `error["code"]` to classify an outcome therefore silently
+    /// returns nothing for every ordinary node failure -- the same
+    /// absent-key-read-as-a-value trap as `stale` (T-308c) and
+    /// `local_check` (T-306b). Third occurrence; hence a test.
+    #[test]
+    fn test_the_two_error_shapes_do_not_share_a_discriminator() {
+        let cancelled = json!({
+            "code": "cancelled",
+            "message": "Job was interrupted/cancelled.",
+            "details": {}
+        });
+        let failed = json!({
+            "node_id": "18",
+            "node_type": "VAEDecodeAudio",
+            "exception_type": "RuntimeError",
+            "exception_message": "shape '[2, 64, 250]' is invalid for input of size 16000
+        "
+        });
+        assert_eq!(
+            cancelled.get("code").and_then(|c| c.as_str()),
+            Some("cancelled")
+        );
+        assert!(
+            failed.get("code").is_none(),
+            "the failure shape carries no `code`, so a `code`-based check cannot see it"
+        );
+        assert!(
+            cancelled.get("exception_message").is_none(),
+            "and the cancel shape carries no `exception_message`, so neither key covers both"
+        );
+    }
+
+    /// Protects: `is_cancelled` reads `status`, which is the only field that
+    /// answered consistently across every cancelled job observed.
+    ///
+    /// MCP-SURFACE 23: on the same three cancels, `action="queue"` and
+    /// `action="error"` disagreed with each other and with themselves, while
+    /// `action="status"` said `"cancelled"` every time. A version of this that
+    /// consulted the error payload would misreport two of those three.
+    #[test]
+    fn test_a_cancel_is_recognised_from_status_not_from_its_error_payload() {
+        let with_detail = JobStatus {
+            prompt_id: Some(PROMPT_ID.to_string()),
+            status: "cancelled".to_string(),
+            workflow_size: None,
+            outputs: vec![],
+            outputs_by_node: BTreeMap::new(),
+            error: Some(
+                json!({ "code": "cancelled", "message": "Job was interrupted/cancelled." }),
+            ),
+        };
+        // The same user action, on the store that keeps no error record.
+        let without_detail = JobStatus {
+            error: None,
+            ..with_detail.clone()
+        };
+        for status in [&with_detail, &without_detail] {
+            assert!(status.is_cancelled());
+            assert!(status.is_terminal());
+            assert!(!status.is_success());
+        }
     }
 
     /// Protects: a non-terminal status keeps the pump polling.

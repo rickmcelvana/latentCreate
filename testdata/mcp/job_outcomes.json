@@ -1,0 +1,129 @@
+{
+  "_captured": "2026-08-28, ComfyUI v0.34.2, comfy-cli 1.16.0, local 127.0.0.1:8188",
+  "_why": [
+    "Every job outcome this project has actually observed, verbatim, one per surface.",
+    "Written because `JobStatus`'s own doc comment said the failure path was inferred and had",
+    "never been reproduced live -- and its test fixture used a hand-written {'message': ...}",
+    "that matches neither shape the server really sends. MCP-SURFACE 23 and 24.",
+    "The execution_error rows come from a deliberate failure: an ACE-Step graph pointed at",
+    "MiniMax's VAE, which passes enum validation and throws a shape mismatch at decode.",
+    "`current_inputs` is elided from the status payload and marked so -- it carries a dumped",
+    "tensor of no interest to any caller. Everything else is byte-for-byte what came back."
+  ],
+
+  "execution_error": {
+    "_prompt_id": "b72f5438-8754-46b1-b938-8fe09340a7fd",
+    "queue_row": {
+      "prompt_id": "b72f5438-8754-46b1-b938-8fe09340a7fd",
+      "status": "error",
+      "queue_position": null,
+      "workflow_size": 11,
+      "outputs": 0,
+      "where": "local",
+      "updated_at": "2026-08-28T13:03:50+00:00",
+      "error_code": "execution_error"
+    },
+    "action_error": {
+      "prompt_id": "b72f5438-8754-46b1-b938-8fe09340a7fd",
+      "status": "error",
+      "error_code": null,
+      "exception_message": "shape '[2, 64, 250]' is invalid for input of size 16000\n",
+      "exception_type": "RuntimeError",
+      "node_id": "18",
+      "node_type": "VAEDecodeAudio",
+      "_traceback_tail": "12 frames of absolute paths into the user's ComfyUI install; elided here, and never rendered"
+    },
+    "action_status_error_object": {
+      "_shape": "ComfyUI's raw history record -- note there is NO `code` key",
+      "prompt_id": "b72f5438-8754-46b1-b938-8fe09340a7fd",
+      "node_id": "18",
+      "node_type": "VAEDecodeAudio",
+      "executed": ["106", "98", "3"],
+      "exception_message": "shape '[2, 64, 250]' is invalid for input of size 16000\n",
+      "exception_type": "RuntimeError",
+      "current_outputs": ["104", "107", "109", "94", "78", "105", "106", "98", "3", "47", "18"],
+      "timestamp": 1787922229221
+    }
+  },
+
+  "cancelled_state_file": {
+    "_prompt_id": "488ce569-8729-41aa-90f0-a1d0b1f39c41",
+    "_note": "Interrupted while running. comfy-cli kept a state file for it.",
+    "queue_row": {
+      "prompt_id": "488ce569-8729-41aa-90f0-a1d0b1f39c41",
+      "status": "cancelled",
+      "outputs": 0,
+      "updated_at": "2026-08-28T11:28:04+00:00",
+      "error_code": "cancelled"
+    },
+    "action_error": {
+      "prompt_id": "488ce569-8729-41aa-90f0-a1d0b1f39c41",
+      "status": "error",
+      "error_code": "cancelled",
+      "exception_message": "Job was interrupted/cancelled.",
+      "exception_type": null,
+      "node_id": null,
+      "node_type": null,
+      "traceback_tail": []
+    },
+    "action_status_error_object": {
+      "_shape": "comfy-cli's normalized record -- note there IS a `code` key",
+      "code": "cancelled",
+      "message": "Job was interrupted/cancelled.",
+      "details": {}
+    },
+    "_action_status_extras": {
+      "source": "state_file",
+      "submitted_at": "2026-08-28T11:27:58+00:00",
+      "updated_at": "2026-08-28T11:28:04+00:00"
+    }
+  },
+
+  "cancelled_no_state_file": {
+    "_prompt_id": "0e5b3b0c-70d1-4444-85cd-77f3527ab068",
+    "_note": [
+      "Same user action, different record. No `source`, no timestamps, no error detail.",
+      "This is the row that proves `error: null` does not mean healthy."
+    ],
+    "queue_row": {
+      "prompt_id": "0e5b3b0c-70d1-4444-85cd-77f3527ab068",
+      "status": "error",
+      "outputs": 0,
+      "updated_at": "2026-08-28T11:58:56+00:00",
+      "error_code": "cancelled"
+    },
+    "action_error": {
+      "_shape": "the SHORT shape -- no error_code key at all",
+      "prompt_id": "0e5b3b0c-70d1-4444-85cd-77f3527ab068",
+      "status": "cancelled",
+      "error": null
+    },
+    "action_status_error_object": null
+  },
+
+  "completed": {
+    "_prompt_id": "64de49ab-67f3-44d1-aceb-679a44c79dea",
+    "queue_row": {
+      "prompt_id": "64de49ab-67f3-44d1-aceb-679a44c79dea",
+      "status": "completed",
+      "outputs": 1,
+      "error_code": null
+    },
+    "action_error": {
+      "prompt_id": "64de49ab-67f3-44d1-aceb-679a44c79dea",
+      "status": "completed",
+      "error": null
+    }
+  },
+
+  "submission_rejected": {
+    "_note": [
+      "Not a job. An unknown model filename is refused by comfy-cli's pre-flight check against",
+      "the server, so there is no prompt_id and nothing ever reaches the queue. It surfaces as",
+      "`generate_audio`'s own error, never as a queue row -- which is why the queue panel has",
+      "no state for it."
+    ],
+    "error": "comfy run --workflow <path> failed [workflow_unknown_nodes]: Workflow has 1 validation error(s) against server",
+    "hint": "node 104: 'latentcreate_probe_no_such_model.safetensors' not in 3 known options for unet_name"
+  }
+}

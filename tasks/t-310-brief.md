@@ -39,9 +39,19 @@ despite the tool documenting that key as meaning healthy. Third time in this pro
 key was being read as a value (after `stale` in T-308c and `local_check` in T-306b). If anything
 ever does consume this surface, discriminate on the shape, never on a key's nullness.
 
-**And the case the surface exists for is still unmeasured.** Every "error" in the queue is a cancel;
-there is no genuine node failure and no `server_died` anywhere in the data. So nothing yet says what
-the app should render for a real failure. See "What this brief does not cover" at the end.
+**The failure case has since been measured** (§24), by pointing an ACE-Step graph at MiniMax's VAE
+-- a legitimate enum member and the wrong file, so it validates, runs, and throws at decode. That
+changes the conclusion above in one direction: **T-310 needs both surfaces, for different
+questions.**
+
+- **Outcome** comes from `action="status"`. Only field that has never disagreed with itself.
+- **Failure detail** comes from `action="error"`, the only surface with `node_id`, `node_type`,
+  `exception_type` and `exception_message` as named fields.
+- **`traceback_tail` is never rendered** -- twelve frames of absolute paths into the user's install.
+
+`error_code` means different things on the two surfaces: on `action="queue"` it is the category
+(`execution_error` / `cancelled` / `server_died`); on `action="error"` it is comfy-cli's
+transport-level code, **null for an ordinary node failure**. Same key, two meanings.
 
 ## What is actually there today
 
@@ -97,7 +107,13 @@ screen:
   chain inline in JSX.
 - `errorFor(job)` — `null` for a cancelled job. A cancel carries
   `"Job was interrupted/cancelled."` on one of the two shapes, and showing it would be the §21
-  defect returning through the front door.
+  defect returning through the front door. For a real failure it composes
+  `` `${node_type} failed: ${exception_message}` `` — measured fields, not guessed ones (§24.2) —
+  and **never** `traceback_tail`.
+
+  ⚠ The two `error` shapes **share no key**: `code` is absent on the failure shape,
+  `exception_message` is absent on the cancel shape (§24.3). Classifying by reading `error.code`
+  returns nothing for every real failure. Discriminate on `status`, then read the detail.
 
 ### 3. An empty state
 
@@ -147,7 +163,9 @@ real submission through `submit` and read the row.
 ## Gate
 
 `npm run gate`, `cargo test`, clippy, fmt. Frontend 245 → expect ~262. **No Rust change** — §23
-vindicated the current polling surface, and `is_cancelled` stays as it is.
+vindicated the current polling surface, and `is_cancelled` stays as it is. (mcp-bridge went
+94 → 96 while measuring §24: its `error`-shape docs were corrected, and the failure test's
+hand-written fixture was replaced with the payload the server actually sends.)
 
 ## Click-through (after T-310b)
 
@@ -156,16 +174,17 @@ Queue two jobs and watch the second wait. Cancel the first and confirm the row s
 
 ## What this brief does not cover, deliberately
 
-**The failure path is unverified.** There has never been a genuine node failure or a `server_died`
-in this install's queue, so `errorFor`'s failure branch is written against a shape nobody has
-observed, and the OOM-versus-node-failure distinction the phase file wanted from
-`action="error"` — the one T-314's kill-ComfyUI-mid-job check turns on — is not settled here.
+**`server_died` is still unobserved.** Producing it means actually killing ComfyUI, which is
+T-314's kill-mid-job check rather than something to do while briefing a panel. So the row's
+crash-versus-node-failure wording is the one provisional thing here, and should be labelled as
+such in the code -- the same way `is_terminal`'s vocabulary was, and that comment's honesty is
+what made the cancel bug findable.
 
-Settling it costs about a second of GPU: submit a workflow naming a model file that does not exist
-and it fails at the loader. That is a deliberate write to the owner's ComfyUI, so it is his call,
-not something to slip into a brief. **Until it is run, T-310's failure rendering is provisional and
-should be labelled as such in the code**, the same way `is_terminal`'s vocabulary was — and that
-comment's honesty is what made the cancel bug findable.
+**The `get_logs` fallback may not exist.** The phase file assumed `get_logs` "still reads across
+the crash". On this install it returned a file a day stale, reporting v0.34.1 against a running
+v0.34.2 -- while comfy-cli's own trust signals (`source: "explicit_port"`, `port_mismatch: false`)
+both said it was fine. A server restarted by hand rather than through comfy-cli has no log for
+`get_logs` to read, and nothing in the response says so (§24.5).
 
 Also out of scope: `action="watch"` (§23.5), and which of comfy-cli's two stores a cancelled job
 lands in (§23.3, interrupted-while-running versus deleted-while-queued is the likely discriminator
