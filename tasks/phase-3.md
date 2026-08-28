@@ -326,7 +326,7 @@ and never the presence. Worth stating as a rule for T-308 onward: **when the inp
 captures already satisfies a rule, the rule is untested** -- feed it the same real data with
 that property removed.
 
-### T-308 — AudioStudio: the profile-driven param panel  — **T-308a + T-308b LANDED**, click-through passed 2026-08-28; T-308c is live enum choices
+### T-308 — AudioStudio: the profile-driven param panel  — **T-308a + T-308b LANDED**, click-through passed 2026-08-28; T-308c LANDED (click-through pending)
 Controls rendered from the profile's `inputs`, unsupported ones simply absent — **no negative
 prompt box for ACE-Step**, which has no such input. bpm, key/scale and time signature are
 first-class musical controls (3). The advanced disclosure hides the LM-planner sampling
