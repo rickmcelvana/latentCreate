@@ -326,7 +326,7 @@ and never the presence. Worth stating as a rule for T-308 onward: **when the inp
 captures already satisfies a rule, the rule is untested** -- feed it the same real data with
 that property removed.
 
-### T-308 — AudioStudio: the profile-driven param panel
+### T-308 — AudioStudio: the profile-driven param panel  — **T-308a LANDED**, T-308b next
 Controls rendered from the profile's `inputs`, unsupported ones simply absent — **no negative
 prompt box for ACE-Step**, which has no such input. bpm, key/scale and time signature are
 first-class musical controls (3). The advanced disclosure hides the LM-planner sampling
@@ -337,6 +337,28 @@ Phase 3 half of the Phase 2 decision that kept the lyric brief's `language` a pl
 the Lyrics Studio needs no running ComfyUI.
 
 Derived values go in the store, not in JSX. See the note at the top of this file.
+
+**Split 2026-08-28, writing the brief. T-308a landed the same day** ([brief](t-308a-brief.md));
+T-308b is the data path and the panel, and gets its own brief.
+
+Whole-of-T-308 is about 1100 lines -- two Rust commands with their view types, the bridge, the
+panel model, the component and its CSS -- nearly three times the 400-line rule, and T-306a
+already stalled on brief size once. **T-308a** is the pure half, testable with no ComfyUI: the
+profile's declarations become ordered controls with defaults, bounds, a basic/advanced split,
+and a typed `GenerationSpec.inputs`. Architect-direct lane (WORKFLOW 1). **T-308b** is the two
+commands, `<ParamPanel>`, the CSS and the copy -- Aider lane.
+
+**Four things T-308a settled that T-308b inherits.** (1) A `u64` seed cannot survive
+JavaScript: above 2^53-1 it changes on the way through and JSON cannot carry a BigInt, so
+18446744073709551615 reaches Rust as ...616 and lands in the sidecar. The panel **refuses**
+seeds above `Number.MAX_SAFE_INTEGER` rather than rounding, and the cap needs UI copy. (2) An
+`unsupported` input is recorded with its reason, never filtered away -- a missing
+negative-prompt box and a forgotten one look identical otherwise. (3) `keyscale`,
+`timesignature` and `language` are `from_node_choices` with **no** local list, so they are
+empty until something asks the node registry -- and T-308b must not render that like an
+unsupported input; one means ComfyUI is off, the other means the model has no such input.
+(4) Group members inherit their group's `advanced` flag, or the planner's five sampler
+controls surface in the basic panel while the group hiding them is hidden.
 
 ### T-309 — AudioStudio: the LoRA stack panel
 T-307's output made interactive: up to `max_stack` entries, each a picker plus strength

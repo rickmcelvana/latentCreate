@@ -1,0 +1,319 @@
+import type { InputSpec, ProfileInputs } from '../bridge/profiles'
+
+/**
+ * The param panel's model: a profile's declared inputs, turned into an ordered
+ * list of controls with defaults, bounds and a basic/advanced split.
+ *
+ * Pure functions rather than JSX. Every defect the Phase 2 milestone found that
+ * `tsc`, `oxlint` and 109 tests could not see was correct logic derived inline
+ * in a view (PROJECT.md, 2026-08-26), and this panel derives more than anything
+ * in Phase 2: what to show at all, in what order, behind which disclosure, with
+ * which bounds, and how a typed value reaches Rust. vitest runs in `node` with
+ * no DOM here, so a rule that lives in JSX is a rule no test can reach.
+ */
+
+/**
+ * The largest seed this app will accept from a person.
+ *
+ * ACE-Step's seed input runs to `u64::MAX`, and `create-core` carries it as a
+ * `u64` on purpose -- `InputValue::Seed` exists precisely so a seed cannot be
+ * demoted to some other number type, and its tests pin `Seed(u64::MAX)`.
+ *
+ * JavaScript has no such integer. Anything above 2^53-1 loses precision the
+ * moment it becomes a `number`, and `invoke` serialises through JSON, so a
+ * `BigInt` cannot cross the bridge either. A seed typed as 18446744073709551615
+ * would arrive in Rust as 18446744073709551616 -- accepted, recorded in the
+ * provenance sidecar, and not the seed the user asked for.
+ *
+ * So the panel **refuses** seeds above this, rather than rounding them. A
+ * refused seed is on screen; a rounded one is a sidecar that lies. This does
+ * cap the app below the model's range, which is a real limitation and belongs
+ * in the UI copy, not in a comment alone.
+ */
+export const MAX_SAFE_SEED = Number.MAX_SAFE_INTEGER
+
+/**
+ * Semantic input names in the order a musician wants them, most-used first.
+ *
+ * The profile's `inputs` is a `BTreeMap`, so it arrives alphabetically --
+ * `bpm, duration_s, keyscale, language, lyrics, negative, planner, seed,
+ * shift, steps, tags, timesignature`. Rendering that order puts bpm above the
+ * style tags and buries lyrics in the middle.
+ *
+ * A constant here rather than a new field on the profile schema: ordering is a
+ * property of this panel, not of the model, and a `display_order` in every
+ * profile would be one more thing a user profile (ARCHITECTURE 5b) has to get
+ * right to look correct. Names this list does not know are appended
+ * alphabetically, which is what a custom-imported workflow gets.
+ */
+const PRESENTATION_ORDER = [
+  'tags',
+  'lyrics',
+  'negative',
+  'duration_s',
+  'bpm',
+  'keyscale',
+  'timesignature',
+  'language',
+  'seed',
+  'steps',
+  'shift',
+]
+
+/** Numeric bounds, as the control renders them. */
+export interface Range {
+  min: number
+  max: number
+  /** `null` when the profile declares none -- the view picks its own. */
+  step: number | null
+}
+
+/** What one control holds. Enum and text values are strings. */
+export type ControlValue = string | number
+
+/** One control the panel renders. */
+export interface Control {
+  /** Semantic input name -- the key this becomes in `GenerationSpec.inputs`. */
+  name: string
+  /** What the user reads: the profile's label when it has one, else the name. */
+  label: string
+  kind: 'text' | 'lyrics' | 'int' | 'float' | 'seed' | 'enum'
+  /** Label of the group this belongs to, or `null` at top level. */
+  group: string | null
+  /** Behind the advanced disclosure. Inherited from an advanced group. */
+  advanced: boolean
+  /** Bounds for `int`/`float`; `null` for every other kind. */
+  range: Range | null
+  /** Fixed options for `enum`; empty otherwise. */
+  choices: string[]
+  /**
+   * This enum's options come from the live node schema, not the profile.
+   *
+   * ACE-Step's key/scale, time signature and language are all declared
+   * `from_node_choices` with **no** local list -- 34 and 51 values that would
+   * rot the first time ComfyUI updates (MCP-SURFACE 11). So `choices` is empty
+   * here and stays empty until something asks the node registry. A control in
+   * this state is not the same as one the model does not support, and the
+   * panel must not render them alike.
+   */
+  fromNode: boolean
+  /** The profile's declared default, or a neutral value for kinds without one. */
+  default: ControlValue
+}
+
+/**
+ * An input the profile declares but the panel deliberately does not render.
+ *
+ * Reported rather than filtered away. `Unsupported` is a **verified** fact --
+ * "TextEncodeAceStepAudio1.5 exposes no negative input", checked against a
+ * live node schema, recorded so that "we looked" is distinguishable from
+ * "nobody thought about it" (profile.rs). Dropping it silently throws away the
+ * only evidence that anyone checked, and leaves a missing negative-prompt box
+ * looking exactly like a bug.
+ */
+export interface Omitted {
+  name: string
+  reason: string | null
+}
+
+/** Everything the panel needs from one profile's declarations. */
+export interface PanelModel {
+  basic: Control[]
+  advanced: Control[]
+  omitted: Omitted[]
+}
+
+/**
+ * Turn a profile's declared inputs into the panel's model.
+ *
+ * Groups are flattened: their members become controls tagged with the group's
+ * label, so the view renders one fieldset without walking a tree. **A member
+ * inherits its group's `advanced` flag** -- ACE-Step's planner group is
+ * `advanced: true` while all five of its members declare `advanced: false`,
+ * and honouring only the member's own flag puts five sampler controls in the
+ * basic panel while the group holding them is hidden.
+ */
+export function panelModel(inputs: ProfileInputs): PanelModel {
+  const controls: Control[] = []
+  const omitted: Omitted[] = []
+  collect(inputs, null, false, controls, omitted)
+
+  return {
+    basic: ordered(controls.filter((c) => !c.advanced)),
+    advanced: ordered(controls.filter((c) => c.advanced)),
+    omitted: omitted.toSorted((a, b) => a.name.localeCompare(b.name)),
+  }
+}
+
+function collect(
+  inputs: ProfileInputs,
+  group: string | null,
+  inheritedAdvanced: boolean,
+  controls: Control[],
+  omitted: Omitted[],
+): void {
+  for (const [name, spec] of Object.entries(inputs)) {
+    const advanced = inheritedAdvanced || advancedOf(spec)
+
+    if (spec.type === 'unsupported') {
+      omitted.push({ name, reason: spec.reason ?? null })
+      continue
+    }
+    if (spec.type === 'group') {
+      collect(spec.members, spec.label ?? name, advanced, controls, omitted)
+      continue
+    }
+    controls.push(control(name, spec, group, advanced))
+  }
+}
+
+function control(
+  name: string,
+  spec: Exclude<InputSpec, { type: 'unsupported' } | { type: 'group' }>,
+  group: string | null,
+  advanced: boolean,
+): Control {
+  const base = {
+    name,
+    label: 'label' in spec ? (spec.label ?? name) : name,
+    group,
+    advanced,
+    range: null,
+    choices: [] as string[],
+    fromNode: false,
+  }
+
+  switch (spec.type) {
+    case 'text':
+    case 'lyrics':
+      return { ...base, kind: spec.type, default: '' }
+    case 'int':
+      return {
+        ...base,
+        kind: 'int',
+        range: { min: spec.min, max: spec.max, step: 1 },
+        default: spec.default,
+      }
+    case 'float':
+      return {
+        ...base,
+        kind: 'float',
+        range: { min: spec.min, max: spec.max, step: spec.step ?? null },
+        default: spec.default,
+      }
+    case 'seed':
+      // Not a number control with a huge max: see MAX_SAFE_SEED. The range is
+      // stated so the view can show it, and `seedError` is what enforces it.
+      return {
+        ...base,
+        kind: 'seed',
+        range: { min: 0, max: MAX_SAFE_SEED, step: 1 },
+        default: 0,
+      }
+    case 'enum':
+      return {
+        ...base,
+        kind: 'enum',
+        choices: spec.from_node_choices ? [] : spec.choices,
+        fromNode: spec.from_node_choices,
+        default: spec.from_node_choices ? '' : (spec.choices[0] ?? ''),
+      }
+  }
+}
+
+function advancedOf(spec: InputSpec): boolean {
+  return 'advanced' in spec ? spec.advanced : false
+}
+
+/** Known names in presentation order, then everything else alphabetically. */
+function ordered(controls: Control[]): Control[] {
+  return controls.toSorted((a, b) => {
+    const ra = PRESENTATION_ORDER.indexOf(a.name)
+    const rb = PRESENTATION_ORDER.indexOf(b.name)
+    if (ra !== -1 && rb !== -1) return ra - rb
+    if (ra !== -1) return -1
+    if (rb !== -1) return 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+/** The value every control starts at, keyed by input name. */
+export function defaults(model: PanelModel): Record<string, ControlValue> {
+  const values: Record<string, ControlValue> = {}
+  for (const entry of [...model.basic, ...model.advanced]) {
+    values[entry.name] = entry.default
+  }
+  return values
+}
+
+/**
+ * Why this seed cannot be used, or `null` when it can.
+ *
+ * Rejecting rather than clamping is the point. A clamped seed still generates,
+ * still writes a sidecar, and the sidecar is wrong -- which is the failure
+ * `InputValue::Seed` was introduced to prevent, reappearing one layer above it.
+ */
+export function seedError(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return 'Enter a seed.'
+  if (!/^\d+$/.test(trimmed)) return 'A seed is a whole number, digits only.'
+  if (Number(trimmed) > MAX_SAFE_SEED) {
+    return `This app accepts seeds up to ${MAX_SAFE_SEED}. Larger seeds cannot be stored exactly here and would be recorded wrongly.`
+  }
+  return null
+}
+
+/** One tagged value, mirroring Rust `create_core::generation::InputValue`. */
+export type InputValue =
+  | { type: 'text'; value: string }
+  | { type: 'int'; value: number }
+  | { type: 'float'; value: number }
+  | { type: 'seed'; value: number }
+  | { type: 'enum'; value: string }
+  | { type: 'bool'; value: boolean }
+
+/**
+ * Build the `inputs` map of a `GenerationSpec` from the panel's values.
+ *
+ * The tag comes from the **control's declared kind**, never from what the value
+ * looks like at runtime. `InputValue` is adjacently tagged for exactly this
+ * reason: untagged, a JSON `3` deserialises as `Int`, `Float` or `Seed`, and a
+ * seed demoted to an `Int` makes a track unreproducible (generation.rs). Typing
+ * off `typeof value` here would hand Rust the guess its own encoding refuses to
+ * make.
+ *
+ * A control with no value is skipped rather than sent as a default: Rust's
+ * `resolve_slots` rejects an input the profile does not declare, and sending a
+ * value nobody chose is how a form quietly overrides the workflow.
+ */
+export function specInputs(
+  model: PanelModel,
+  values: Record<string, ControlValue>,
+): Record<string, InputValue> {
+  const inputs: Record<string, InputValue> = {}
+
+  for (const entry of [...model.basic, ...model.advanced]) {
+    const value = values[entry.name]
+    if (value === undefined || value === '') continue
+
+    switch (entry.kind) {
+      case 'text':
+      case 'lyrics':
+        inputs[entry.name] = { type: 'text', value: String(value) }
+        break
+      case 'enum':
+        inputs[entry.name] = { type: 'enum', value: String(value) }
+        break
+      case 'int':
+        inputs[entry.name] = { type: 'int', value: Number(value) }
+        break
+      case 'float':
+        inputs[entry.name] = { type: 'float', value: Number(value) }
+        break
+      case 'seed':
+        inputs[entry.name] = { type: 'seed', value: Number(value) }
+        break
+    }
+  }
+  return inputs
+}
