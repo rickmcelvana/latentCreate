@@ -558,6 +558,37 @@ mod tests {
         assert!(!flat.contains_key("planner"));
     }
 
+    /// Protects: the exact set of names a spec may use, pinned in a file the
+    /// frontend reads too.
+    ///
+    /// This is the seam that broke every ACE-Step generation for four tasks.
+    /// `panelModel` in the webview flattened `planner.cfg_scale` down to
+    /// `cfg_scale` while this function keeps the dot, so `resolve_slots`
+    /// answered "has no input named cfg_scale" -- and **both sides' tests
+    /// passed the whole time**, because each only ever looked at its own half.
+    /// Neither language can call the other, so the contract is a committed
+    /// list and both ends assert against it.
+    #[test]
+    fn test_flat_input_names_match_the_committed_contract() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../testdata/profiles/ace-step-flat-inputs.json"
+        ))
+        .expect("the contract decodes");
+        let expected: Vec<&str> = fixture["names"]
+            .as_array()
+            .expect("names")
+            .iter()
+            .map(|v| v.as_str().expect("a string name"))
+            .collect();
+
+        let actual: Vec<String> = ace_step().flat_inputs().into_keys().collect();
+
+        assert_eq!(
+            actual, expected,
+            "regenerate the contract, or fix the split"
+        );
+    }
+
     #[test]
     fn test_slot_overrides_seed_the_map() {
         let profile = minimax();

@@ -1,0 +1,25 @@
+{
+  "_why": "The names a GenerationSpec may use for ace-step-1.5-turbo, flattened the way ModelProfile::flat_inputs does it -- group members dotted. Pinned from BOTH sides: a Rust test asserts flat_inputs() produces exactly this, and a frontend test asserts panelModel() produces exactly this minus the unsupported entries. Neither side could see the other before, and they disagreed for four tasks: the panel flattened `planner.cfg_scale` to `cfg_scale`, so every ACE-Step generation was rejected with \"has no input named cfg_scale\" while both sides' own tests passed.",
+  "_source": "profiles/ace-step-1.5-turbo.json",
+  "names": [
+    "bpm",
+    "duration_s",
+    "keyscale",
+    "language",
+    "lyrics",
+    "negative",
+    "planner.cfg_scale",
+    "planner.min_p",
+    "planner.temperature",
+    "planner.top_k",
+    "planner.top_p",
+    "seed",
+    "shift",
+    "steps",
+    "tags",
+    "timesignature"
+  ],
+  "unsupported": [
+    "negative"
+  ]
+}

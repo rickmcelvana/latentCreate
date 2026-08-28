@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import flatInputs from '../../../testdata/profiles/ace-step-flat-inputs.json'
 import aceProfile from '../../../profiles/ace-step-1.5-turbo.json'
 import type { ProfileInputs } from '../bridge/profiles'
 import {
@@ -91,11 +92,11 @@ describe('panelModel', () => {
     const planner = model.advanced.filter((c) => c.group !== null)
 
     expect(planner.map((c) => c.name).toSorted()).toEqual([
-      'cfg_scale',
-      'min_p',
-      'temperature',
-      'top_k',
-      'top_p',
+      'planner.cfg_scale',
+      'planner.min_p',
+      'planner.temperature',
+      'planner.top_k',
+      'planner.top_p',
     ])
     expect(planner.every((c) => c.advanced)).toBe(true)
     expect(model.basic.filter((c) => c.group !== null)).toEqual([])
@@ -444,5 +445,46 @@ describe('specInputs', () => {
     const inputs = specInputs(model, { ...defaults(model), negative: 'muddy, clipping' })
 
     expect(inputs.negative).toBeUndefined()
+  })
+})
+
+describe('the names a spec uses', () => {
+  /**
+   * Protects: the panel and Rust agree on what an input is called.
+   *
+   * This is the seam that was broken for four tasks. `panelModel` flattened
+   * `planner.cfg_scale` to `cfg_scale`; `ModelProfile::flat_inputs` keeps the
+   * dot, because two groups could each declare a `seed` and bare names would
+   * collide. Every ACE-Step generation was rejected with "has no input named
+   * cfg_scale" -- and both sides' tests passed the whole time, because each
+   * only ever looked at its own half.
+   *
+   * The fixture is the contract. A Rust test in `generation.rs` asserts
+   * `flat_inputs()` produces exactly this list, so the two cannot drift apart
+   * again without one of them failing.
+   */
+  it('test_control_names_match_the_names_rust_resolves', () => {
+    const model = panelModel(aceInputs)
+    const rendered = [...model.basic, ...model.advanced].map((c) => c.name).toSorted()
+    const omitted = model.omitted.map((o) => o.name).toSorted()
+
+    expect([...rendered, ...omitted].toSorted()).toEqual(flatInputs.names.toSorted())
+    expect(omitted).toEqual(flatInputs.unsupported)
+    expect(rendered).toContain('planner.cfg_scale')
+  })
+
+  /**
+   * Protects: a group member keeps its own label while carrying a dotted name.
+   *
+   * The planner members declare no `label`, so the label falls back to the key
+   * -- and qualifying that key too would put "planner.cfg_scale" on screen as
+   * the field's caption.
+   */
+  it('test_a_dotted_name_does_not_leak_into_the_label', () => {
+    const model = panelModel(aceInputs)
+    const cfg = model.advanced.find((c) => c.name === 'planner.cfg_scale')
+
+    expect(cfg?.label).toBe('cfg_scale')
+    expect(cfg?.group).toBe('Planner sampling')
   })
 })

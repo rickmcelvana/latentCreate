@@ -73,7 +73,20 @@ export type ControlValue = string | number
 
 /** What every control carries, whatever its kind. */
 interface ControlBase {
-  /** Semantic input name -- the key this becomes in `GenerationSpec.inputs`. */
+  /**
+   * The key this becomes in `GenerationSpec.inputs`.
+   *
+   * **Group members are dotted** -- `planner.cfg_scale`, not `cfg_scale` --
+   * because that is what `ModelProfile::flat_inputs` calls them, and a spec
+   * built with the bare name is rejected by `resolve_slots` with
+   * "<profile> has no input named cfg_scale". Two groups could also each
+   * declare a `seed`, and bare names would silently collide.
+   *
+   * This was wrong for four tasks and no test could see it: the frontend
+   * flattened one way, Rust the other, and each side's tests only ever looked
+   * at its own. `testdata/profiles/ace-step-flat-inputs.json` now pins the list
+   * from both directions.
+   */
   name: string
   /** What the user reads: the profile's label when it has one, else the name. */
   label: string
@@ -170,7 +183,7 @@ export interface PanelModel {
 export function panelModel(inputs: ProfileInputs): PanelModel {
   const controls: Control[] = []
   const omitted: Omitted[] = []
-  collect(inputs, null, false, controls, omitted)
+  collect(inputs, null, null, false, controls, omitted)
 
   return {
     basic: ordered(controls.filter((c) => !c.advanced)),
@@ -182,34 +195,44 @@ export function panelModel(inputs: ProfileInputs): PanelModel {
 function collect(
   inputs: ProfileInputs,
   group: string | null,
+  /** The group key path a member sits under, or `null` at top level. */
+  prefix: string | null,
   inheritedAdvanced: boolean,
   controls: Control[],
   omitted: Omitted[],
 ): void {
   for (const [name, spec] of Object.entries(inputs)) {
     const advanced = inheritedAdvanced || advancedOf(spec)
+    const qualified = prefix === null ? name : `${prefix}.${name}`
 
     if (spec.type === 'unsupported') {
-      omitted.push({ name, reason: spec.reason ?? null })
+      omitted.push({ name: qualified, reason: spec.reason ?? null })
       continue
     }
     if (spec.type === 'group') {
-      collect(spec.members, spec.label ?? name, advanced, controls, omitted)
+      // The **key** carries the qualifier; the **label** is what the fieldset
+      // shows. They are different strings -- ACE-Step's `planner` group is
+      // labelled "Planner sampling" -- and using the label to qualify would
+      // produce names Rust has never heard of.
+      collect(spec.members, spec.label ?? name, qualified, advanced, controls, omitted)
       continue
     }
-    controls.push(control(name, spec, group, advanced))
+    controls.push(control(qualified, name, spec, group, advanced))
   }
 }
 
 function control(
+  /** The name a `GenerationSpec` uses: dotted for a group member. */
   name: string,
+  /** The member's own key, which is what a label falls back to. */
+  bare: string,
   spec: Exclude<InputSpec, { type: 'unsupported' } | { type: 'group' }>,
   group: string | null,
   advanced: boolean,
 ): Control {
   const base: ControlBase = {
     name,
-    label: 'label' in spec ? (spec.label ?? name) : name,
+    label: 'label' in spec ? (spec.label ?? bare) : bare,
     group,
     advanced,
     default: '',
