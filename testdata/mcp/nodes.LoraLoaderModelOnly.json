@@ -1,0 +1,127 @@
+{
+  "id": "LoraLoaderModelOnly",
+  "name": "LoraLoaderModelOnly",
+  "display_name": "Load LoRA",
+  "description": "This LoRAs loader is used to modify the diffusion model, altering the way in which latents are denoised such as applying styles. Multiple LoRA nodes can be linked together.",
+  "category": "model/loaders",
+  "output_types": [
+    "MODEL"
+  ],
+  "output_node": false,
+  "is_api_node": false,
+  "deprecated": false,
+  "pack": "core",
+  "labels": [],
+  "cloud_disabled": false,
+  "inputs": [
+    {
+      "name": "model",
+      "type": "MODEL",
+      "required": true,
+      "is_link": true,
+      "section": "required",
+      "choices": [],
+      "options": {
+        "min": null,
+        "max": null,
+        "step": null,
+        "default": null
+      }
+    },
+    {
+      "name": "lora_name",
+      "type": "COMBO",
+      "required": true,
+      "is_link": false,
+      "section": "required",
+      "choices": [
+        "ACE-Step-v1.5-acoustic-guitar-and-a-merge-LoRA\\adapter_model.safetensors",
+        "ACE-Step-v1.5-acoustic-guitar-and-a-merge-LoRA\\vocal_instrument_merge_adapter_model.safetensors",
+        "ACE-Step-v1.5-ambient_dream1-LoRA\\adapter_model.safetensors",
+        "ACE-Step-v1.5-chinese-new-year-LoRA\\adapter_model.safetensors",
+        "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\adapter_model.safetensors",
+        "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\instrumental_adapter_model.safetensors",
+        "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\male_vocals_adapter_model.safetensors",
+        "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\voc_06_inst_14___adapter_model.safetensors",
+        "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\voc_14_inst_06___adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-105\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-105\\training_state.pt",
+        "loragoth\\checkpoint-epoch-120\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-120\\training_state.pt",
+        "loragoth\\checkpoint-epoch-135\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-135\\training_state.pt",
+        "loragoth\\checkpoint-epoch-150\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-150\\training_state.pt",
+        "loragoth\\checkpoint-epoch-15\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-15\\training_state.pt",
+        "loragoth\\checkpoint-epoch-165\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-165\\training_state.pt",
+        "loragoth\\checkpoint-epoch-180\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-180\\training_state.pt",
+        "loragoth\\checkpoint-epoch-195\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-195\\training_state.pt",
+        "loragoth\\checkpoint-epoch-210\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-210\\training_state.pt",
+        "loragoth\\checkpoint-epoch-225\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-225\\training_state.pt",
+        "loragoth\\checkpoint-epoch-240\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-240\\training_state.pt",
+        "loragoth\\checkpoint-epoch-255\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-255\\training_state.pt",
+        "loragoth\\checkpoint-epoch-270\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-270\\training_state.pt",
+        "loragoth\\checkpoint-epoch-285\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-285\\training_state.pt",
+        "loragoth\\checkpoint-epoch-300\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-300\\training_state.pt",
+        "loragoth\\checkpoint-epoch-30\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-30\\training_state.pt",
+        "loragoth\\checkpoint-epoch-45\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-45\\training_state.pt",
+        "loragoth\\checkpoint-epoch-60\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-60\\training_state.pt",
+        "loragoth\\checkpoint-epoch-75\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-75\\training_state.pt",
+        "loragoth\\checkpoint-epoch-90\\adapter\\adapter_model.safetensors",
+        "loragoth\\checkpoint-epoch-90\\training_state.pt",
+        "loragoth\\final\\adapter\\adapter_model.safetensors",
+        "loragoth\\final\\training_state.pt",
+        "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+        "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+      ],
+      "options": {
+        "min": null,
+        "max": null,
+        "step": null,
+        "default": null
+      }
+    },
+    {
+      "name": "strength_model",
+      "type": "FLOAT",
+      "required": true,
+      "is_link": false,
+      "section": "required",
+      "choices": [],
+      "options": {
+        "min": -100.0,
+        "max": 100.0,
+        "step": 0.01,
+        "default": 1.0
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "MODEL",
+      "type": "MODEL"
+    }
+  ],
+  "stale": true,
+  "warnings": [
+    {
+      "code": "object_info_stale",
+      "message": "served from cache (http://127.0.0.1:8188): cannot reach http://127.0.0.1:8188/object_info: [WinError 10061] No connection could be made because the target machine actively refused it"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "_synthetic": true,
+  "_why": "CONSTRUCTED, NOT OBSERVED. Every other fixture in this directory is a verbatim capture; this one is not, and must never be read as evidence of what an install returned. MCP-SURFACE 4 (2026-08-23) describes a case-variant pair of LoRA directories -- 'LoRAgoth\\' and 'loragoth\\' both listed on a case-insensitive filesystem -- but that 95-entry list was described in prose and never captured. It was already gone by 12.2 (2026-08-24) and is still absent on 2026-08-27 (16.5). The dedupe rule stays, because the filesystem that produces it is unchanged, but its only test has to stand on this file. The entries below are the shape 4 describes, spelled by hand.",
+  "_shape": "Three real files as a case-insensitive filesystem would enumerate them twice: one adapter under two directory spellings, one adapter present under a single spelling, one non-adapter. Six entries collapse to two selectable adapters in one group.",
+  "choices": [
+    "LoRAgoth\\checkpoint-epoch-300\\adapter\\adapter_model.safetensors",
+    "LoRAgoth\\final\\adapter\\adapter_model.safetensors",
+    "LoRAgoth\\final\\training_state.pt",
+    "loragoth\\checkpoint-epoch-300\\adapter\\adapter_model.safetensors",
+    "loragoth\\final\\adapter\\adapter_model.safetensors",
+    "loragoth\\final\\training_state.pt"
+  ]
+}

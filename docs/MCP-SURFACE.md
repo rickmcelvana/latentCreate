@@ -1066,6 +1066,21 @@ FLOAT, -100..100, step 0.01, default 1.0.
 honest statement is "seen once on 2026-08-23, described but never captured, not present
 since".
 
+**CAPTURED 2026-08-28 for T-307.** The 53-entry list now exists as data:
+[testdata/mcp/nodes.LoraLoaderModelOnly.json](../testdata/mcp/nodes.LoraLoaderModelOnly.json),
+the verbatim `nodes(action="get", name="LoraLoaderModelOnly")` response. Read with
+**ComfyUI not running**, so comfy-cli served `object_info` from its own cache and the response
+carries `stale: true` with an `object_info_stale` warning -- both left in the fixture rather
+than tidied out, because the provenance of a fixture is part of the fixture. The 53 choices,
+the `strength_model` range and the schema are identical to what 16.5 and 17.7 recorded live
+on 2026-08-27, so the cache is a faithful copy of that read, not a separate observation.
+
+This closes the T-307 fixture gap for every picker rule **except dedupe**, which still has no
+capture and now stands on
+[testdata/mcp/lora_choices.case-variant.synthetic.json](../testdata/mcp/lora_choices.case-variant.synthetic.json)
+-- constructed by hand, with `"_synthetic": true` and a `_why` field saying so in the file
+itself. Nothing in `testdata/` should ever be read as evidence without checking that flag.
+
 ### 16.6 Tool-surface drift since 1
 
 The names in 1 are all still present and still correct. Four tools exist that 1 does not
