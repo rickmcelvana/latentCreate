@@ -58,7 +58,7 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
     set({ busy: true, error: null })
     try {
       const submission = await generateAudio(specFor(profileId, model, values, stack, doc))
-      useJobsStore.getState().register(submission.prompt_id)
+      useJobsStore.getState().register(submission.prompt_id, profileId)
       set({ last: submission, lastProfileId: profileId })
     } catch (e) {
       // Verbatim. The param panel once shipped a note with comfy-cli's raw

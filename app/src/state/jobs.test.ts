@@ -65,7 +65,14 @@ describe('jobs store', () => {
 
   it('test_apply_event_folds_progress_done_failed', () => {
     const initial: Record<string, Job> = {
-      'prompt-1': { id: 'prompt-1', status: 'queued', outputs: [], error: null },
+      'prompt-1': {
+        id: 'prompt-1',
+        status: 'queued',
+        outputs: [],
+        error: null,
+        profileId: 'ace-step-1.5-turbo',
+        submittedAt: 0,
+      },
     }
 
     const running = applyJobEvent(initial, {
@@ -109,7 +116,16 @@ describe('jobs store', () => {
    * two generations at once (MCP-SURFACE 21).
    */
   it('test_a_cancelled_event_settles_the_row', () => {
-    const jobs = { 'p-1': { id: 'p-1', status: 'running', outputs: [], error: null } }
+    const jobs = {
+      'p-1': {
+        id: 'p-1',
+        status: 'running',
+        outputs: [],
+        error: null,
+        profileId: 'ace-step-1.5-turbo',
+        submittedAt: 0,
+      },
+    }
 
     const after = applyJobEvent(jobs, { kind: 'cancelled', payload: { id: 'p-1' } })
 

@@ -162,14 +162,33 @@ describe('useGenerateStore.submit', () => {
 
   /** Protects: registering the same id twice does not reset a running job. */
   it('test_registering_twice_keeps_the_existing_job', () => {
-    useJobsStore.getState().register('prompt-abc')
+    useJobsStore.getState().register('prompt-abc', 'ace-step-1.5-turbo')
     useJobsStore.setState((s) => ({
       jobs: { ...s.jobs, 'prompt-abc': { ...s.jobs['prompt-abc'], status: 'running' } },
     }))
 
-    useJobsStore.getState().register('prompt-abc')
+    useJobsStore.getState().register('prompt-abc', 'minimax-music-3')
 
     expect(useJobsStore.getState().jobs['prompt-abc'].status).toBe('running')
+    expect(useJobsStore.getState().jobs['prompt-abc'].profileId).toBe('ace-step-1.5-turbo')
+  })
+
+  /**
+   * Protects: the job the queue registers knows which model produced it.
+   *
+   * The value has to survive the hop from the param panel through `submit` to
+   * the store -- a test that only asserts the id is in the map passes while
+   * `profileId` arrives `undefined`, and the row then renders blank with
+   * nothing failing anywhere. Same shape as the `register` call itself, which
+   * three tested seams once met without.
+   */
+  it('test_a_submitted_job_carries_the_profile_it_was_generated_for', async () => {
+    await useGenerateStore.getState().submit()
+
+    const job = useJobsStore.getState().jobs['prompt-abc']
+    expect(job).toBeDefined()
+    expect(job.profileId).toBe('ace-step-1.5-turbo')
+    expect(job.submittedAt).toBeGreaterThan(0)
   })
 })
 

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use mcp_bridge::{ComfyError, JobCancel, JobStatus, LocalComfy, SessionLog};
 use serde::Serialize;
+use serde_json::Value;
 use tauri::{async_runtime, AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 
@@ -277,15 +278,57 @@ fn terminal_outcome(result: &Result<JobStatus, ComfyError>) -> TerminalOutcome {
     }
 }
 
-/// The error text for a failed job: the payload's message when it is a string,
-/// else the status string.
+/// The sentence a failed job's row shows.
+///
+/// **This read `error.as_str()` and nothing else until 2026-08-28**, which is
+/// correct for exactly none of the shapes comfy-cli actually sends. A real
+/// failure's payload is an *object*, so `as_str()` returned `None` and the
+/// fallback rendered the whole error as the bare word `"error"`. Every test
+/// passed, because every test was written with `error: json!("node blew up")`
+/// -- a string nobody has ever observed.
+///
+/// The three shapes, captured verbatim in `testdata/mcp/job_outcomes.json`
+/// (MCP-SURFACE 24.3):
+///
+/// - ComfyUI's raw history record: `exception_message` plus `node_type`, and
+///   **no `code` key**. This is what an ordinary node failure looks like.
+/// - comfy-cli's normalized record: `{code, message, details}`, and no
+///   `exception_message`. A cancel arrives this way -- though a cancel never
+///   reaches here, because [`TerminalOutcome::Cancelled`] catches it first.
+/// - a bare string, which the old tests assumed and which is kept because
+///   handling it costs one line and dropping it would be a guess in the other
+///   direction.
+///
+/// The node name leads because it is the actionable half: "VAEDecodeAudio
+/// failed" tells someone where to look, where a bare `RuntimeError` does not.
+/// `traceback` is deliberately never read -- twelve frames of absolute paths
+/// into the user's install (24.2).
 fn failure_reason(status: &JobStatus) -> String {
-    status
-        .error
-        .as_ref()
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| status.status.clone())
+    let Some(error) = status.error.as_ref() else {
+        return status.status.clone();
+    };
+    if let Some(text) = error.as_str() {
+        return text.to_string();
+    }
+
+    let field = |name: &str| {
+        error
+            .get(name)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+
+    // `exception_message` first: on the one payload that carries both, it is
+    // the specific one. `message` is the normalized record's equivalent.
+    let Some(detail) = field("exception_message").or_else(|| field("message")) else {
+        return status.status.clone();
+    };
+    match field("node_type") {
+        Some(node) => format!("{node} failed: {detail}"),
+        None => detail,
+    }
 }
 
 #[cfg(test)]
@@ -396,6 +439,81 @@ mod tests {
                 error: "node blew up".to_string()
             }
         );
+    }
+
+    /// Every job outcome this project has observed, captured verbatim.
+    const OUTCOMES: &str = include_str!("../../testdata/mcp/job_outcomes.json");
+
+    /// The `error` object ComfyUI really sent for the deliberate failure of
+    /// MCP-SURFACE 24, read out of the committed capture rather than retyped.
+    fn captured_execution_error() -> Value {
+        let outcomes: Value = serde_json::from_str(OUTCOMES).expect("the capture decodes");
+        outcomes["execution_error"]["action_status_error_object"].clone()
+    }
+
+    /// Protects: the payload the server actually sends produces a sentence a
+    /// person can act on.
+    ///
+    /// **This is the test that was missing.** `failure_reason` read
+    /// `error.as_str()`, which is `None` for every real failure, so the whole
+    /// message rendered as the bare word `"error"` -- and the suite was green
+    /// throughout, because its only fixture was a hand-written string.
+    #[test]
+    fn test_a_real_execution_error_names_the_node_and_the_exception() {
+        let failed = JobStatus {
+            prompt_id: Some("p-1".to_string()),
+            status: "error".to_string(),
+            workflow_size: None,
+            outputs: vec![],
+            outputs_by_node: Default::default(),
+            error: Some(captured_execution_error()),
+        };
+
+        let reason = failure_reason(&failed);
+        assert_eq!(
+            reason,
+            "VAEDecodeAudio failed: shape '[2, 64, 250]' is invalid for input of size 16000"
+        );
+        // The bug in one assertion: the fallback must not be what comes out.
+        assert_ne!(reason, "error");
+        assert!(
+            !reason.contains("Comfy-Installs"),
+            "no traceback, and no absolute paths into the user's install: {reason}"
+        );
+    }
+
+    /// Protects: comfy-cli's *other* error shape still yields its message.
+    ///
+    /// It has no `exception_message` and no `node_type`, so a reader that only
+    /// knows the ComfyUI shape falls through to the status string here.
+    #[test]
+    fn test_the_normalized_error_shape_yields_its_message() {
+        let failed = JobStatus {
+            prompt_id: Some("p-1".to_string()),
+            status: "error".to_string(),
+            workflow_size: None,
+            outputs: vec![],
+            outputs_by_node: Default::default(),
+            error: Some(json!({
+                "code": "execution_error", "message": "the node blew up", "details": {}
+            })),
+        };
+        assert_eq!(failure_reason(&failed), "the node blew up");
+    }
+
+    /// Protects: an error payload carrying nothing sayable falls back to the
+    /// status rather than rendering an empty row.
+    #[test]
+    fn test_an_unreadable_error_payload_falls_back_to_the_status() {
+        let failed = JobStatus {
+            prompt_id: Some("p-1".to_string()),
+            status: "error".to_string(),
+            workflow_size: None,
+            outputs: vec![],
+            outputs_by_node: Default::default(),
+            error: Some(json!({ "details": {}, "exception_message": "   " })),
+        };
+        assert_eq!(failure_reason(&failed), "error");
     }
     use super::*;
     use serde_json::json;

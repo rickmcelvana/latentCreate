@@ -8,12 +8,47 @@ import {
   type JobEvent,
 } from '../bridge/jobs'
 
-/** A generation job tracked by the queue. */
+/**
+ * What a row shows when nothing told it which model ran.
+ *
+ * `run(workflowPath)` submits a bare workflow with no profile behind it -- it
+ * predates the Generate button and is not on the generation path.
+ */
+export const UNKNOWN_PROFILE = ''
+
+/**
+ * A generation job tracked by the queue.
+ *
+ * `status` is a bare `string` on purpose: it carries whatever ComfyUI said, and
+ * this project has already been caught once assuming that vocabulary was known
+ * (`cancelled` was missing from the terminal set until a producer found it).
+ * `state/queue.ts` maps it to a label and treats anything unrecognised as still
+ * running rather than rendering a blank row.
+ *
+ * Observed values: `queued`, `running`, `completed`, `cancelled`, `error`.
+ * `failed` is inferred and has never been seen (MCP-SURFACE 24).
+ */
 export interface Job {
   id: string
-  status: string // 'queued' | 'running' | 'completed' | 'failed'
+  status: string
   outputs: string[]
   error: string | null
+  /** The profile this was generated for, so a row can say which model it is. */
+  profileId: string
+  /**
+   * `Date.now()` when this store first heard of the job.
+   *
+   * Local rather than server-sourced: `submitted_at` exists only on the record
+   * comfy-cli keeps a state file for and is absent from the other store
+   * (MCP-SURFACE 23.3), so a server timestamp would be present for some rows
+   * and missing for others with nothing on screen explaining why.
+   */
+  submittedAt: number
+}
+
+/** A job as it starts life, before the pump has said anything about it. */
+function newJob(id: string, profileId: string, now: number): Job {
+  return { id, status: 'queued', outputs: [], error: null, profileId, submittedAt: now }
 }
 
 /**
@@ -55,7 +90,7 @@ interface JobsState {
   listening: boolean
   connect: (bin?: string) => Promise<void>
   run: (workflowPath: string) => Promise<string>
-  register: (id: string) => void
+  register: (id: string, profileId: string) => void
   cancel: (id: string) => Promise<void>
   startListening: () => Promise<void>
 }
@@ -73,7 +108,7 @@ export const useJobsStore = create<JobsState>((set, get) => ({
   run: async (workflowPath) => {
     const id = await runWorkflow(workflowPath)
     set((state) => ({
-      jobs: { ...state.jobs, [id]: { id, status: 'queued', outputs: [], error: null } },
+      jobs: { ...state.jobs, [id]: newJob(id, UNKNOWN_PROFILE, Date.now()) },
     }))
     return id
   },
@@ -91,10 +126,10 @@ export const useJobsStore = create<JobsState>((set, get) => ({
    * Registering an id twice keeps the entry that is already there, so a
    * re-register cannot reset a job that has started reporting.
    */
-  register: (id) => {
+  register: (id, profileId) => {
     if (get().jobs[id] !== undefined) return
     set((state) => ({
-      jobs: { ...state.jobs, [id]: { id, status: 'queued', outputs: [], error: null } },
+      jobs: { ...state.jobs, [id]: newJob(id, profileId, Date.now()) },
     }))
   },
 

@@ -511,7 +511,7 @@ unaffected, and both wrote files. The refusal path was the thing to watch -- a M
 with "writes ... to inputs a node drives" would have meant the profile edit had not landed with the
 audit edit -- and it did not fire.
 
-### T-310 — the queue panel  — **BRIEFED 2026-08-28** ([brief](t-310-brief.md)), split a/b
+### T-310 — the queue panel  — **T-310a LANDED 2026-08-28** ([brief](t-310-brief.md)), T-310b next
 Pending / running / elapsed / failed with error text, cancel, multiple jobs.
 
 ⚠ **This entry told the implementer to do the wrong thing, and a live read caught it**
@@ -552,6 +552,28 @@ response says so (§24.5).
 The panel today is **32 lines** written incidentally across T-309d and the cancel fix: a raw status
 string, error text, and a Cancel button. A row cannot say *which* job it is, which is why during the
 cancel investigation a frozen row and a live row were indistinguishable on screen.
+
+**T-310a LANDED 2026-08-28.** `state/queue.ts` (ordering, labels, elapsed, the Cancel condition,
+the error rule), `Job` gaining `profileId` and a locally-stamped `submittedAt`, and
+`register(id, profileId)`. Frontend 245 -> **263**, src-tauri 70 -> **73**. Ten mutations, ten
+killed.
+
+⚠ **The brief said "no Rust change". It was wrong, and the §24 measurement is what showed it.**
+`failure_reason` read `status.error.as_str()` and nothing else -- correct for none of the shapes
+comfy-cli sends. A real failure's payload is an *object*, so `as_str()` returned `None` and the
+fallback rendered the entire error as the bare word **`"error"`**. Every test passed throughout,
+because the only fixture was a hand-written `error: json!("node blew up")` -- a string nobody has
+ever observed. Now handles all three shapes and is asserted against the committed capture. This is
+the fourth time this phase that a suite was green because its fixture was written to agree with the
+code; the difference here is that the real payload existed on disk by the time the test was written.
+
+Also removed while writing it: a test asserting `queueRows` does not reorder its input, which
+**cannot fail** -- `Object.values` already returns a fresh array. Caught by oxlint suggesting
+`toSorted`, which made the redundancy visible.
+
+**Deliberately consumer-less until T-310b.** `state/queue.ts` has no caller yet: `<JobQueue>` still
+renders the raw status. That is the same "tested seams meeting nowhere" shape T-309d was written to
+fix, and it is acceptable only because T-310b is the next task rather than a someday one.
 
 ### T-311 — output ingestion, library write, provenance sidecar
 `fetch_outputs` on completion, the audio copied into `library/projects/<slug>/tracks/`, and
