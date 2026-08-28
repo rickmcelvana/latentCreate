@@ -478,7 +478,7 @@ text being submitted is byte-identical to the approved version's, because a ref 
 v3's words is exactly the provenance error T-311's "reproduces from the sidecar alone" bar
 cannot survive. That closes, cheaply, the gap PROJECT.md deferred to T-311 on 2026-08-27.
 
-### T-309e — the audit could not read a subgraph  — **LANDED 2026-08-28** ([brief](t-309e-brief.md))
+### T-309e — the audit could not read a subgraph  — **LANDED 2026-08-28**, click-through passed ([brief](t-309e-brief.md))
 **This entry's own earlier scope was wrong, and correcting it is the task.** It said the three
 inert addresses "are three of the seven 'could not be checked' warnings a MiniMax user sees".
 They are three of **eight**, and the other five are equally unchecked -- because `audit_slots`
@@ -505,6 +505,11 @@ And `test_subgraph_address_is_unchecked` had to be *inverted* rather than update
 rule gets deleted by accident: it was replaced by a test asserting the live table, not the
 implementation. The seam test lives in `src-tauri`, because a clean `audit_slots` is one layer and
 `Submission.unchecked_slots` is what the user reads.
+
+**Click-through passed 2026-08-28.** MiniMax generates with no warning line at all, ACE-Step is
+unaffected, and both wrote files. The refusal path was the thing to watch -- a MiniMax run failing
+with "writes ... to inputs a node drives" would have meant the profile edit had not landed with the
+audit edit -- and it did not fire.
 
 ### T-310 — the queue panel
 Pending / running / progress / failed with error text, cancel, multiple jobs. **Read

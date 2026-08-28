@@ -71,7 +71,7 @@ export async function cancelJob(id: string): Promise<JobCancel> {
 }
 
 /**
- * Subscribe to all three job events, dispatching each as a tagged [`JobEvent`].
+ * Subscribe to all four job events, dispatching each as a tagged [`JobEvent`].
  * Returns the unsubscribe function.
  */
 export async function subscribeJobs(onEvent: (event: JobEvent) => void): Promise<UnlistenFn> {
