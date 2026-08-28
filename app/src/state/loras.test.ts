@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import fixture from '../../../testdata/mcp/lora_catalog.ace-step.json'
 import type { CatalogState, Excluded, LoraGroup, LoraPanel } from '../bridge/loras'
 import {
+  ADD_PLACEHOLDER,
   CANNOT_READ,
+  EMPTY_STACK,
   FROM_CACHE,
   LOOSE_GROUP,
   add,
@@ -10,6 +12,7 @@ import {
   catalogNote,
   excludedNote,
   entryFor,
+  fullNote,
   missingFrom,
   move,
   pickerGroups,
@@ -183,6 +186,24 @@ describe('the notes', () => {
 
     expect(note).toBe(CANNOT_READ)
     expect(note).toContain('Retry')
+  })
+
+  /**
+   * Protects: the "full" wording follows the profile's cap.
+   *
+   * ACE-Step's four slots make `All 4 slots are full` and a hardcoded `4`
+   * indistinguishable, which is the same vacuity the strength default had -- so
+   * a one-slot profile is here to make it a rule.
+   */
+  it('test_the_full_note_counts_the_profiles_slots', () => {
+    expect(fullNote(panel())).toBe('All 4 slots are full')
+    expect(fullNote(panel({ max_stack: 1 }))).toBe('All 1 slot is full')
+  })
+
+  /** Protects: an empty stack does not read as something gone wrong. */
+  it('test_the_empty_stack_reads_as_normal', () => {
+    expect(EMPTY_STACK).not.toMatch(/error|missing|fail|must|should/i)
+    expect(ADD_PLACEHOLDER).toContain('Add')
   })
 
   /**

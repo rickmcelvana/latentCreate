@@ -66,6 +66,22 @@ export const LOOSE_GROUP = 'Loose files'
 export const FROM_CACHE =
   "This list came from ComfyUI's cache. A LoRA added since ComfyUI last ran will not be here. Start ComfyUI, then Retry."
 
+/** The picker's resting option, when there is room for another LoRA. */
+export const ADD_PLACEHOLDER = 'Add a LoRA…'
+
+/**
+ * Shown when the stack is empty.
+ *
+ * Deliberately not phrased as a problem. Most generations use no LoRA at all,
+ * and an empty stack is the normal case rather than something left undone.
+ */
+export const EMPTY_STACK = 'No LoRAs. The model runs as trained.'
+
+/** The picker's resting option once the profile's slots are all spoken for. */
+export function fullNote(panel: LoraPanel): string {
+  return `All ${panel.max_stack} ${panel.max_stack === 1 ? 'slot is' : 'slots are'} full`
+}
+
 /** Shown when the loader node could not be read at all. */
 export const CANNOT_READ =
   'Your installed LoRAs could not be read because ComfyUI is not running. Start it, then Retry.'
