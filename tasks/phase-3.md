@@ -393,7 +393,7 @@ and the JSX half is where the tokens go:
   one level up: `lora_panel` reads `loras.strength` with the node's own `-100..=100` in scope at
   the same call site, and nothing tested the choice -- `panel_for` was extracted so it could be.
 - **T-309b** ([brief](t-309b-brief.md)), Aider: `<LoraStack>`, `theme.css`, AudioStudio wiring.
-  **LANDED 2026-08-28, click-through pending.** The run came back clean -- three files, 241
+  **LANDED 2026-08-28, click-through passed.** The run came back clean -- three files, 241
   added lines, no rule in `theme.css` changed, every class ruled, tokens only, and the test
   count held at 205 exactly as the brief required. Review found two things. The `<option>`
   composed `${label} (epoch ${n})` in JSX, which is **conditional wording** and therefore
@@ -401,11 +401,16 @@ and the JSX half is where the tokens go:
   this phase a brief specified the defect. `PickerEntry` now carries `display`, with both
   directions mutated. Three buttons also lacked `type="button"`; harmless with no `<form>` in
   the tree, and a submit the moment one appears. Frontend 205 -> 206.
-  Its click-through carries the label question T-307 deferred here — the owner looks at the
-  twelve mechanical labels and decides whether cosmetic renaming is wanted.
-- **T-309c**: favourites and user display names. Deferred again on purpose; both are persisted
-  user state keyed on the entry path, so they are a config-schema change, and neither can be
-  designed before the labels question is answered.
+  The click-through passed every row: MiniMax removes the panel entirely, ComfyUI down leaves it
+  visible with a working Retry, Remove returns an entry to the picker, bypass dims without
+  removing, `loragoth` shows only `final` until the 20 checkpoints are disclosed, no
+  `training_state.pt` anywhere, and the reorder arrows disable at the ends. **It also settled the
+  label question**: the labels stay mechanical, which largely removes T-309c's premise.
+- **T-309c**: favourites and user display names. **Recommend backlogging rather than
+  scheduling.** Display names existed to rescue labels the owner would find unusable, and the
+  click-through says he does not; favourites over twelve entries is thin on its own. Both are
+  persisted user state keyed on the entry path, so neither is free -- they are a config-schema
+  change for a problem that has not appeared.
 
 **Two live findings while briefing it** (MCP-SURFACE §19.3). The 53-entry list is unchanged and
 a live read again carries neither staleness signal. And a claim written into §19.1 the day
@@ -414,6 +419,23 @@ as `unknown_enum_value`, so a deleted LoRA under a stale picker is a rejected jo
 no-op. 17.6's silence belongs to the *non-adapter* case, which validates clean because it is a
 real member of the enum. A stale list is therefore a **short** list, and the panel's cache note
 says what is missing rather than cautioning about what is shown.
+
+### T-309d — Generate: the panel becomes a job  ← **NOT YET WRITTEN, and the phase needs it**
+
+Found while closing T-309b. **Nothing in the UI can start a generation.** `generate_audio(spec)`
+has had no caller since T-306b, `specInputs` none since T-308a, `specLoras` none since T-309a --
+three tested seams meeting nowhere. The Audio view has no Generate button.
+
+This matters for the ordering: **T-310's queue panel shows jobs nothing can create**, so its own
+click-through would have to enqueue work by hand. Assembling the spec and submitting it should
+come first.
+
+Scope: a Generate button on AudioStudio; `GenerationSpec` built from `specInputs(model, values)`
+plus `specLoras(stack)` plus the profile id and the approved `LyricRef`; the `generate_audio`
+bridge call; the button's disabled states (an invalid seed, an unknown profile, ComfyUI not
+connected). Small, and almost entirely wiring -- but it is the first code that can produce a
+wrong track rather than a wrong screen, so the spec assembly is pure and tested and the button
+is not where anything is decided.
 
 ### T-310 — the queue panel
 Pending / running / progress / failed with error text, cancel, multiple jobs. **Read

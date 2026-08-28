@@ -702,6 +702,14 @@ dedupe case variants — is a UI design task that §4 assigns to **Phase 3** (th
 not here. The rules are fuzzy enough (how to tell a real adapter from a misfiled full model by
 filename alone) that they need owner iteration alongside the picker UI.
 
+**RESOLVED 2026-08-28.** The filtering and grouping landed as `create_core::loras` (T-307) and
+reached a real panel in T-309b: 53 raw choices become **12 offers in 6 groups**, 20 checkpoints
+behind a disclosure, 21 non-adapters counted rather than silently dropped. The owner iteration
+this paragraph asked for has now happened, on the panel, and it settled the one rule that was
+deliberately left out: **the labels stay mechanical.** Stripping `ACE-Step-v1.5-` prefixes was
+written up as a one-line change and declined after looking at it -- the long names read fine in
+the menu and do not overflow. Recorded so nobody re-proposes it as an obvious improvement.
+
 ## 13. `server_info` and `launch_comfyui` -- verified 2026-08-24
 
 Captured live from **comfy-cli 1.16.0**. Fixture:
