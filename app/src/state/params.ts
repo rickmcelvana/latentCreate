@@ -71,35 +71,61 @@ export interface Range {
 /** What one control holds. Enum and text values are strings. */
 export type ControlValue = string | number
 
-/** One control the panel renders. */
-export interface Control {
+/** What every control carries, whatever its kind. */
+interface ControlBase {
   /** Semantic input name -- the key this becomes in `GenerationSpec.inputs`. */
   name: string
   /** What the user reads: the profile's label when it has one, else the name. */
   label: string
-  kind: 'text' | 'lyrics' | 'int' | 'float' | 'seed' | 'enum'
   /** Label of the group this belongs to, or `null` at top level. */
   group: string | null
   /** Behind the advanced disclosure. Inherited from an advanced group. */
   advanced: boolean
-  /** Bounds for `int`/`float`; `null` for every other kind. */
-  range: Range | null
-  /** Fixed options for `enum`; empty otherwise. */
-  choices: string[]
-  /**
-   * This enum's options come from the live node schema, not the profile.
-   *
-   * ACE-Step's key/scale, time signature and language are all declared
-   * `from_node_choices` with **no** local list -- 34 and 51 values that would
-   * rot the first time ComfyUI updates (MCP-SURFACE 11). So `choices` is empty
-   * here and stays empty until something asks the node registry. A control in
-   * this state is not the same as one the model does not support, and the
-   * panel must not render them alike.
-   */
-  fromNode: boolean
   /** The profile's declared default, or a neutral value for kinds without one. */
   default: ControlValue
 }
+
+/**
+ * One control the panel renders.
+ *
+ * A union rather than one interface with nullable fields, so that "a numeric
+ * control always has bounds" is a fact the compiler knows instead of one the
+ * caller has to take on trust. It was written the loose way first, and the
+ * component that consumed it could not compile `min={control.range.min}`
+ * without a null check for a state that cannot happen -- a dead branch that
+ * reads as if the bounds were optional. Narrowing on `kind` now gives the view
+ * exactly the fields that kind has.
+ */
+export type Control =
+  | (ControlBase & {
+      kind: 'text' | 'lyrics'
+      range: null
+      choices: string[]
+      fromNode: false
+    })
+  /** Numeric kinds always carry bounds; `seed`'s are 0..[`MAX_SAFE_SEED`]. */
+  | (ControlBase & {
+      kind: 'int' | 'float' | 'seed'
+      range: Range
+      choices: string[]
+      fromNode: false
+    })
+  | (ControlBase & {
+      kind: 'enum'
+      range: null
+      choices: string[]
+      /**
+       * This enum's options come from the live node schema, not the profile.
+       *
+       * ACE-Step's key/scale, time signature and language are all declared
+       * `from_node_choices` with **no** local list -- 34 and 51 values that
+       * would rot the first time ComfyUI updates (MCP-SURFACE 11). So
+       * `choices` is empty here and stays empty until something asks the node
+       * registry. A control in this state is not the same as one the model
+       * does not support, and the panel must not render them alike.
+       */
+      fromNode: boolean
+    })
 
 /**
  * An input the profile declares but the panel deliberately does not render.
@@ -173,23 +199,24 @@ function control(
   group: string | null,
   advanced: boolean,
 ): Control {
-  const base = {
+  const base: ControlBase = {
     name,
     label: 'label' in spec ? (spec.label ?? name) : name,
     group,
     advanced,
-    range: null,
-    choices: [] as string[],
-    fromNode: false,
+    default: '',
   }
+  const plain = { range: null, choices: [] as string[], fromNode: false } as const
+  const numeric = { choices: [] as string[], fromNode: false } as const
 
   switch (spec.type) {
     case 'text':
     case 'lyrics':
-      return { ...base, kind: spec.type, default: '' }
+      return { ...base, ...plain, kind: spec.type, default: '' }
     case 'int':
       return {
         ...base,
+        ...numeric,
         kind: 'int',
         range: { min: spec.min, max: spec.max, step: 1 },
         default: spec.default,
@@ -197,6 +224,7 @@ function control(
     case 'float':
       return {
         ...base,
+        ...numeric,
         kind: 'float',
         range: { min: spec.min, max: spec.max, step: spec.step ?? null },
         default: spec.default,
@@ -206,6 +234,7 @@ function control(
       // stated so the view can show it, and `seedError` is what enforces it.
       return {
         ...base,
+        ...numeric,
         kind: 'seed',
         range: { min: 0, max: MAX_SAFE_SEED, step: 1 },
         default: 0,
@@ -213,6 +242,7 @@ function control(
     case 'enum':
       return {
         ...base,
+        range: null,
         kind: 'enum',
         choices: spec.from_node_choices ? [] : spec.choices,
         fromNode: spec.from_node_choices,
@@ -235,6 +265,27 @@ function ordered(controls: Control[]): Control[] {
     if (rb !== -1) return 1
     return a.name.localeCompare(b.name)
   })
+}
+
+/**
+ * The distinct group labels among `controls`, in the order they appear.
+ *
+ * Lives here rather than in the panel because it decides **what is rendered
+ * and in what order**, which is derivation however few lines it takes. The
+ * component that first held it had no test that could reach it -- vitest runs
+ * in `node` with no DOM -- and the phase's own rule is that a decision derived
+ * on the way to the screen is a decision nothing in the gate can see.
+ */
+export function groupsOf(controls: Control[]): string[] {
+  const seen = new Set<string>()
+  const groups: string[] = []
+  for (const entry of controls) {
+    if (entry.group !== null && !seen.has(entry.group)) {
+      seen.add(entry.group)
+      groups.push(entry.group)
+    }
+  }
+  return groups
 }
 
 /** The value every control starts at, keyed by input name. */

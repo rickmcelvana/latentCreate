@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { JobQueue } from '../components/JobQueue'
+import { ParamPanel } from '../components/ParamPanel'
 import { useConfigStore } from '../state/config'
 import { useJobsStore } from '../state/jobs'
 import { useModelsStore } from '../state/models'
+import { useParamPanelStore } from '../state/paramPanel'
 import {
   effectiveProfileId,
   pickable,
@@ -17,6 +19,7 @@ export function AudioStudio() {
   const refresh = useModelsStore((state) => state.refresh)
   const config = useConfigStore((state) => state.config)
   const save = useConfigStore((state) => state.save)
+  const load = useParamPanelStore((state) => state.load)
 
   useEffect(() => {
     void startListening()
@@ -29,6 +32,10 @@ export function AudioStudio() {
   const effectiveId = effectiveProfileId(config)
   const selected = selectedProfile(view, config)
   const rows = pickable(view, 'music')
+
+  useEffect(() => {
+    void load(effectiveId)
+  }, [effectiveId, load])
 
   return (
     <>
@@ -69,6 +76,8 @@ export function AudioStudio() {
           ))}
         </ul>
       </section>
+
+      <ParamPanel />
 
       <JobQueue />
     </>

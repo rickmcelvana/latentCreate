@@ -6,8 +6,8 @@
    from violet to blue in Aug 2026. Latent Mixing and Mastering still carry the
    older GitHub-dark values (#0d1117 ground, #30363d borders); latentCreate
    tracks the site instead, since it is the current direction and this app has
-   no legacy screens to migrate. Accent values are identical across all three.
-   Do not fork these tokens -- change the site, then follow it. */
+   no legacy screens to migrate. Do not fork these tokens -- change the site,
+   then follow it. */
 
 :root {
   /* Brand tokens -- mirrored from latentbeats.com */
@@ -995,4 +995,186 @@ body {
 
 .lyrics-link:hover {
   color: var(--accent-hover);
+}
+
+/* --- Param panel (T-308b) --- */
+
+.param-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-lg);
+}
+
+.param-panel-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.param-panel-empty {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.param-advanced-toggle {
+  align-self: flex-start;
+  padding: var(--gap-sm) var(--gap-md);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.param-advanced-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.param-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.param-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin: 0;
+  padding: var(--gap-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.param-group-title {
+  padding: 0 var(--gap-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.param-omitted {
+  padding: var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.param-omitted-title {
+  margin: 0 0 var(--gap-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.param-omitted ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.param-omitted-item {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.param-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.param-field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.param-field textarea,
+.param-field input,
+.param-field select {
+  width: 100%;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color var(--transition);
+}
+
+.param-field textarea:focus-visible,
+.param-field input:focus-visible,
+.param-field select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.param-field textarea {
+  resize: vertical;
+}
+
+.param-field select {
+  appearance: auto;
+}
+
+.param-field select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.param-field-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.param-field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.param-seed {
+  display: flex;
+  gap: var(--gap-sm);
+  align-items: center;
+}
+
+.param-seed input {
+  flex: 1;
+  min-width: 0;
+}
+
+.param-seed-reroll {
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--panel-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.param-seed-reroll:hover {
+  background: var(--panel);
+  border-color: var(--accent);
 }

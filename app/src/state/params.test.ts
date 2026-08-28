@@ -4,6 +4,7 @@ import type { ProfileInputs } from '../bridge/profiles'
 import {
   MAX_SAFE_SEED,
   defaults,
+  groupsOf,
   panelModel,
   seedError,
   specInputs,
@@ -183,6 +184,50 @@ describe('panelModel', () => {
     )
     expect(values.bpm).toBe(120)
     expect(values.tags).toBe('')
+  })
+})
+
+describe('groupsOf', () => {
+  /**
+   * Protects: the advanced disclosure renders one fieldset per group, in the
+   * order the groups appear, with no group listed twice.
+   *
+   * This started life inside `<ParamPanel>`, where nothing could reach it --
+   * vitest runs in `node` with no DOM, so a decision about what is rendered
+   * and in what order was a decision the gate could not see.
+   */
+  it('test_groups_are_listed_once_in_the_order_they_appear', () => {
+    const model = panelModel(aceInputs)
+
+    expect(groupsOf(model.advanced)).toEqual(['Planner sampling'])
+    expect(groupsOf(model.basic)).toEqual([])
+  })
+
+  /**
+   * Protects: appearance order, not alphabetical order.
+   *
+   * The shipped profile has exactly one group, so on the real fixture every
+   * ordering rule here is satisfied by accident -- sort the groups
+   * alphabetically and nothing notices. Same trap the LoRA catalog hit in
+   * T-307, so the same answer: the real declarations plus one more group,
+   * labelled so that the two orders disagree.
+   */
+  it('test_groups_keep_appearance_order_not_alphabetical_order', () => {
+    const model = panelModel({
+      ...aceInputs,
+      zzz_extra: {
+        type: 'group',
+        advanced: true,
+        label: 'Aaa later group',
+        members: { extra_knob: { type: 'int', slots: ['1.k'], min: 0, max: 1, default: 0, advanced: false } },
+      },
+    })
+
+    expect(groupsOf(model.advanced)).toEqual(['Planner sampling', 'Aaa later group'])
+  })
+
+  it('test_a_control_with_no_group_contributes_none', () => {
+    expect(groupsOf([])).toEqual([])
   })
 })
 
