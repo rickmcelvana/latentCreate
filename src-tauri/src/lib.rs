@@ -64,6 +64,7 @@ pub fn run() {
             llm::llm_probe,
             llm::llm_test,
             profile::profile_guide,
+            profile::profile_inputs,
             install::models_install,
             install::models_progress,
             jobs::connect_comfy,

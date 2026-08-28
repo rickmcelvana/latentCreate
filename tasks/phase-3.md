@@ -326,7 +326,7 @@ and never the presence. Worth stating as a rule for T-308 onward: **when the inp
 captures already satisfies a rule, the rule is untested** -- feed it the same real data with
 that property removed.
 
-### T-308 — AudioStudio: the profile-driven param panel  — **T-308a LANDED**, T-308b next
+### T-308 — AudioStudio: the profile-driven param panel  — **T-308a + T-308b's data path LANDED**; `<ParamPanel>` briefed, T-308c is live enum choices
 Controls rendered from the profile's `inputs`, unsupported ones simply absent — **no negative
 prompt box for ACE-Step**, which has no such input. bpm, key/scale and time signature are
 first-class musical controls (3). The advanced disclosure hides the LM-planner sampling
@@ -359,6 +359,19 @@ empty until something asks the node registry -- and T-308b must not render that 
 unsupported input; one means ComfyUI is off, the other means the model has no such input.
 (4) Group members inherit their group's `advanced` flag, or the planner's five sampler
 controls surface in the basic panel while the group hiding them is hidden.
+
+**T-308b split again, by lane** ([brief](t-308b-brief.md)). Its data path -- the
+`profile_inputs` command, the bridge call, the panel store -- is small and test-bearing, so it
+was written and verified by the architect and is landed. `<ParamPanel>` is ~300 lines of JSX
+and CSS carrying no logic, which is what the executor lane is for, and it is briefed with an
+exact class list, the copy written out, and a click-through.
+
+**T-308c -- live enum choices.** The profile declares `slots: ["94.keyscale"]`, and `94` is a
+node *instance* inside the template, not a class. Reading the live options means resolving it
+to `TextEncodeAceStepAudio1.5` first, and only the workflow file holds that hop. `InputSpec`'s
+`Enum` gains an optional `node` field naming the class; the input name already comes from the
+slot address's field part. Until then the three controls render disabled, saying to start
+ComfyUI -- which must not read like `negative`'s recorded "this model has no such input".
 
 ### T-309 — AudioStudio: the LoRA stack panel
 T-307's output made interactive: up to `max_stack` entries, each a picker plus strength

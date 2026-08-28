@@ -6,7 +6,9 @@
 //! -- ACE-Step wants comma-separated short tags, MiniMax wants a structured
 //! caption -- so the prefill must come from the profile, never a constant.
 
-use create_core::profile::{ModelProfile, PromptExample};
+use std::collections::BTreeMap;
+
+use create_core::profile::{InputSpec, ModelProfile, PromptExample};
 use serde::Serialize;
 use tauri::State;
 
@@ -45,6 +47,30 @@ pub fn profile_guide(
     set.profiles
         .get(&profile_id)
         .map(|loaded| guide_view(&loaded.profile))
+}
+
+/// The selected profile's declared inputs, or `None` for an unknown id.
+///
+/// Returned **as the profile writes them**, with no view type in between.
+/// `InputSpec` is `#[serde(tag = "type")]`, so it serialises to exactly the
+/// shape already sitting in `profiles/*.json`: a second projection here would
+/// be a copy of the schema, free to drift from it, and the panel is built to
+/// render declarations rather than a flattened summary of them.
+///
+/// In particular an `Unsupported` input survives the trip **with its reason**.
+/// That reason is evidence -- somebody read a live node schema and recorded
+/// that ACE-Step has no negative prompt -- and a view type that dropped it
+/// would leave a missing control looking exactly like a forgotten one.
+#[tauri::command]
+pub fn profile_inputs(
+    profiles_dir: State<'_, ProfilesDir>,
+    config_dir: State<'_, ConfigDir>,
+    profile_id: String,
+) -> Option<BTreeMap<String, InputSpec>> {
+    let set = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"));
+    set.profiles
+        .get(&profile_id)
+        .map(|loaded| loaded.profile.inputs.clone())
 }
 
 /// Project one profile into its guide view, empty when it has no guide.
@@ -99,5 +125,46 @@ mod tests {
         assert_eq!(view.display_name, "ACE-Step 1.5 XL Turbo");
         assert!(view.examples.is_empty());
         assert_eq!(view.tag_style, None);
+    }
+    /// Protects: the wire shape the webview's `InputSpec` union is written
+    /// against.
+    ///
+    /// `app/src/bridge/profiles.ts` mirrors this enum by hand -- there is no
+    /// generator -- so the two can drift silently and the panel would render a
+    /// control it does not understand. Every variant the shipped profile uses
+    /// is pinned here by the exact key the TypeScript expects.
+    #[test]
+    fn test_declared_inputs_serialise_in_the_shape_the_webview_expects() {
+        let profile: ModelProfile = serde_json::from_str(ACE).expect("profile decodes");
+        let wire = serde_json::to_value(&profile.inputs).expect("inputs serialise");
+
+        assert_eq!(wire["tags"]["type"], "text");
+        assert_eq!(wire["seed"]["type"], "seed");
+        assert_eq!(wire["bpm"]["type"], "int");
+        assert_eq!(wire["bpm"]["default"], 120);
+        assert_eq!(wire["duration_s"]["type"], "float");
+        assert_eq!(wire["keyscale"]["type"], "enum");
+        assert_eq!(wire["keyscale"]["from_node_choices"], true);
+        assert_eq!(wire["planner"]["type"], "group");
+        assert_eq!(wire["planner"]["advanced"], true);
+        assert_eq!(wire["planner"]["members"]["cfg_scale"]["type"], "float");
+    }
+
+    /// Protects: an unsupported input crosses the bridge carrying its reason.
+    ///
+    /// "TextEncodeAceStepAudio1.5 exposes no negative input" is a fact somebody
+    /// checked against a live node schema. Strip it in a view type and the
+    /// panel can no longer tell a verified absence from an oversight -- the
+    /// two look identical on screen.
+    #[test]
+    fn test_an_unsupported_input_keeps_its_reason_across_the_bridge() {
+        let profile: ModelProfile = serde_json::from_str(ACE).expect("profile decodes");
+        let wire = serde_json::to_value(&profile.inputs).expect("inputs serialise");
+
+        assert_eq!(wire["negative"]["type"], "unsupported");
+        let reason = wire["negative"]["reason"]
+            .as_str()
+            .expect("a recorded reason");
+        assert!(reason.contains("no negative"), "reason was: {reason}");
     }
 }

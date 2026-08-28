@@ -81,3 +81,12 @@ export type InputSpec =
 
 /** A profile's `inputs`: semantic name -> declaration. */
 export type ProfileInputs = Record<string, InputSpec>
+
+/**
+ * The selected profile's declared inputs, or null when no profile answers to
+ * that id. Returned as the profile writes them -- see the Rust command's note
+ * on why there is no view type in between.
+ */
+export async function getProfileInputs(profileId: string): Promise<ProfileInputs | null> {
+  return await invoke<ProfileInputs | null>('profile_inputs', { profileId })
+}
