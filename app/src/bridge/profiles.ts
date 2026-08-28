@@ -35,10 +35,18 @@ export async function getProfileGuide(profileId: string): Promise<ProfileGuide |
  * checked a live node schema and the model has no such input.
  */
 export type InputSpec =
-  | { type: 'text'; slots: string[]; label?: string | null; advanced: boolean }
+  | {
+      type: 'text'
+      slots: string[]
+      /** What the form starts with; the form's value is what gets sent. */
+      default?: string | null
+      label?: string | null
+      advanced: boolean
+    }
   | {
       type: 'lyrics'
       slots: string[]
+      default?: string | null
       structure_tags: string[]
       label?: string | null
       advanced: boolean

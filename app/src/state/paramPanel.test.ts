@@ -86,7 +86,9 @@ describe('initialValues', () => {
     expect(values.bpm).toBe(120)
     expect(values.duration_s).toBe(120)
     expect(values.steps).toBe(8)
-    expect(values.tags).toBe('')
+    expect(values.tags).toBe(
+      'synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm',
+    )
   })
 })
 

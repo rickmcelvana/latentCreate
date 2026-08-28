@@ -1505,7 +1505,7 @@ now verified: wide seeds survive the bridge, and the redirect reaches the sample
 **The planner group reached the engine** -- `94.cfg_scale: 2.0`, `temperature: 0.85`,
 `top_p: 0.9`, `top_k: 0`, `min_p: 0.0` -- confirming the dotted-name fix end to end.
 
-### 20.2 WARNING An empty text field silently inherits the template's demo content
+### 20.2 RESOLVED An empty text field silently inherited the template's demo content
 
 Same run: `94.tags` came back **byte-identical to the template's own widget value** --
 `"Late Night Trap, 95 BPM, Heavy 808 Bass, Wet Synths, ..."` -- because the tags box was left
@@ -1521,3 +1521,18 @@ somebody else's song description, with nothing anywhere saying so.
 It matters for text and not for numbers. A template's default `steps` is a sensible value to
 inherit; a template's default `tags` is *demo content*. Nobody decided this -- it is emergent
 from two independently reasonable rules meeting, which is the third time in two tasks.
+
+**Measured before fixing it** (owner, in ComfyUI, 2026-08-28): ACE-Step turbo with the `tags`
+widget **emptied** generates fine, twice over with different lyrics, and both takes came back
+**reggae/rap**. So an empty tag string is not neutral -- it is just an unstated style. That
+removes the tempting framing of this decision: there is no neutral value to fall back to, and
+the requirement is not that the app choose a good style but that **whatever runs is visible on
+screen**.
+
+**RESOLVED 2026-08-28, both halves.** `InputSpec::Text` and `Lyrics` gained an optional
+`default`, the ACE-Step profile prefills its style tags with the guide's own worked example
+(`"synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm"`), and `specInputs` now
+sends an emptied text box **as empty** rather than skipping it. Enums and numbers still skip when
+unset, because a `from_node_choices` enum holds `''` until ComfyUI answers and sending that is an
+`unknown_enum_value` rejection. Lyrics get no prefill: words the app put in the user's mouth are
+the one thing this project has refused since the prompt-optimizer decision.

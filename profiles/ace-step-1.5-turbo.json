@@ -9,30 +9,69 @@
     "workflow": null,
     "vram_gb_min": 8,
     "models": [
-      { "file": "acestep_v1.5_xl_turbo_bf16.safetensors", "folder": "diffusion_models", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors", "size_bytes": 9974719892 },
-      { "file": "qwen_0.6b_ace15.safetensors", "folder": "text_encoders", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors", "size_bytes": 1191588248 },
-      { "file": "qwen_4b_ace15.safetensors", "folder": "text_encoders", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors", "size_bytes": 8379154232 },
-      { "file": "ace_1.5_vae.safetensors", "folder": "vae", "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors", "size_bytes": 337431732 }
+      {
+        "file": "acestep_v1.5_xl_turbo_bf16.safetensors",
+        "folder": "diffusion_models",
+        "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors",
+        "size_bytes": 9974719892
+      },
+      {
+        "file": "qwen_0.6b_ace15.safetensors",
+        "folder": "text_encoders",
+        "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+        "size_bytes": 1191588248
+      },
+      {
+        "file": "qwen_4b_ace15.safetensors",
+        "folder": "text_encoders",
+        "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors",
+        "size_bytes": 8379154232
+      },
+      {
+        "file": "ace_1.5_vae.safetensors",
+        "folder": "vae",
+        "source_url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+        "size_bytes": 337431732
+      }
     ],
-    "output": { "save_node": "SaveAudioAdvanced", "prefer_lossless": true }
+    "output": {
+      "save_node": "SaveAudioAdvanced",
+      "prefer_lossless": true
+    }
   },
   "loras": {
     "loader_node": "LoraLoaderModelOnly",
     "attach_after": "104",
     "folder": "loras",
-    "strength": { "min": 0.0, "max": 2.0, "default": 1.0, "step": 0.05 },
+    "strength": {
+      "min": 0.0,
+      "max": 2.0,
+      "default": 1.0,
+      "step": 0.05
+    },
     "max_stack": 4
   },
   "inputs": {
     "tags": {
       "type": "text",
-      "slots": ["94.tags"],
+      "slots": [
+        "94.tags"
+      ],
+      "default": "synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm",
       "label": "Style tags"
     },
     "lyrics": {
       "type": "lyrics",
-      "slots": ["94.lyrics"],
-      "structure_tags": ["[Verse]", "[Chorus]", "[Bridge]", "[Outro]", "[inst]"],
+      "slots": [
+        "94.lyrics"
+      ],
+      "structure_tags": [
+        "[Verse]",
+        "[Chorus]",
+        "[Bridge]",
+        "[Outro]",
+        "[inst]"
+      ],
       "label": "Lyrics"
     },
     "negative": {
@@ -41,17 +80,27 @@
     },
     "duration_s": {
       "type": "float",
-      "slots": ["94.duration", "98.seconds"],
+      "slots": [
+        "94.duration",
+        "98.seconds"
+      ],
       "min": 10.0,
       "max": 300.0,
       "default": 120.0,
       "step": 1.0,
       "label": "Duration (s)"
     },
-    "seed": { "type": "seed", "slots": ["109.value"] },
+    "seed": {
+      "type": "seed",
+      "slots": [
+        "109.value"
+      ]
+    },
     "bpm": {
       "type": "int",
-      "slots": ["94.bpm"],
+      "slots": [
+        "94.bpm"
+      ],
       "min": 10,
       "max": 300,
       "default": 120,
@@ -60,27 +109,35 @@
     "keyscale": {
       "type": "enum",
       "node": "TextEncodeAceStepAudio1.5",
-      "slots": ["94.keyscale"],
+      "slots": [
+        "94.keyscale"
+      ],
       "from_node_choices": true,
       "label": "Key"
     },
     "timesignature": {
       "type": "enum",
       "node": "TextEncodeAceStepAudio1.5",
-      "slots": ["94.timesignature"],
+      "slots": [
+        "94.timesignature"
+      ],
       "from_node_choices": true,
       "label": "Time signature"
     },
     "language": {
       "type": "enum",
       "node": "TextEncodeAceStepAudio1.5",
-      "slots": ["94.language"],
+      "slots": [
+        "94.language"
+      ],
       "from_node_choices": true,
       "label": "Language"
     },
     "steps": {
       "type": "int",
-      "slots": ["3.steps"],
+      "slots": [
+        "3.steps"
+      ],
       "min": 1,
       "max": 100,
       "default": 8,
@@ -89,7 +146,9 @@
     },
     "shift": {
       "type": "float",
-      "slots": ["78.shift"],
+      "slots": [
+        "78.shift"
+      ],
       "min": 0.0,
       "max": 10.0,
       "default": 3.0,
@@ -104,7 +163,9 @@
       "members": {
         "cfg_scale": {
           "type": "float",
-          "slots": ["94.cfg_scale"],
+          "slots": [
+            "94.cfg_scale"
+          ],
           "min": 0.0,
           "max": 100.0,
           "default": 2.0,
@@ -112,7 +173,9 @@
         },
         "temperature": {
           "type": "float",
-          "slots": ["94.temperature"],
+          "slots": [
+            "94.temperature"
+          ],
           "min": 0.0,
           "max": 2.0,
           "default": 0.85,
@@ -120,7 +183,9 @@
         },
         "top_p": {
           "type": "float",
-          "slots": ["94.top_p"],
+          "slots": [
+            "94.top_p"
+          ],
           "min": 0.0,
           "max": 2000.0,
           "default": 0.9,
@@ -128,14 +193,18 @@
         },
         "top_k": {
           "type": "int",
-          "slots": ["94.top_k"],
+          "slots": [
+            "94.top_k"
+          ],
           "min": 0,
           "max": 100,
           "default": 0
         },
         "min_p": {
           "type": "float",
-          "slots": ["94.min_p"],
+          "slots": [
+            "94.min_p"
+          ],
           "min": 0.0,
           "max": 1.0,
           "default": 0.0,

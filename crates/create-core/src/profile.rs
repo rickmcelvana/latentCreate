@@ -34,6 +34,14 @@ pub enum InputSpec {
     /// Free text (style tags, negative prompts).
     Text {
         slots: Vec<SlotAddress>,
+        /// What the form starts with.
+        ///
+        /// Not a fallback the pipeline applies -- the form shows it, and what
+        /// the form shows is what gets sent. A text input the user clears is
+        /// submitted **empty**, because the alternative is the template's own
+        /// demo text running under an empty box (MCP-SURFACE 20.2).
+        #[serde(default)]
+        default: Option<String>,
         #[serde(default)]
         label: Option<String>,
         #[serde(default)]
@@ -42,6 +50,10 @@ pub enum InputSpec {
     /// Song lyrics, with the structure tags this model expects.
     Lyrics {
         slots: Vec<SlotAddress>,
+        /// What the form starts with. Normally absent: prefilled lyrics would
+        /// be words the app put in the user's mouth.
+        #[serde(default)]
+        default: Option<String>,
         #[serde(default)]
         structure_tags: Vec<String>,
         #[serde(default)]

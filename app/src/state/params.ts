@@ -243,7 +243,12 @@ function control(
   switch (spec.type) {
     case 'text':
     case 'lyrics':
-      return { ...base, ...plain, kind: spec.type, default: '' }
+      // The profile's own starting text, when it declares one. ACE-Step
+      // prefills its style tags: the field is a format most people have not
+      // met ("comma-separated short tags"), and an example on screen teaches
+      // it in a way a placeholder cannot. Lyrics declare none -- prefilled
+      // lyrics would be words the app put in the user's mouth.
+      return { ...base, ...plain, kind: spec.type, default: spec.default ?? '' }
     case 'int':
       return {
         ...base,
@@ -441,9 +446,20 @@ export type InputValue =
  * off `typeof value` here would hand Rust the guess its own encoding refuses to
  * make.
  *
- * A control with no value is skipped rather than sent as a default: Rust's
- * `resolve_slots` rejects an input the profile does not declare, and sending a
- * value nobody chose is how a form quietly overrides the workflow.
+ * A control the panel never rendered is skipped -- `resolve_slots` rejects an
+ * input the profile does not declare.
+ *
+ * **An empty text box is sent as empty, not skipped**, and that is the whole
+ * point of the rule. `resolve_slots` writes only what the spec sets and
+ * `fetch_template` carries the template's own defaults, so a skipped `tags`
+ * left ACE-Step's demo prompt -- "Late Night Trap, 95 BPM, Heavy 808 Bass..." --
+ * running underneath an empty box, with nothing on screen saying so
+ * (MCP-SURFACE 20.2). The comment that used to sit here worried about a form
+ * quietly overriding the workflow; the observed failure was the exact inverse.
+ *
+ * Enums and numbers still skip when unset: a `from_node_choices` enum whose
+ * options have not loaded holds `''`, and sending that is an
+ * `unknown_enum_value` rejection rather than an empty field.
  */
 export function specInputs(
   model: PanelModel,
@@ -453,7 +469,9 @@ export function specInputs(
 
   for (const entry of [...model.basic, ...model.advanced]) {
     const value = values[entry.name]
-    if (value === undefined || value === '') continue
+    if (value === undefined) continue
+    const textual = entry.kind === 'text' || entry.kind === 'lyrics'
+    if (value === '' && !textual) continue
 
     switch (entry.kind) {
       case 'text':

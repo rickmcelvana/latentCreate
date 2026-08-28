@@ -186,7 +186,27 @@ describe('panelModel', () => {
       [...model.basic, ...model.advanced].map((c) => c.name).toSorted(),
     )
     expect(values.bpm).toBe(120)
-    expect(values.tags).toBe('')
+    expect(values.tags).toBe(
+      'synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm',
+    )
+    expect(values.lyrics).toBe('')
+  })
+
+  /**
+   * Protects: the style-tags box starts with an example, and lyrics do not.
+   *
+   * Two different reasons. Tags is a format most people have not met -- the
+   * profile calls it "comma-separated short tags" -- and an example on screen
+   * teaches it in a way a placeholder cannot. Lyrics prefilled would be words
+   * the app put in the user's mouth, which is the one thing this project has
+   * refused since the prompt-optimizer decision.
+   */
+  it('test_tags_are_prefilled_from_the_profile_and_lyrics_are_not', () => {
+    const model = panelModel(aceInputs)
+
+    expect(named(model.basic, 'tags').default).toBe(aceProfile.inputs.tags.default)
+    expect(named(model.basic, 'tags').default).not.toBe('')
+    expect(named(model.basic, 'lyrics').default).toBe('')
   })
 })
 
@@ -423,20 +443,42 @@ describe('specInputs', () => {
   })
 
   /**
-   * Protects: an empty control is left out rather than sent as a default.
+   * Protects: an emptied text box is sent **empty**, so the box is the truth.
    *
-   * `resolve_slots` rejects an input the profile does not declare and applies
-   * every input it is given, so sending a value nobody chose is how a form
-   * quietly overrides the workflow's own setting.
+   * This is the fix for the defect the first ACE-Step run exposed. `resolve_slots`
+   * writes only what the spec sets and `fetch_template` carries the template's
+   * own defaults, so skipping an empty `tags` left ACE-Step's demo prompt --
+   * "Late Night Trap, 95 BPM, Heavy 808 Bass..." -- running underneath an empty
+   * box with nothing on screen saying so (MCP-SURFACE 20.2).
+   *
+   * Measured by the owner in ComfyUI: empty tags is not neutral either, it
+   * leans reggae. There is no neutral value, so the requirement is not that the
+   * app pick a good one -- it is that whatever runs is **visible**.
    */
-  it('test_untouched_controls_are_not_sent', () => {
+  it('test_an_emptied_text_box_is_sent_as_empty', () => {
+    const model = panelModel(aceInputs)
+    const inputs = specInputs(model, { ...defaults(model), tags: '', lyrics: '' })
+
+    expect(inputs.tags).toEqual({ type: 'text', value: '' })
+    expect(inputs.lyrics).toEqual({ type: 'text', value: '' })
+  })
+
+  /**
+   * Protects: enums and numbers still skip when unset.
+   *
+   * A `from_node_choices` enum holds `''` until ComfyUI answers, and sending
+   * that is an `unknown_enum_value` rejection rather than an empty field --
+   * so the rule above has to be about text kinds specifically, not about
+   * emptiness.
+   */
+  it('test_an_unloaded_enum_is_still_left_out', () => {
     const model = panelModel(aceInputs)
     const inputs = specInputs(model, { ...defaults(model), bpm: 90 })
 
     expect(inputs.bpm).toEqual({ type: 'int', value: 90 })
-    expect(inputs.tags).toBeUndefined()
     expect(inputs.keyscale).toBeUndefined()
-    expect(inputs.lyrics).toBeUndefined()
+    expect(inputs.timesignature).toBeUndefined()
+    expect(inputs.language).toBeUndefined()
   })
 
   /** Protects: an input the panel never rendered cannot reach the spec. */
