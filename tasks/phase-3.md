@@ -285,7 +285,7 @@ that is worth more than a test asserting a guarantee that does not exist.
 Also the natural place for the OQ-3 evidence to accumulate: if the pipeline needs a node fact
 the MCP surface cannot answer, record it here rather than reaching for `/object_info` silently.
 
-### T-307 — the LoRA list: filtering, grouping, dedupe  *(pure)*
+### T-307 — the LoRA list: filtering, grouping, dedupe  *(pure)*  — **brief written** ([brief](t-307-brief.md))
 The 53-entry list is unusable raw (16.5, ARCHITECTURE 5a). A pure function over the captured
 list: drop `training_state.pt` and other non-adapters, group by directory, collapse the
 20-epoch checkpoint series to latest/`final` with the rest behind an expander, dedupe
@@ -298,6 +298,20 @@ off this install since at least 2026-08-24. So that one test needs a case-varian
 to the fixture **deliberately and commented as synthetic**, so nobody later reads it as
 observed. The rule stays — a case-insensitive filesystem still produces it — but the brief
 must be straight about which of its fixtures is evidence and which is construction.
+
+**Corrected 2026-08-28, writing the brief.** Two things above were wrong. **(a) The fixture
+did not exist.** "The fixture is today's 53-entry list, captured into `testdata/mcp/`" was
+written as though it were already there; nothing in `testdata/` held the list. It is captured
+now (`a5424eb`), verbatim, `stale: true` and all, plus the hand-built case-variant file this
+paragraph asks for. **(b) Favourites and user display names move to T-309.** Both are
+persisted user state keyed on the entry path, they belong with the store and the panel, and
+either one would put a second argument on a function whose value is having one.
+
+**And one thing the fixture cannot do.** The real list has a `loragoth\final\`, which
+supersedes every epoch checkpoint -- so on the captured data the epoch number is never
+compared to anything, and the likeliest bug in the module (comparing `checkpoint-epoch-N` as
+text, where 90 beats 300) is invisible to it. The test that catches it replays the same real
+paths with `final/` removed: a training run still in progress.
 
 ### T-308 — AudioStudio: the profile-driven param panel
 Controls rendered from the profile's `inputs`, unsupported ones simply absent — **no negative
