@@ -511,7 +511,7 @@ unaffected, and both wrote files. The refusal path was the thing to watch -- a M
 with "writes ... to inputs a node drives" would have meant the profile edit had not landed with the
 audit edit -- and it did not fire.
 
-### T-310 — the queue panel  — **T-310a LANDED 2026-08-28** ([brief](t-310-brief.md)), T-310b next
+### T-310 — the queue panel  — **T-310a LANDED 2026-08-28** ([brief](t-310-brief.md)); **T-310b briefed** ([brief](t-310b-brief.md)), Aider lane, ready to run
 Pending / running / elapsed / failed with error text, cancel, multiple jobs.
 
 ⚠ **This entry told the implementer to do the wrong thing, and a live read caught it**
@@ -574,6 +574,18 @@ Also removed while writing it: a test asserting `queueRows` does not reorder its
 **Deliberately consumer-less until T-310b.** `state/queue.ts` has no caller yet: `<JobQueue>` still
 renders the raw status. That is the same "tested seams meeting nowhere" shape T-309d was written to
 fix, and it is acceptable only because T-310b is the next task rather than a someday one.
+
+**`modelName` added while briefing T-310b**, because the alternative was shipping raw profile ids on
+screen -- and choosing between a display name, an id and a fallback is a conditional, so it belongs
+in the pure module rather than in the JSX an executor writes. It also caught a hole in its own first
+draft: `??` guards `undefined` but not `''`, so a profile carrying `"display_name": ""` blanked the
+column -- the one outcome the function exists to prevent. Frontend 263 -> **268**; four more
+mutations, three killed and the control alive.
+
+**T-310b briefed** ([brief](t-310b-brief.md)). Three files, tokens only, test count pinned at 268.
+⚠ It carries one live fix: **`.job-item-failed .job-status` has never applied**, because a real
+failure's status is `error`, not `failed`. The rule has been dead since it was written and nobody
+could see it, since no generation had ever failed until 24 was measured.
 
 ### T-311 — output ingestion, library write, provenance sidecar
 `fetch_outputs` on completion, the audio copied into `library/projects/<slug>/tracks/`, and

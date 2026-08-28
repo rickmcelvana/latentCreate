@@ -13,6 +13,17 @@ import type { Job } from './jobs'
 /** Shown in place of the list when nothing has been generated yet. */
 export const EMPTY_QUEUE = 'Generations you start will appear here.'
 
+/**
+ * The model column when nothing can name the profile.
+ *
+ * Two ways to get here, and they are deliberately not distinguished on screen:
+ * a job submitted through `run(workflowPath)`, which carries no profile at all,
+ * and a profile id the models list cannot name -- an uninstalled or renamed
+ * profile, or simply a row rendered before the list has loaded. Neither is
+ * worth its own sentence in a queue row.
+ */
+export const UNKNOWN_MODEL = 'Unknown model'
+
 /** The row labels. */
 export const QUEUED = 'Queued'
 export const RUNNING = 'Running'
@@ -97,12 +108,32 @@ export function elapsed(job: Job, now: number): string {
 export interface QueueRow {
   id: string
   label: string
+  /** The profile's display name -- never the raw id. */
+  model: string
   profileId: string
   elapsed: string
   error: string | null
   canCancel: boolean
   /** For the row's CSS class, so the view composes no logic of its own. */
   status: string
+}
+
+/**
+ * What a row calls the model that produced it.
+ *
+ * Falls back to the **id** rather than to [`UNKNOWN_MODEL`] when the map simply
+ * does not have it: `ace-step-1.5-turbo` is ugly but it is information, and the
+ * commonest reason for a miss is the models list not having loaded yet, where
+ * blanking the column would make the row look broken for a moment.
+ *
+ * An **empty** display name counts as a miss, not as a name. `??` guards only
+ * `undefined`, so a profile carrying `"display_name": ""` would otherwise blank
+ * the column -- which is the one outcome this function exists to prevent.
+ */
+export function modelName(profileId: string, names: Record<string, string>): string {
+  if (profileId.trim() === '') return UNKNOWN_MODEL
+  const name = names[profileId]?.trim()
+  return name !== undefined && name !== '' ? name : profileId
 }
 
 /**
@@ -116,7 +147,11 @@ export interface QueueRow {
  * `now` is a parameter rather than a `Date.now()` call inside, so elapsed
  * times are testable and every row in one render agrees on the time.
  */
-export function queueRows(jobs: Record<string, Job>, now: number): QueueRow[] {
+export function queueRows(
+  jobs: Record<string, Job>,
+  now: number,
+  names: Record<string, string> = {},
+): QueueRow[] {
   return Object.values(jobs)
     .toSorted((a, b) => {
       const live = Number(isDone(a)) - Number(isDone(b))
@@ -126,6 +161,7 @@ export function queueRows(jobs: Record<string, Job>, now: number): QueueRow[] {
     .map((job) => ({
       id: job.id,
       label: statusLabel(job),
+      model: modelName(job.profileId, names),
       profileId: job.profileId,
       elapsed: elapsed(job, now),
       error: errorFor(job),

@@ -10,6 +10,8 @@ import {
   elapsed,
   errorFor,
   isDone,
+  UNKNOWN_MODEL,
+  modelName,
   queueRows,
   statusLabel,
 } from './queue'
@@ -102,6 +104,34 @@ describe('canCancel', () => {
   })
 })
 
+describe('modelName', () => {
+  it('uses the display name when the map has one', () => {
+    expect(modelName('ace-step-1.5-turbo', { 'ace-step-1.5-turbo': 'ACE-Step 1.5 Turbo' })).toBe(
+      'ACE-Step 1.5 Turbo',
+    )
+  })
+
+  // Protects: the commonest miss is the models list not having loaded yet, and
+  // a blank column there makes a perfectly good row look broken.
+  it('falls back to the id, which is ugly but is information', () => {
+    expect(modelName('ace-step-1.5-turbo', {})).toBe('ace-step-1.5-turbo')
+  })
+
+  it('says so when there was no profile at all', () => {
+    expect(modelName('', { 'ace-step-1.5-turbo': 'ACE-Step 1.5 Turbo' })).toBe(UNKNOWN_MODEL)
+  })
+
+  it('never returns an empty string', () => {
+    for (const [id, map] of [
+      ['', {}],
+      ['unknown-id', {}],
+      ['x', { x: '' }],
+    ] as const) {
+      expect(modelName(id, map)).not.toBe('')
+    }
+  })
+})
+
 describe('elapsed', () => {
   it('reads seconds below a minute', () => {
     expect(elapsed(job(), T0 + 12_000)).toBe('12s')
@@ -149,11 +179,18 @@ describe('queueRows', () => {
     expect(row.profileId).toBe('minimax-music-3')
   })
 
+  it('names the model from the map it is given', () => {
+    const jobs = { x: job({ id: 'x', profileId: 'minimax-music-3' }) }
+    const [row] = queueRows(jobs, T0, { 'minimax-music-3': 'MiniMax Music 3' })
+    expect(row.model).toBe('MiniMax Music 3')
+  })
+
   it('leaves the view nothing to decide', () => {
     const [row] = rows(job({ id: 'x', status: 'error', error: 'boom', submittedAt: T0 }))
     expect(row).toEqual({
       id: 'x',
       label: FAILED,
+      model: 'ace-step-1.5-turbo',
       profileId: 'ace-step-1.5-turbo',
       elapsed: '30s',
       error: 'boom',
