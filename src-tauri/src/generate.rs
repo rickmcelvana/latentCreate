@@ -299,15 +299,25 @@ mod tests {
     use std::collections::BTreeMap;
 
     const ACE: &str = include_str!("../../profiles/ace-step-1.5-turbo.json");
+    const MINIMAX: &str = include_str!("../../profiles/minimax-music-3.json");
 
     fn ace() -> ModelProfile {
         serde_json::from_str(ACE).expect("profile decodes")
     }
 
+    fn minimax() -> ModelProfile {
+        serde_json::from_str(MINIMAX).expect("profile decodes")
+    }
+
     /// The real captured template, as `fetch_template` would have written it.
     fn fixture() -> String {
+        named_fixture("ace_step_1_5_xl_turbo.json")
+    }
+
+    fn named_fixture(name: &str) -> String {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../testdata/workflows/ace_step_1_5_xl_turbo.json");
+            .join("../testdata/workflows")
+            .join(name);
         std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
     }
@@ -477,6 +487,61 @@ mod tests {
         assert!(error.contains("94.seed"), "{error}");
         let calls = calls.lock().expect("calls lock");
         assert_eq!(calls.len(), 1, "nothing past fetch_template may be called");
+    }
+
+    /// A MiniMax run reports nothing unchecked, and is not refused.
+    ///
+    /// This is the seam the create-core tests cannot reach. `audit_slots`
+    /// returning a clean audit is one layer; what the user sees is
+    /// `Submission.unchecked_slots`, and what stops them generating is the
+    /// `inert` refusal above it. Before T-309e every one of MiniMax's eight
+    /// addresses came back unchecked -- so the warning fired on every single
+    /// generation this project has ever run, naming addresses a live run had
+    /// already proved effective.
+    ///
+    /// **Both halves of T-309e are load-bearing here.** Teach the audit to read
+    /// a subgraph without dropping the three link-fed addresses and this test
+    /// fails on the refusal, not the warning.
+    #[tokio::test]
+    async fn test_a_minimax_run_reports_nothing_unchecked() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workflow = dir.path().join("workflow.json");
+        std::fs::write(&workflow, named_fixture("minimax_music3_int8.json"))
+            .expect("place the fixture");
+
+        let profile = minimax();
+        let mut inputs = BTreeMap::new();
+        inputs.insert("caption".to_string(), InputValue::Text("synthwave".into()));
+        inputs.insert("duration_s".to_string(), InputValue::Float(30.0));
+        inputs.insert("seed".to_string(), InputValue::Seed(8578771011914929));
+        let spec = GenerationSpec {
+            profile_id: "minimax-music-3".to_string(),
+            inputs,
+            loras: Vec::new(),
+            lyrics: None,
+        };
+
+        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
+        let mut replies = happy_replies();
+        replies[1] = Reply::Json(json!({
+            "applied": applied(&overrides),
+            "warnings": [],
+            "wrote": workflow.display().to_string()
+        }));
+
+        let (comfy, _calls) = client_and_log(replies).await;
+        let submission = build_and_submit(&comfy, &workflow, &profile, &spec)
+            .await
+            .expect("MiniMax must still generate");
+
+        assert_eq!(
+            submission.unchecked_slots,
+            Vec::<String>::new(),
+            "every MiniMax address resolves now, so the warning must not fire"
+        );
+        // Vacuity guard: an empty `unchecked` also describes a spec that
+        // resolved to nothing at all.
+        assert!(!overrides.is_empty(), "the spec wrote no slots");
     }
 
     #[test]

@@ -1338,16 +1338,19 @@ the template's own widget defaults:
 
 So MiniMax's seed **does** reach the sampler, through `37/38.seed` alone. The profile writes all
 three; two are no-ops that happen to be harmless because the effective one is also written. The
-same holds for `37/15.seconds`. Trimming the three inert addresses from the profile would remove
-three of the seven "could not be checked" warnings a user currently sees, and needs its own
-verification run rather than a doc edit.
+same holds for `37/15.seconds`. **Superseded by 22.** This paragraph originally said trimming the three would remove three of the
+seven warnings. It would have removed three of *eight*, leaving five -- because every address
+MiniMax declares is a subgraph interior and the audit could read none of them. Both halves landed
+together in T-309e.
 
 **Two notation facts for whoever walks these.** The executed prompt separates subgraph interiors
 with a **colon** (`37:13`) while `list_workflow_slots` uses a **slash** (`37/13`); the same node,
 two spellings, on two surfaces. And the subgraph is *flattened* into the executed prompt -- 12
-plain nodes, no nesting -- which is why `audit_slots`, which reads the un-flattened file, cannot
-resolve them and reports `unchecked` rather than guessing. That behaviour is correct and should
-stay: the seven warnings were honest, and four of the seven addresses turned out to be applied.
+plain nodes, no nesting -- which is why `audit_slots`, which reads the un-flattened file, at the
+time could not resolve them and reported `unchecked` rather than guessing. **Corrected by 22:**
+not guessing was right, but resolving is not guessing -- the fixture holds the subgraph and the
+table above is ground truth to assert against. The audit now walks one level, and the eight
+warnings are gone.
 
 Structural note for whoever does it: **subgraph links are objects**
 (`{"id", "origin_id", "origin_slot", "target_id", "target_slot", "type"}`), not the
@@ -1578,3 +1581,84 @@ that behaved correctly, which is why the click-through found what four suites co
 tests all asserted what the app computed, and the defect was in what it stopped computing. Note
 also that the retention rule -- that cancelling must not retire the pump -- is an **absence of
 code**, and needed `cancel_job` split from its own body before any test could reach it.
+
+## 22. The audit could not read a subgraph, so MiniMax warned about everything -- 2026-08-28
+
+**The report.** Every MiniMax generation ended with `8 settings could not be checked against this
+workflow: 37/13.caption, 37/13.lyrics, 37/13.max_duration, 37/13.seed, 37/15.seconds, 37/38.seed,
+37/6.unet_name, 37/9.seed. They may not reach the model.` Seven of these before the tags prefill,
+eight after.
+
+**That list is not a subset. It is the whole profile.** Every address MiniMax declares appears in
+it, including `37/6.unet_name` -- the `slot_overrides` correction without which no model loads --
+and `37/38.seed`, which 18.5 had already proved reaches the sampler.
+
+`audit_slots` refused any address containing a slash outright:
+
+```rust
+if instance.contains('/') {
+    audit.unchecked.push(address.clone());
+    continue;
+}
+```
+
+So the warning had a **100% false-positive rate on MiniMax** and had fired on every generation
+this project has ever run. 18.5's closing note -- "the seven warnings were honest" -- was true
+about the *audit*, which was not guessing, and misleading about the *user*, for whom a warning
+that always fires is not a warning.
+
+### 22.1 What the fix had to be, and why the profile edit is not optional
+
+Phase 3's task list proposed trimming the three inert addresses. That would have taken the
+warning from eight to five and left it firing every time.
+
+The audit now resolves one level of subgraph, and the profile drops the three. **Neither ships
+alone**, because `generate.rs` does not warn about an inert address -- it *refuses the run*:
+
+```rust
+if !inert.is_empty() { return Err(format!("{} writes {} to inputs a node drives, ...")) }
+```
+
+MiniMax passed that check only because the audit was blind. Teach it to see without dropping the
+three and MiniMax cannot generate at all. **The blindness was holding the layer above it up** --
+the same seam pattern as the rest of this phase, inverted.
+
+### 22.2 The rule, which turned out to already be right
+
+`is_inert` asks whether a link survives conversion to the API prompt and overrides the widget. It
+needed one new answer, not a new rule:
+
+| link origin | verdict | why |
+|---|---|---|
+| a real backend node | **inert** | the link survives; the widget is ignored |
+| a frontend-only node (`PrimitiveNode`, `Reroute`) | lands | dropped at conversion (18.1) |
+| the subgraph's own `inputNode` | **lands** | a promoted widget, not a driving edge |
+| unidentifiable | inert | the safe reading of a link you cannot trace |
+
+Applied to the fixture, this reproduces 18.5's live `GET /history` table exactly -- five
+boundary-fed addresses that applied, three backend-fed that did not:
+
+| address | interior origin | live verdict |
+|---|---|---|
+| `37/6.unet_name`, `37/13.caption`, `37/13.lyrics`, `37/13.max_duration`, `37/38.seed` | `-10`, the `inputNode` boundary | applied |
+| `37/13.seed`, `37/9.seed` | node 38 `SeedNode` | inert |
+| `37/15.seconds` | node 13 `MiniMaxMusic3TextEncode` | inert |
+
+That table is committed as a test constant. The executed prompt is the subgraph **flattened**
+while this module reads the file **un-flattened**, so what the audit computes is a *model* of the
+flattener; the live table is the only thing that can say the model is still right.
+
+### 22.3 Two traps for whoever walks a subgraph next
+
+**Interior links are objects, top-level links are arrays** (18.5 flagged this; it is worth
+restating as a failure mode). Reading `{"id": 18, "origin_id": 3, ...}` with the positional
+reader's `l.get(0)` finds nothing and yields "unknown source" -- which is classified inert. So the
+naive extension does not crash or fail loudly. **It refuses every MiniMax generation.**
+
+**The boundary id is in the file.** `inputNode.id` is `-10` and `outputNode.id` is `-20` in this
+capture, with every interior node positive. Read it rather than hardcoding it.
+
+Resolution is deliberately **one level**. A nested `A/B/C` is reported unchecked rather than
+truncated to `A/B`, which would answer a question about a different node. That half of 18.5's
+instruction -- report, do not guess -- stands unchanged; what changed is that a subgraph interior
+is no longer something the audit has to guess about.

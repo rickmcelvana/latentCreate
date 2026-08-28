@@ -488,11 +488,17 @@ mod tests {
         }
     }
 
-    /// Protects: the MiniMax profile's subgraph slot addresses parse and fan out
-    /// correctly -- three seeds, two duration fields, and a `caption` (not `tags`)
-    /// input. This is the first profile exercising `A/B.name` addressing.
+    /// Protects: the MiniMax profile's subgraph slot addresses parse, and it
+    /// writes **only** the addresses a live run proved effective. This is the
+    /// first profile exercising `A/B.name` addressing.
+    ///
+    /// It used to fan out -- three seeds and two duration fields. T-309e dropped
+    /// `37/13.seed`, `37/9.seed` and `37/15.seconds` because `GET /history`
+    /// showed all three are driven by interior nodes and ignored
+    /// (MCP-SURFACE 18.5). Exact equality, not `contains`: the whole value of
+    /// this test is that it notices a slot arriving or leaving.
     #[test]
-    fn test_minimax_fixture_uses_subgraph_addresses_and_fan_out() {
+    fn test_minimax_fixture_writes_only_the_effective_subgraph_addresses() {
         let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
 
         let caption = profile.inputs.get("caption").expect("caption input");
@@ -503,23 +509,22 @@ mod tests {
             other => panic!("caption was not Text: {:?}", other),
         }
 
+        // `37/15.seconds` is not here: the text encoder drives it from
+        // `max_duration`, so writing it does nothing.
         let duration = profile.inputs.get("duration_s").expect("duration_s input");
         match duration {
             InputSpec::Float { slots, .. } => {
-                assert_eq!(slots.len(), 2);
-                assert!(slots.contains(&SlotAddress("37/13.max_duration".to_string())));
-                assert!(slots.contains(&SlotAddress("37/15.seconds".to_string())));
+                assert_eq!(slots, &[SlotAddress("37/13.max_duration".to_string())]);
             }
             other => panic!("duration_s was not Float: {:?}", other),
         }
 
+        // `37/13.seed` and `37/9.seed` are not here: `SeedNode` 38 drives both,
+        // and 38 is the one this writes.
         let seed = profile.inputs.get("seed").expect("seed input");
         match seed {
             InputSpec::Seed { slots } => {
-                assert_eq!(slots.len(), 3);
-                assert!(slots.contains(&SlotAddress("37/13.seed".to_string())));
-                assert!(slots.contains(&SlotAddress("37/9.seed".to_string())));
-                assert!(slots.contains(&SlotAddress("37/38.seed".to_string())));
+                assert_eq!(slots, &[SlotAddress("37/38.seed".to_string())]);
             }
             other => panic!("seed was not Seed: {:?}", other),
         }

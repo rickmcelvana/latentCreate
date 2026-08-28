@@ -478,16 +478,33 @@ text being submitted is byte-identical to the approved version's, because a ref 
 v3's words is exactly the provenance error T-311's "reproduces from the sidecar alone" bar
 cannot survive. That closes, cheaply, the gap PROJECT.md deferred to T-311 on 2026-08-27.
 
-### T-309e — trim MiniMax's inert slot addresses  ← proposed, needs a verification run
-`GET /history` on the first live run (MCP-SURFACE 18.5) shows `37/13.seed`, `37/9.seed` and
-`37/15.seconds` are link-fed and therefore inert; the profile writes them anyway. Harmless,
-because the effective `37/38.seed` is also written -- but they are three of the seven
-"could not be checked" warnings a MiniMax user sees on every generation, and a warning that
-fires seven times when four of the seven were fine is a warning that gets ignored.
+### T-309e — the audit could not read a subgraph  — **LANDED 2026-08-28** ([brief](t-309e-brief.md))
+**This entry's own earlier scope was wrong, and correcting it is the task.** It said the three
+inert addresses "are three of the seven 'could not be checked' warnings a MiniMax user sees".
+They are three of **eight**, and the other five are equally unchecked -- because `audit_slots`
+refused any address containing a slash, and **every address MiniMax declares is a subgraph
+interior**. The warning had a 100% false-positive rate and had fired on every generation this
+project has ever run, naming `37/6.unet_name` (no model loads without it) and `37/38.seed` (which
+18.5 proved reaches the sampler). Trimming three would have left five.
 
-Not a doc edit: changing a profile's slot addresses is profile authoring, which this repo only
-does against a live template with a run to confirm it (the 2026-08-23 rule). Scope: drop the
-three, regenerate, and read `/history` again to confirm the seed and duration still land.
+**The two halves cannot ship apart.** `generate.rs` does not warn about an inert address, it
+**refuses the run** -- so teaching the audit to see a subgraph without dropping the three
+link-fed addresses would have stopped MiniMax generating at all. MiniMax was passing that guard
+only because the audit was blind. Sixth instance this phase of *a guard in one layer does not
+bind the layer above it*, and the first where the **blindness** was load-bearing.
+
+No new measurement: 18.5's live `GET /history` table already had the ground truth, and a
+structural read of the committed fixture reproduces it exactly. The `is_inert` rule needed one
+new answer (the subgraph's `inputNode` boundary is a promoted widget, not a driving edge), not a
+new rule. Full evidence in [MCP-SURFACE 22](../docs/MCP-SURFACE.md).
+
+create-core 139 -> 148, src-tauri 69 -> 70. **Nine mutations, nine killed**, control survived.
+Two worth naming. The profile edit is an **absence** -- three addresses that are no longer
+written -- so it needed a test that reads the profile, the same shape as M49 on the cancel task.
+And `test_subgraph_address_is_unchecked` had to be *inverted* rather than updated, which is how a
+rule gets deleted by accident: it was replaced by a test asserting the live table, not the
+implementation. The seam test lives in `src-tauri`, because a clean `audit_slots` is one layer and
+`Submission.unchecked_slots` is what the user reads.
 
 ### T-310 — the queue panel
 Pending / running / progress / failed with error text, cancel, multiple jobs. **Read

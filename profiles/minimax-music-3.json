@@ -36,14 +36,14 @@
     },
     "duration_s": {
       "type": "float",
-      "slots": ["37/13.max_duration", "37/15.seconds"],
+      "slots": ["37/13.max_duration"],
       "min": 10.0,
       "max": 300.0,
       "default": 120.0,
       "step": 1.0,
       "label": "Duration (s)"
     },
-    "seed": { "type": "seed", "slots": ["37/13.seed", "37/9.seed", "37/38.seed"] }
+    "seed": { "type": "seed", "slots": ["37/38.seed"] }
   },
   "lyrics_contract": {
     "format": "structure-tagged",
