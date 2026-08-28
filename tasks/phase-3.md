@@ -511,12 +511,34 @@ unaffected, and both wrote files. The refusal path was the thing to watch -- a M
 with "writes ... to inputs a node drives" would have meant the profile edit had not landed with the
 audit edit -- and it did not fire.
 
-### T-310 — the queue panel
-Pending / running / progress / failed with error text, cancel, multiple jobs. **Read
-`job(action="error")`** — the normalized view added since Phase 1 (16.6) — rather than parsing
-`job(action="status")`. It distinguishes `server_died` (an OOM kill, where `get_logs` still
-reads across the crash) from an ordinary node failure, which is exactly the distinction the
-milestone's kill-ComfyUI-mid-job check exercises.
+### T-310 — the queue panel  — **BRIEFED 2026-08-28** ([brief](t-310-brief.md)), split a/b
+Pending / running / elapsed / failed with error text, cancel, multiple jobs.
+
+⚠ **This entry told the implementer to do the wrong thing, and a live read caught it**
+(MCP-SURFACE §23). It said to read `job(action="error")` rather than parsing
+`job(action="status")`. Measured against three real cancelled jobs, `action="queue"` and
+`action="error"` **swap** on the same job in opposite directions, while `action="status"` answers
+`cancelled` for all three and is stable on repeat calls. Following this entry would have made two
+of three cancels arrive as `error` — reintroducing the §21 defect of reporting the user's own
+cancel back to them as a failure. **The app's current polling surface is correct and T-310 changes
+none of it.** `action="error"` also returns two shapes with mutually exclusive keys, and a
+*cancelled* job comes back `error: null` despite the tool documenting that key as meaning healthy —
+third time in this project an absent key was being read as a value.
+
+**Also settled by the read:** there is no progress data on any surface the app uses
+(`JobProgress` is `{id, status, outputs}`), so the panel shows **elapsed time**, timestamped
+locally at `register` because `submitted_at` exists on only one of comfy-cli's two stores.
+
+**Still unmeasured, and the reason the phase file reached for that surface at all:** every "error"
+in the queue is a cancel, so the `server_died`-versus-node-failure distinction T-314's
+kill-ComfyUI-mid-job check turns on is not settled. It costs about a second of GPU (a workflow
+naming a model file that does not exist fails at the loader) but it is a deliberate write to the
+owner's ComfyUI, so it is his call. **T-310's failure rendering is provisional until then**, and
+labelled so in the code.
+
+The panel today is **32 lines** written incidentally across T-309d and the cancel fix: a raw status
+string, error text, and a Cancel button. A row cannot say *which* job it is, which is why during the
+cancel investigation a frozen row and a live row were indistinguishable on screen.
 
 ### T-311 — output ingestion, library write, provenance sidecar
 `fetch_outputs` on completion, the audio copied into `library/projects/<slug>/tracks/`, and

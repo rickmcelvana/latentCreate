@@ -1662,3 +1662,94 @@ Resolution is deliberately **one level**. A nested `A/B/C` is reported unchecked
 truncated to `A/B`, which would answer a question about a different node. That half of 18.5's
 instruction -- report, do not guess -- stands unchanged; what changed is that a subgraph interior
 is no longer something the audit has to guess about.
+
+## 23. `job(action="error")` measured, and it is not the surface T-310 was told to use -- 2026-08-28
+
+Read against the live install (ComfyUI **v0.34.2**, comfy-cli **1.16.0**) with ten real jobs in
+the queue, three of them cancelled. Read-only: no job was submitted for this.
+
+The phase file's T-310 entry said to read `job(action="error")` -- "the normalized view" -- rather
+than parsing `job(action="status")`. That instruction was written from the tool description at
+phase start. It does not survive measurement.
+
+### 23.1 The three surfaces disagree about the same job
+
+| prompt_id (cancelled) | `action="queue"` | `action="status"` | `action="error"` |
+|---|---|---|---|
+| `488ce569` | `status: "cancelled"`, `error_code: "cancelled"` | `status: "cancelled"` | **`status: "error"`**, `error_code: "cancelled"` |
+| `0e5b3b0c` | **`status: "error"`**, `error_code: "cancelled"` | `status: "cancelled"` | **`status: "cancelled"`**, `error: null` |
+| `63492516` | **`status: "error"`**, `error_code: "cancelled"` | `status: "cancelled"` | **`status: "cancelled"`**, `error: null` |
+
+`queue` and `error` **swap** on the same job, in opposite directions. `status` is the only one of
+the three that answers `"cancelled"` for all three cancelled jobs, and it did so on repeat calls.
+
+**So the app's current reading is correct and the phase file's instruction would have broken it.**
+`mcp_bridge::JobStatus::is_cancelled` compares `status == "cancelled"` against the `action="status"`
+payload, which is the consistent one. Switching to `action="error"` as instructed would have made
+two of these three cancels arrive as `"error"` -- reporting the user's own cancel back to them as a
+failure, which is the exact defect section 21 was written to fix.
+
+### 23.2 `action="error"` returns two shapes, and `error: null` does not mean healthy
+
+The two shapes carry **mutually exclusive keys**:
+
+```jsonc
+// short shape -- no error_code key at all
+{ "prompt_id": "...", "status": "cancelled", "error": null }
+
+// full shape -- no error key at all
+{ "prompt_id": "...", "status": "error", "error_code": "cancelled",
+  "exception_message": "Job was interrupted/cancelled.", "exception_type": null,
+  "node_id": null, "node_type": null, "traceback_tail": [] }
+```
+
+The tool's own documentation says "`error: None` when healthy -- safe to call speculatively."
+**`0e5b3b0c` is a cancelled job that returns `error: null`.** Reading that key as "healthy" is
+therefore wrong, and it is wrong in the silent direction.
+
+This is the same shape as the `stale` field T-308c disproved: **a response whose key is absent on
+one path and null on another, where the absence was being read as a value.** Third time in this
+project. The standing consequence stands: on a two-shape response, discriminate on the shape, never
+on a key's nullness.
+
+### 23.3 Why two shapes -- the backing store differs
+
+`action="status"` on the full-shape job carries `"source": "state_file"`, `submitted_at` and
+`updated_at`. The short-shape jobs carry no `source` and no timestamps. So comfy-cli is answering
+from two different stores with different fidelity, and only one of them retains the error detail.
+
+Which store a job lands in was not established. The full-shape job (`488ce569`) is the one that was
+interrupted **while running**; the two short-shape jobs were cancelled around a queued job starting.
+**Interrupted-while-running versus deleted-while-queued is the likely discriminator and is
+untested** -- it needs two deliberate cancels to confirm, and is worth doing before anything relies
+on the error detail being there.
+
+### 23.4 What is still unmeasured, and it is the case the surface exists for
+
+**Every "error" in this queue is a cancel.** There is no genuine node failure and no `server_died`
+in the data, so nothing here says what `action="error"` reports for an OOM kill versus an ordinary
+node exception -- which is the distinction T-314's kill-ComfyUI-mid-job check turns on, and the only
+reason the phase file reached for this surface in the first place.
+
+Measuring it means submitting a job that fails: a workflow naming a model file that does not exist
+fails at the loader in about a second. That is a deliberate write to the user's ComfyUI and has not
+been done. **T-310's error path should not be treated as verified until it is.**
+
+### 23.5 Progress: there is none on any surface the app uses
+
+`JobProgress` on the wire is `{id, status, outputs}`. The pump polls `action="status"`, whose
+payload carries no progress field either. `action="watch"` is the only surface offering
+`{progress, total, nodes_done}`, the app's pump does not use it, and the tool documents comfy-cli
+1.15.0 as sending no per-step events at all (this install is 1.16.0; unverified either way, since
+measuring it needs a job actually running).
+
+**So a percentage bar cannot be built from what the app reads today.** The queue panel shows
+elapsed time instead, timestamped locally at `register` -- always available, and it does not depend
+on which of the two stores a job lands in. Adopting `action="watch"` is a separate decision that
+needs a measurement during a real run.
+
+### 23.6 Two incidental facts worth having
+
+`action="queue"` carries `queue_position` (null for terminal jobs) -- that is the pending ordering
+the panel needs, and it does not come from the event stream. It also carries `outputs` as a
+**count** where `action="status"` carries the output **list**; T-311 wants the list.
