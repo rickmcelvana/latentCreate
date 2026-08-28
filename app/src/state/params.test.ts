@@ -214,10 +214,9 @@ describe('withChoices', () => {
    * `nodes(action="get")` succeeds while ComfyUI is down -- comfy-cli serves
    * its own `object_info` cache and flags it, which is exactly how the 53-entry
    * LoRA fixture was captured. Treating that as a live read is harmless for key
-   * signatures and not harmless at all for the LoRA picker T-309 puts on the
-   * same path: a cached list offers files the user deleted, and picking one
-   * does not fail -- ComfyUI warns on unmatched keys and finishes, writing a
-   * track with no LoRA on it (MCP-SURFACE 17.6).
+   * signatures and not harmless for the LoRA picker T-309 puts on the same
+   * path, where a cached list silently omits whatever was installed since
+   * ComfyUI last ran (MCP-SURFACE 19.3).
    */
   it('test_a_cached_answer_is_offered_with_a_warning', () => {
     const control = keyscale({ keyscale: loaded(['C major'], true) })

@@ -328,12 +328,13 @@ export type EnumOptions =
  * exactly as they were, so a partial answer fills what it can.
  *
  * **A cached answer is not a good answer.** `nodes(action="get")` succeeds with
- * ComfyUI down -- comfy-cli serves its own `object_info` cache and flags it --
- * so `stale` is tri-state and only an explicit `false` clears the note. `null`
- * means the response did not say, which is not the same as fresh. For key
- * signatures the risk is small; the same path feeds the LoRA picker in T-309,
- * where a cached list offers files the user has deleted and choosing one writes
- * a track with no LoRA rather than failing (MCP-SURFACE 17.6).
+ * ComfyUI down -- comfy-cli serves its own `object_info` cache and flags it. The
+ * backend classifies that into one `cached` flag rather than passing the raw
+ * signals up: a live read carries **neither** the `stale` key nor the warning,
+ * and reading that absence correctly took observing both shapes rather than
+ * assuming one (MCP-SURFACE 19.1). For key signatures a stale list is nearly
+ * harmless; the same path feeds the LoRA picker in T-309, where it is a picker
+ * missing the LoRA the user trained an hour ago (19.3).
  */
 export function withChoices(
   model: PanelModel,

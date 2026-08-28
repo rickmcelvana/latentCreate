@@ -1363,10 +1363,17 @@ missing.
 
 **Why it matters more than it looks.** For key/scale and language a stale list is nearly
 harmless -- that vocabulary rarely changes. The same call is how LoRAs are enumerated (4,
-12.2), and there a cached list offers files the user has deleted and hides the one they trained
-an hour ago. Picking a deleted one **does not fail**: ComfyUI warns about unmatched keys and
-completes, writing a track with no LoRA on it and nothing anywhere saying so (17.6). That is
-17.1's failure mode reached through a cache rather than through a bad splice.
+12.2), and there a cached list is a picker missing the LoRA the user finished training an hour
+ago, with nothing on screen saying anything is absent.
+
+**CORRECTED 2026-08-28 -- the other half of this paragraph was wrong.** It said a cached list
+also *offers files the user has deleted*, and that picking one completes silently with no LoRA
+applied (17.6). Measured rather than assumed: a `lora_name` the live server does not know is
+rejected by `validate_workflow` as `unknown_enum_value`, before any GPU time. 17.6's silent
+no-op is a **different** case -- a `training_state.pt`, which *is* in the live list, validates
+clean, and applies nothing. Both were run; see 19.3. The consequence for the panel is that a
+stale list is a **short** list rather than a wrong one, and its warning should say what is
+missing instead of cautioning about what is shown.
 
 ### 19.2 The profile names a node instance, not a class
 
@@ -1388,3 +1395,36 @@ note that `options` can exceed `i64` and independently confirming why the panel 
 above `Number.MAX_SAFE_INTEGER`. Its `duration` runs to **2000.0** while the ACE-Step profile
 caps `duration_s` at 300 -- the profile is deliberately narrower and is not a mistake to
 correct.
+
+### 19.3 What a wrong `lora_name` actually does -- 2026-08-28
+
+Two spliced copies of the ACE-Step turbo template, each with one `LoraLoaderModelOnly`
+inserted between `UNETLoader` 104 and `ModelSamplingAuraFlow` 78, differing only in the
+`lora_name` widget. ComfyUI running, `validate_workflow` on each:
+
+| `lora_name` | in the live list | `validate_workflow` |
+|---|---|---|
+| a path no longer installed | no | **`valid: false`**, one error, `code: unknown_enum_value`, `field: lora_name`, `node_id: 200`, with the 53 valid options attached |
+| `loragoth/final/training_state.pt` | yes | **`valid: true`**, zero errors, zero warnings |
+
+The two failure modes are not the same failure mode:
+
+- **A path the server does not know is loud, and loud early.** The pipeline's existing
+  `validate_workflow` step (T-306b) catches it before submission, so a LoRA deleted out from
+  under a stale picker produces a rejected job, not a bad track.
+- **A non-adapter that is in the list is silent** (17.6), and validation cannot help, because
+  the value is a legitimate member of the enum. `create-core::loras` excluding those is the
+  only thing standing between the user and a track with no LoRA on it.
+
+This is also the first measured limit on 17.1's blindness. `validate_workflow` does not check
+reachability -- but it does check enum membership on the nodes a splice inserts, which is
+exactly where the LoRA path sits.
+
+**Method note, because it nearly produced a false result.** The first run of this
+measurement tested nothing. A path written `loragoth\final\training_state.pt` inside a
+shell heredoc reaches Python with `\f` read as an escape rather than as a separator plus an
+`f` -- the same artefact that corrupted two prose files earlier in this phase -- so the
+"valid `training_state.pt`" case was really a third nonexistent path, and duly came back
+`unknown_enum_value`. Reading the value echoed back in the error message is what caught it.
+**Backslashes in a LoRA path are the payload here**, so any tooling that touches one has to be
+checked rather than trusted.

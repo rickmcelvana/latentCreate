@@ -351,9 +351,9 @@ mod tests {
     /// `nodes(action="get")` succeeds with ComfyUI down -- comfy-cli answers
     /// from its own cache and flags it. If that flag stops here, the panel
     /// shows a cached list as the installed one. Harmless for key signatures;
-    /// the same path feeds the LoRA picker in T-309, where a cached list offers
-    /// LoRAs the user deleted and picking one writes a track with no LoRA on it
-    /// rather than failing (MCP-SURFACE 17.6).
+    /// the same path feeds the LoRA picker in T-309, where a cached list is
+    /// missing whatever the user has installed since ComfyUI last ran
+    /// (MCP-SURFACE 19.3).
     #[test]
     fn test_a_cached_schema_reaches_the_panel_as_cached() {
         let captured: mcp_bridge::NodeSchema = serde_json::from_str(include_str!(

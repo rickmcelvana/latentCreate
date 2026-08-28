@@ -373,11 +373,31 @@ to `TextEncodeAceStepAudio1.5` first, and only the workflow file holds that hop.
 slot address's field part. Until then the three controls render disabled, saying to start
 ComfyUI -- which must not read like `negative`'s recorded "this model has no such input".
 
-### T-309 — AudioStudio: the LoRA stack panel
+### T-309 — AudioStudio: the LoRA stack panel  — split a/b/c, **T-309a briefed 2026-08-28**
 T-307's output made interactive: up to `max_stack` entries, each a picker plus strength
 slider, reorderable and individually bypassable, **hidden entirely when the profile has no
 `loras` block**. Offer a musical strength range (about 0–2) rather than the node's
 -100…100.
+
+Split the way T-308 was, and for the same reason — the pure half is where the invariants live
+and the JSX half is where the tokens go:
+
+- **T-309a** ([brief](t-309a-brief.md)), architect-direct: `Serialize` on the catalog types, the
+  `lora_panel` command, `state/loras.ts` and its store. Seven invariants, each with a test.
+- **T-309b**, Aider: `<LoraStack>`, `theme.css`, AudioStudio wiring. Its click-through carries
+  the label question T-307 deferred here — the owner looks at the twelve mechanical labels and
+  decides whether cosmetic renaming is wanted.
+- **T-309c**: favourites and user display names. Deferred again on purpose; both are persisted
+  user state keyed on the entry path, so they are a config-schema change, and neither can be
+  designed before the labels question is answered.
+
+**Two live findings while briefing it** (MCP-SURFACE §19.3). The 53-entry list is unchanged and
+a live read again carries neither staleness signal. And a claim written into §19.1 the day
+before was **wrong**: a `lora_name` the server does not know is rejected by `validate_workflow`
+as `unknown_enum_value`, so a deleted LoRA under a stale picker is a rejected job, not a silent
+no-op. 17.6's silence belongs to the *non-adapter* case, which validates clean because it is a
+real member of the enum. A stale list is therefore a **short** list, and the panel's cache note
+says what is missing rather than cautioning about what is shown.
 
 ### T-310 — the queue panel
 Pending / running / progress / failed with error text, cancel, multiple jobs. **Read

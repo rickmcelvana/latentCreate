@@ -118,17 +118,17 @@ pub struct NodeSchema {
     ///
     /// **Tri-state on purpose, like `local_check` (MCP-SURFACE 6).**
     /// `Some(true)` is a schema comfy-cli served from its own `object_info`
-    /// cache because it could not reach the server; `Some(false)` is a live
-    /// read; `None` means the response did not say, which is **not** the same
-    /// as fresh and must never be shown as fresh.
+    /// cache because it could not reach the server. **A live read omits the
+    /// field entirely** -- there is no `Some(false)` in any response yet
+    /// observed -- so absence is evidence of a live read, not an unknown.
+    /// Reading it the other way warned on every healthy install; see
+    /// [`Self::is_cached`] and MCP-SURFACE 19.1.
     ///
     /// This matters because `nodes(action="get")` **succeeds with ComfyUI
     /// down** -- verified 2026-08-28, the whole 53-entry LoRA list came back
     /// from cache with `stale: true`. A caller that ignores this presents a
-    /// cached `lora_name` list as the installed one: LoRAs the user deleted
-    /// are still offered, ones they just added are missing, and picking a
-    /// deleted one does not fail -- ComfyUI warns on unmatched keys and
-    /// completes, writing a track with no LoRA on it (MCP-SURFACE 17.6).
+    /// cached `lora_name` list as the installed one, so the LoRA the user
+    /// finished training an hour ago is simply not offered (MCP-SURFACE 19.3).
     #[serde(default)]
     pub stale: Option<bool>,
     /// Envelope warnings, e.g. `object_info_stale` with the reason.
