@@ -420,7 +420,7 @@ no-op. 17.6's silence belongs to the *non-adapter* case, which validates clean b
 real member of the enum. A stale list is therefore a **short** list, and the panel's cache note
 says what is missing rather than cautioning about what is shown.
 
-### T-309d — Generate: the panel becomes a job  ← **NOT YET WRITTEN, and the phase needs it**
+### T-309d — Generate: the panel becomes a job  — **BRIEFED 2026-08-28** ([brief](t-309d-brief.md))
 
 Found while closing T-309b. **Nothing in the UI can start a generation.** `generate_audio(spec)`
 has had no caller since T-306b, `specInputs` none since T-308a, `specLoras` none since T-309a --
@@ -431,11 +431,25 @@ click-through would have to enqueue work by hand. Assembling the spec and submit
 come first.
 
 Scope: a Generate button on AudioStudio; `GenerationSpec` built from `specInputs(model, values)`
-plus `specLoras(stack)` plus the profile id and the approved `LyricRef`; the `generate_audio`
-bridge call; the button's disabled states (an invalid seed, an unknown profile, ComfyUI not
-connected). Small, and almost entirely wiring -- but it is the first code that can produce a
-wrong track rather than a wrong screen, so the spec assembly is pure and tested and the button
-is not where anything is decided.
+plus `specLoras(stack)` plus the profile id and a `LyricRef`; the `generate_audio` bridge call;
+the button's disabled states. Split a/b in the brief: the spec assembly and store are
+architect-direct, the component is Aider.
+
+**Briefing it found the defect that would have shipped.** `generate_audio` starts the job pump
+itself, and the frontend store learns of a job only through `useJobsStore.run()`, which this
+path does not call -- while `applyJobEvent` correctly ignores events for ids it does not know.
+So Generate would have run a full generation on the GPU with **every progress, done and failed
+event silently discarded**: an empty queue panel, no error, nothing in the log. Fifth instance
+this phase of *a guard in one layer does not bind the layer above it*, and the first where both
+layers are right on their own and wrong together. Part 1 adds `register(id)`.
+
+**Two corrections to this entry's own earlier scope.** ComfyUI-not-connected is **not** a
+blocker: `generate_audio` calls `ensure_connected`, which spawns `comfy-mcp` itself, so
+disabling on `jobs.connected` would leave the button dead on every cold start. And the
+`LyricRef` gets a rule rather than being passed through -- it is attached only when the lyric
+text being submitted is byte-identical to the approved version's, because a ref naming v2 beside
+v3's words is exactly the provenance error T-311's "reproduces from the sidecar alone" bar
+cannot survive. That closes, cheaply, the gap PROJECT.md deferred to T-311 on 2026-08-27.
 
 ### T-310 — the queue panel
 Pending / running / progress / failed with error text, cancel, multiple jobs. **Read
