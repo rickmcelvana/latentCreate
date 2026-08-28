@@ -51,6 +51,7 @@ interface JobsState {
   listening: boolean
   connect: (bin?: string) => Promise<void>
   run: (workflowPath: string) => Promise<string>
+  register: (id: string) => void
   cancel: (id: string) => Promise<void>
   startListening: () => Promise<void>
 }
@@ -71,6 +72,26 @@ export const useJobsStore = create<JobsState>((set, get) => ({
       jobs: { ...state.jobs, [id]: { id, status: 'queued', outputs: [], error: null } },
     }))
     return id
+  },
+
+  /**
+   * Take ownership of a job someone else submitted.
+   *
+   * `generate_audio` submits and starts the pump itself, so nothing goes
+   * through [`run`] on that path -- and [`applyJobEvent`] ignores events for
+   * ids this store does not know, which it must, or a foreign job would invent
+   * an entry. Without this call the two are correct separately and deaf
+   * together: the generation runs to completion on the GPU and every progress,
+   * done and failed event is discarded, leaving an empty queue and no error.
+   *
+   * Registering an id twice keeps the entry that is already there, so a
+   * re-register cannot reset a job that has started reporting.
+   */
+  register: (id) => {
+    if (get().jobs[id] !== undefined) return
+    set((state) => ({
+      jobs: { ...state.jobs, [id]: { id, status: 'queued', outputs: [], error: null } },
+    }))
   },
 
   cancel: async (id) => {

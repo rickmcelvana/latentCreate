@@ -420,7 +420,11 @@ no-op. 17.6's silence belongs to the *non-adapter* case, which validates clean b
 real member of the enum. A stale list is therefore a **short** list, and the panel's cache note
 says what is missing rather than cautioning about what is shown.
 
-### T-309d — Generate: the panel becomes a job  — **BRIEFED 2026-08-28** ([brief](t-309d-brief.md))
+### T-309d — Generate: the panel becomes a job  — **Part 1 LANDED 2026-08-28** ([brief](t-309d-brief.md))
+Part 1 (spec assembly, blockers, submit store, `jobs.register`) is in; Part 2 (`<GenerateBar>`,
+CSS, wiring) is the Aider run. Frontend 206 -> **236 tests**, eleven mutations, eleven killed --
+including the one that reproduces the shipping bug: delete the `register` call and the queue
+never hears about the job.
 
 Found while closing T-309b. **Nothing in the UI can start a generation.** `generate_audio(spec)`
 has had no caller since T-306b, `specInputs` none since T-308a, `specLoras` none since T-309a --

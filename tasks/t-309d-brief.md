@@ -2,7 +2,7 @@
 
 **Two parts in two lanes** (WORKFLOW §1).
 
-**Part 1 — architect-direct, lands before the run.** The spec assembly, the blockers, the
+**Part 1 — architect-direct. LANDED.** (If the executor reports these files missing, Part 1 has not been run yet — it must land first.) The spec assembly, the blockers, the
 submit store, and one addition to the jobs store. Small, and every line of it is a rule about
 what reaches ComfyUI — this is the first task in the phase whose defects are *wrong tracks*
 rather than wrong screens, so none of it goes out to an executor.
@@ -55,7 +55,7 @@ answering, but it is not this button's job to infer that.
 
 ---
 
-## Part 1 — what to land
+## Part 1 — what landed
 
 ### `app/src/bridge/generate.ts`
 
@@ -203,7 +203,8 @@ because a user who cannot tell it is disabled reads a broken app.
 
 ## Acceptance criteria
 
-1. `npm run gate` green, and the test count does not change from what Part 1 leaves it at.
+1. `npm run gate` green, and **the test count does not change: 236**. Part 2 adds no testable
+   logic; adding a test means something went in the wrong file.
 2. `oxlint` adds no warnings.
 3. Every new `className` has a rule in `theme.css`.
 4. No `invoke` or `listen` outside `app/src/bridge/`.
