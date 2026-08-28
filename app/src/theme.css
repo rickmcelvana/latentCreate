@@ -236,6 +236,10 @@ body {
   color: var(--danger);
 }
 
+.job-item-cancelled .job-status {
+  color: var(--text-muted);
+}
+
 .job-error {
   color: var(--danger);
   font-size: 12px;

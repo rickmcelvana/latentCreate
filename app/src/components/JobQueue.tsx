@@ -16,7 +16,8 @@ export function JobQueue() {
 }
 
 function JobItem({ job, onCancel }: { job: Job; onCancel: (id: string) => void }) {
-  const running = job.status !== 'completed' && job.status !== 'failed'
+  const running =
+    job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled'
   return (
     <li className={`job-item job-item-${job.status}`}>
       <span className="job-status">{job.status}</span>

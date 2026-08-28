@@ -69,10 +69,26 @@ pub struct JobStatus {
 impl JobStatus {
     /// Whether the job has reached a terminal state and no more polling is needed.
     ///
-    /// `"completed"` is verified; `"error"`/`"failed"` are inferred from
-    /// ComfyUI's own status vocabulary and are the likely failure strings.
+    /// `"completed"` and **`"cancelled"`** are verified live; `"error"` and
+    /// `"failed"` are still inferred from ComfyUI's status vocabulary.
+    ///
+    /// `"cancelled"` was missing until 2026-08-28, and its absence is what made
+    /// a cancelled job poll for ever: comfy-cli reports
+    /// `status: "cancelled", error.code: "cancelled"` six seconds after the
+    /// button is pressed, and this said "keep going" to it (MCP-SURFACE 21).
     pub fn is_terminal(&self) -> bool {
-        matches!(self.status.as_str(), "completed" | "error" | "failed")
+        matches!(
+            self.status.as_str(),
+            "completed" | "cancelled" | "error" | "failed"
+        )
+    }
+
+    /// Whether the job stopped because somebody stopped it.
+    ///
+    /// Not a failure: nothing went wrong, and a queue row that says "failed"
+    /// with an error would misreport the user's own decision.
+    pub fn is_cancelled(&self) -> bool {
+        self.status == "cancelled"
     }
 
     /// Whether the job finished successfully.
@@ -169,6 +185,47 @@ impl LocalComfy {
 
 #[cfg(test)]
 mod tests {
+
+    /// Protects: a cancelled job is terminal.
+    ///
+    /// Verified live 2026-08-28: comfy-cli reports `status: "cancelled"` with
+    /// `error.code: "cancelled"` six seconds after the button is pressed. This
+    /// list did not include it, so the pump polled a stopped job for ever and
+    /// its row never left "running" -- which read, beside a job that started
+    /// afterwards, as two generations at once (MCP-SURFACE 21).
+    #[test]
+    fn test_a_cancelled_job_is_terminal_and_not_a_failure() {
+        let cancelled: JobStatus = serde_json::from_value(json!({
+            "prompt_id": "p-1",
+            "status": "cancelled",
+            "outputs": [],
+            "error": { "code": "cancelled", "message": "Job was interrupted/cancelled." }
+        }))
+        .expect("the captured shape decodes");
+
+        assert!(cancelled.is_terminal(), "the pump must stop polling it");
+        assert!(cancelled.is_cancelled());
+        assert!(!cancelled.is_success(), "no outputs were produced");
+    }
+
+    /// Protects: the other terminal states did not change meaning.
+    #[test]
+    fn test_running_is_not_terminal_and_completed_is_not_cancelled() {
+        let running: JobStatus = serde_json::from_value(json!({
+            "prompt_id": "p-1", "status": "running", "outputs": []
+        }))
+        .unwrap();
+        let done: JobStatus = serde_json::from_value(json!({
+            "prompt_id": "p-1", "status": "completed", "outputs": ["a.flac"]
+        }))
+        .unwrap();
+
+        assert!(!running.is_terminal());
+        assert!(!running.is_cancelled());
+        assert!(done.is_terminal());
+        assert!(!done.is_cancelled());
+        assert!(done.is_success());
+    }
     use std::collections::BTreeMap;
 
     use serde_json::json;

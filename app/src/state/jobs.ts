@@ -37,6 +37,10 @@ export function applyJobEvent(jobs: Record<string, Job>, event: JobEvent): Recor
         ...jobs,
         [event.payload.id]: { ...job, status: 'completed', outputs: event.payload.outputs },
       }
+    case 'cancelled':
+      // Not `failed`: nothing went wrong, and an error string here would
+      // report the user's own decision back to them as a fault.
+      return { ...jobs, [event.payload.id]: { ...job, status: 'cancelled' } }
     case 'failed':
       return {
         ...jobs,
@@ -94,6 +98,15 @@ export const useJobsStore = create<JobsState>((set, get) => ({
     }))
   },
 
+  /**
+   * Ask ComfyUI to stop a job.
+   *
+   * The row is **not** touched here. The pump sees the cancellation on its next
+   * poll and emits `job://cancelled`, which is what settles the row -- and if
+   * the cancel does not take, the pump keeps reporting the job that is still
+   * running, which is the truth. Marking it cancelled optimistically would put
+   * the lie back in a different place.
+   */
   cancel: async (id) => {
     await cancelJob(id)
   },

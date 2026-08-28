@@ -20,10 +20,29 @@ export interface JobFailed {
   error: string
 }
 
+/** Mirrors Rust `JobCancelled`: stopped on purpose, not a failure. */
+export interface JobCancelled {
+  id: string
+}
+
+/**
+ * What `job(action="cancel")` managed. Mirrors Rust `mcp_bridge::JobCancel`.
+ *
+ * Reported rather than discarded: a cancel that found nothing and a cancel that
+ * stopped a run used to be indistinguishable, because the command returned
+ * `Ok(())` either way.
+ */
+export interface JobCancel {
+  found: boolean
+  queue_delete_ok: boolean
+  interrupt_ok: boolean
+}
+
 /** One event from the job pump, tagged so the store can switch on it. */
 export type JobEvent =
   | { kind: 'progress'; payload: JobProgress }
   | { kind: 'done'; payload: JobDone }
+  | { kind: 'cancelled'; payload: JobCancelled }
   | { kind: 'failed'; payload: JobFailed }
 
 /** True when running inside the Tauri webview rather than a plain browser. */
@@ -41,9 +60,14 @@ export async function runWorkflow(workflowPath: string): Promise<string> {
   return await invoke<string>('run_workflow', { workflowPath })
 }
 
-/** Cancel a running job. */
-export async function cancelJob(id: string): Promise<void> {
-  await invoke('cancel_job', { id })
+/**
+ * Ask ComfyUI to stop a job.
+ *
+ * The job's own `job://cancelled` event is what settles its row -- this only
+ * reports what the cancel call itself managed.
+ */
+export async function cancelJob(id: string): Promise<JobCancel> {
+  return await invoke<JobCancel>('cancel_job', { id })
 }
 
 /**
@@ -57,12 +81,16 @@ export async function subscribeJobs(onEvent: (event: JobEvent) => void): Promise
   const undone = await listen<JobDone>('job://done', (event) => {
     onEvent({ kind: 'done', payload: event.payload })
   })
+  const uncancelled = await listen<JobCancelled>('job://cancelled', (event) => {
+    onEvent({ kind: 'cancelled', payload: event.payload })
+  })
   const unfailed = await listen<JobFailed>('job://failed', (event) => {
     onEvent({ kind: 'failed', payload: event.payload })
   })
   return () => {
     unprogress()
     undone()
+    uncancelled()
     unfailed()
   }
 }

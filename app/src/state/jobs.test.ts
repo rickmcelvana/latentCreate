@@ -97,4 +97,28 @@ describe('jobs store', () => {
     })
     expect(result).toBe(initial)
   })
+
+  /**
+   * Protects: a cancelled job settles, rather than sitting on "running".
+   *
+   * This is the defect a producer found by pressing the button. `cancel_job`
+   * aborted the monitor task, which was the only thing that could report the
+   * outcome, and `is_terminal` did not know the word "cancelled" either -- so
+   * the row froze on "running" for ever while ComfyUI had in fact stopped
+   * within six seconds. Beside the next job, which ran normally, that read as
+   * two generations at once (MCP-SURFACE 21).
+   */
+  it('test_a_cancelled_event_settles_the_row', () => {
+    const jobs = { 'p-1': { id: 'p-1', status: 'running', outputs: [], error: null } }
+
+    const after = applyJobEvent(jobs, { kind: 'cancelled', payload: { id: 'p-1' } })
+
+    expect(after['p-1'].status).toBe('cancelled')
+    expect(after['p-1'].error).toBeNull()
+  })
+
+  /** Protects: a cancellation for a job this store never started is ignored. */
+  it('test_a_cancelled_event_for_an_unknown_job_changes_nothing', () => {
+    expect(applyJobEvent({}, { kind: 'cancelled', payload: { id: 'someone-else' } })).toEqual({})
+  })
 })

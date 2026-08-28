@@ -15,10 +15,15 @@ beforeEach(() => {
 })
 
 describe('bridge/jobs', () => {
-  it('test_subscribe_jobs_registers_the_three_event_names', async () => {
+  it('test_subscribe_jobs_registers_every_event_name', async () => {
     await subscribeJobs(() => {})
     const names = mockListen.mock.calls.map((call) => call[0] as string)
-    expect(names).toEqual(['job://progress', 'job://done', 'job://failed'])
+    expect(names).toEqual([
+      'job://progress',
+      'job://done',
+      'job://cancelled',
+      'job://failed',
+    ])
   })
 
   it('test_subscribe_jobs_dispatches_tagged_events', async () => {
@@ -28,11 +33,13 @@ describe('bridge/jobs', () => {
     const handlers = mockListen.mock.calls.map((call) => call[1])
     handlers[0]!({ payload: { id: 'a', status: 'running', outputs: [] } })
     handlers[1]!({ payload: { id: 'a', outputs: ['x.mp3'] } })
-    handlers[2]!({ payload: { id: 'a', error: 'boom' } })
+    handlers[2]!({ payload: { id: 'a' } })
+    handlers[3]!({ payload: { id: 'a', error: 'boom' } })
 
     expect(received).toEqual([
       { kind: 'progress', payload: { id: 'a', status: 'running', outputs: [] } },
       { kind: 'done', payload: { id: 'a', outputs: ['x.mp3'] } },
+      { kind: 'cancelled', payload: { id: 'a' } },
       { kind: 'failed', payload: { id: 'a', error: 'boom' } },
     ])
   })

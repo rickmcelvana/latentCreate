@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use mcp_bridge::{ComfyError, JobStatus, LocalComfy, SessionLog};
+use mcp_bridge::{ComfyError, JobCancel, JobStatus, LocalComfy, SessionLog};
 use serde::Serialize;
 use tauri::{async_runtime, AppHandle, Emitter, State};
 use tokio::sync::RwLock;
@@ -59,6 +59,15 @@ impl ComfyState {
         let comfy = Arc::new(comfy);
         *self.comfy.write().await = Some(Arc::clone(&comfy));
         comfy
+    }
+
+    /// How many pumps are running.
+    ///
+    /// Exists so a test can pin that cancelling does **not** retire one; a pump
+    /// is retired by itself, on reaching a terminal status.
+    #[cfg(test)]
+    pub(crate) fn pump_count(&self) -> usize {
+        self.jobs.lock().expect("jobs lock poisoned").len()
     }
 
     /// Start the lifecycle pump for a job ComfyUI has already accepted.
@@ -117,21 +126,42 @@ pub async fn run_workflow(
     Ok(id)
 }
 
-/// Cancel a running job and stop its pump.
+/// Ask ComfyUI to stop a job, and report what it actually managed.
+///
+/// **The pump is deliberately left running.** Aborting it here is what made
+/// cancel look broken: comfy-cli stops the job within seconds and reports
+/// `status: "cancelled"`, but killing the monitor removed the only thing that
+/// could ever say so, leaving the row stuck on "running" for ever. The next
+/// job then ran normally beside a stale row, which reads exactly like two
+/// generations at once (MCP-SURFACE 21).
+///
+/// The pump observes the cancellation on its next poll, emits
+/// `job://cancelled`, and retires itself -- and if the cancel did **not** take,
+/// it keeps reporting the job that is still running, which is the truth.
 #[tauri::command]
-pub async fn cancel_job(state: State<'_, ComfyState>, id: String) -> Result<(), String> {
+pub async fn cancel_job(state: State<'_, ComfyState>, id: String) -> Result<JobCancel, String> {
+    cancel_on(&state, &id).await
+}
+
+/// The body of [`cancel_job`], taking the state directly so a test can hold one.
+///
+/// Split out for exactly one reason: the rule that matters here is that this
+/// function **does not** retire the job's pump, and an absence of code is not
+/// something a test can reach through a `tauri::State`.
+async fn cancel_on(state: &ComfyState, id: &str) -> Result<JobCancel, String> {
     let comfy = state
         .comfy
         .read()
         .await
         .clone()
         .ok_or_else(|| "comfy is not connected".to_string())?;
-    comfy.cancel_job(&id).await.map_err(|e| e.to_string())?;
+    comfy.cancel_job(id).await.map_err(|e| e.to_string())
+}
 
-    if let Some(abort) = state.jobs.lock().expect("jobs lock poisoned").remove(&id) {
-        abort.abort();
-    }
-    Ok(())
+/// `job://cancelled` payload: the job stopped because somebody stopped it.
+#[derive(Debug, Clone, Serialize)]
+pub struct JobCancelled {
+    pub id: String,
 }
 
 /// Poll a job until terminal, emitting progress for each non-terminal status.
@@ -170,6 +200,9 @@ async fn monitor_job(
                     outputs,
                 },
             );
+        }
+        TerminalOutcome::Cancelled => {
+            let _ = app.emit("job://cancelled", JobCancelled { id: id.clone() });
         }
         TerminalOutcome::Failed { error } => {
             let _ = app.emit(
@@ -217,8 +250,16 @@ where
 /// The terminal event a finished poll sequence produces.
 #[derive(Debug, PartialEq)]
 enum TerminalOutcome {
-    Done { outputs: Vec<String> },
-    Failed { error: String },
+    Done {
+        outputs: Vec<String>,
+    },
+    /// Stopped on purpose. Distinct from `Failed` because nothing went wrong,
+    /// and a row reading "failed" with an error text would misreport the
+    /// user's own decision back to them.
+    Cancelled,
+    Failed {
+        error: String,
+    },
 }
 
 fn terminal_outcome(result: &Result<JobStatus, ComfyError>) -> TerminalOutcome {
@@ -226,6 +267,7 @@ fn terminal_outcome(result: &Result<JobStatus, ComfyError>) -> TerminalOutcome {
         Ok(status) if status.is_success() => TerminalOutcome::Done {
             outputs: status.outputs.clone(),
         },
+        Ok(status) if status.is_cancelled() => TerminalOutcome::Cancelled,
         Ok(status) => TerminalOutcome::Failed {
             error: failure_reason(status),
         },
@@ -248,6 +290,113 @@ fn failure_reason(status: &JobStatus) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// Protects: cancelling leaves the job's pump running.
+    ///
+    /// This is the defect a producer found by pressing the button, and the one
+    /// that made cancel look completely broken. comfy-cli stops the job within
+    /// seconds and reports `status: "cancelled"` -- but this command used to
+    /// abort the monitor task, which was **the only thing that could ever say
+    /// so**. The row froze on "running" for ever, and the next job ran normally
+    /// beside it, which reads as two generations at once (MCP-SURFACE 21).
+    ///
+    /// The pump retires itself on a terminal status. Nothing else may retire
+    /// it, because nothing else knows whether the cancel actually took.
+    #[tokio::test]
+    async fn test_cancelling_does_not_retire_the_pump() {
+        use mcp_bridge::mock::Reply;
+        use mcp_bridge::test_helpers::client_and_log;
+
+        let (comfy, _calls) = client_and_log(vec![Reply::Json(serde_json::json!({
+            "found": true,
+            "queue_delete_ok": true,
+            "interrupt_ok": true
+        }))])
+        .await;
+
+        let state = ComfyState::default();
+        state.store(comfy).await;
+        let handle = async_runtime::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        });
+        state
+            .jobs
+            .lock()
+            .expect("jobs lock poisoned")
+            .insert("p-1".to_string(), handle.inner().abort_handle());
+        assert_eq!(state.pump_count(), 1);
+
+        let cancelled = cancel_on(&state, "p-1").await.expect("the call succeeds");
+
+        assert!(cancelled.interrupt_ok);
+        assert_eq!(
+            state.pump_count(),
+            1,
+            "the pump must survive to report the cancellation"
+        );
+        assert!(
+            !handle.inner().is_finished(),
+            "the monitor task must not have been aborted"
+        );
+    }
+
+    /// Protects: the three booleans reach the caller instead of being dropped.
+    ///
+    /// The command used to return `Ok(())` whatever came back, so a cancel that
+    /// found nothing was indistinguishable from one that stopped a run.
+    #[tokio::test]
+    async fn test_a_cancel_that_found_nothing_says_so() {
+        use mcp_bridge::mock::Reply;
+        use mcp_bridge::test_helpers::client_and_log;
+
+        let (comfy, _calls) = client_and_log(vec![Reply::Json(serde_json::json!({
+            "found": false,
+            "queue_delete_ok": false,
+            "interrupt_ok": false
+        }))])
+        .await;
+        let state = ComfyState::default();
+        state.store(comfy).await;
+
+        let cancelled = cancel_on(&state, "gone").await.expect("the call succeeds");
+
+        assert!(!cancelled.found);
+        assert!(!cancelled.interrupt_ok);
+    }
+
+    /// Protects: a cancelled poll result becomes a cancellation, not a failure.
+    ///
+    /// The queue row is the only place a user learns what happened, and
+    /// "failed" beside an error string reports their own decision back to them
+    /// as a fault.
+    #[test]
+    fn test_a_cancelled_status_is_its_own_outcome() {
+        let cancelled: JobStatus = serde_json::from_value(serde_json::json!({
+            "prompt_id": "p-1",
+            "status": "cancelled",
+            "outputs": [],
+            "error": { "code": "cancelled", "message": "Job was interrupted/cancelled." }
+        }))
+        .expect("decodes");
+
+        assert_eq!(terminal_outcome(&Ok(cancelled)), TerminalOutcome::Cancelled);
+    }
+
+    /// Protects: a real failure is still a failure, carrying its reason.
+    #[test]
+    fn test_a_failed_status_still_carries_its_error() {
+        let failed: JobStatus = serde_json::from_value(serde_json::json!({
+            "prompt_id": "p-1", "status": "failed", "outputs": [], "error": "node blew up"
+        }))
+        .expect("decodes");
+
+        assert_eq!(
+            terminal_outcome(&Ok(failed)),
+            TerminalOutcome::Failed {
+                error: "node blew up".to_string()
+            }
+        );
+    }
     use super::*;
     use serde_json::json;
 

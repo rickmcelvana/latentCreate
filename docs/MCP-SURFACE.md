@@ -1536,3 +1536,45 @@ sends an emptied text box **as empty** rather than skipping it. Enums and number
 unset, because a `from_node_choices` enum holds `''` until ComfyUI answers and sending that is an
 `unknown_enum_value` rejection. Lyrics get no prefill: words the app put in the user's mouth are
 the one thing this project has refused since the prompt-optimizer decision.
+
+## 21. Cancel -- what it does, and what the app was doing with it
+
+Found by a producer pressing the button, 2026-08-28: cancel appeared to do nothing, the track
+appeared to keep generating, and a job started afterwards appeared to run *beside* it. The app
+had to be closed and ComfyUI restarted.
+
+**ComfyUI was fine.** Reading `job(action="queue")` and `job(action="status")` afterwards:
+
+```json
+{ "status": "cancelled", "outputs": [],
+  "error": { "code": "cancelled", "message": "Job was interrupted/cancelled." },
+  "submitted_at": "...11:27:58Z", "updated_at": "...11:28:04Z" }
+```
+
+**Six seconds from submit to cancelled, zero outputs.** The GPU stopped. Every appearance to the
+contrary was the app's own queue panel.
+
+Three defects, any one of which produces that appearance:
+
+1. **`cancel_job` aborted the job's monitor task** -- the only thing that could ever report the
+   outcome. The row froze on its last status for ever. The next job then ran normally beside a
+   stale row, which is exactly what "two songs generating at once" looks like.
+2. **`JobStatus::is_terminal` did not know the word `"cancelled"`.** Its own doc comment admitted
+   the list was inferred rather than observed: `"completed"` was verified, `"error"` and
+   `"failed"` were guesses at ComfyUI's vocabulary. So even with the pump alive, it would have
+   polled a stopped job for ever.
+3. **The three `JobCancel` booleans were discarded** and the command returned `Ok(())` regardless,
+   so a cancel that found nothing looked identical to one that stopped a run.
+
+**Fixed.** `cancelled` is terminal and is its own outcome rather than a failure -- nothing went
+wrong, and a row reading "failed" reports the user's own decision back to them as a fault. A new
+`job://cancelled` event settles the row. `cancel_job` **leaves the pump running**: it observes
+the cancellation on its next poll, emits, and retires itself -- and if the cancel does *not*
+take, it keeps reporting the job that is still running, which is the truth. The booleans are
+returned.
+
+**The lesson worth keeping.** Every one of these is a *reporting* failure on top of a backend
+that behaved correctly, which is why the click-through found what four suites could not: the
+tests all asserted what the app computed, and the defect was in what it stopped computing. Note
+also that the retention rule -- that cancelling must not retire the pump -- is an **absence of
+code**, and needed `cancel_job` split from its own body before any test could reach it.
