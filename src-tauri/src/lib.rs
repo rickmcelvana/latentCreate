@@ -12,6 +12,7 @@ mod generate;
 mod install;
 mod jobs;
 mod llm;
+mod loras;
 mod lyricdoc;
 mod lyrics;
 mod models;
@@ -66,6 +67,7 @@ pub fn run() {
             profile::profile_guide,
             profile::profile_inputs,
             profile::enum_choices,
+            loras::lora_panel,
             install::models_install,
             install::models_progress,
             jobs::connect_comfy,

@@ -373,7 +373,7 @@ to `TextEncodeAceStepAudio1.5` first, and only the workflow file holds that hop.
 slot address's field part. Until then the three controls render disabled, saying to start
 ComfyUI -- which must not read like `negative`'s recorded "this model has no such input".
 
-### T-309 — AudioStudio: the LoRA stack panel  — split a/b/c, **T-309a briefed 2026-08-28**
+### T-309 — AudioStudio: the LoRA stack panel  — split a/b/c, **T-309a LANDED 2026-08-28**
 T-307's output made interactive: up to `max_stack` entries, each a picker plus strength
 slider, reorderable and individually bypassable, **hidden entirely when the profile has no
 `loras` block**. Offer a musical strength range (about 0–2) rather than the node's
@@ -384,6 +384,14 @@ and the JSX half is where the tokens go:
 
 - **T-309a** ([brief](t-309a-brief.md)), architect-direct: `Serialize` on the catalog types, the
   `lora_panel` command, `state/loras.ts` and its store. Seven invariants, each with a test.
+  **LANDED**: create-core 137 -> 138, app 58 -> 65, frontend 162 -> 195. Sixteen mutations,
+  sixteen killed -- but only after two of them exposed vacuous assertions of exactly the kind
+  T-307 warned about. ACE-Step's default strength is `1.0` and its range is `0.0..=2.0`, so
+  `strength: panel.strength.default` and `strength: 1`, and clamping to the range versus
+  clamping to a literal `0..2`, were **indistinguishable** on the only profile in the fixture.
+  Both now run against a second profile with different numbers. The Rust half had the same hole
+  one level up: `lora_panel` reads `loras.strength` with the node's own `-100..=100` in scope at
+  the same call site, and nothing tested the choice -- `panel_for` was extracted so it could be.
 - **T-309b**, Aider: `<LoraStack>`, `theme.css`, AudioStudio wiring. Its click-through carries
   the label question T-307 deferred here — the owner looks at the twelve mechanical labels and
   decides whether cosmetic renaming is wanted.

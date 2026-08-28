@@ -27,6 +27,8 @@
 
 use std::collections::BTreeSet;
 
+use serde::Serialize;
+
 /// Extensions a loadable adapter has.
 ///
 /// ComfyUI lists everything in `models/loras` with a recognised torch
@@ -46,7 +48,12 @@ const FINAL_SEGMENT: &str = "final";
 const ADAPTER_SEGMENT: &str = "adapter";
 
 /// One selectable adapter.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Serialize` because the LoRA panel renders this directly: it is a computed
+/// value with one consumer, so a view type in `src-tauri` would be a
+/// field-for-field copy free to drift from it -- the same reasoning
+/// `profile_inputs` follows for the profile's own shape.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LoraEntry {
     /// The choice verbatim, separators included -- what the loader is given.
     pub path: String,
@@ -59,7 +66,7 @@ pub struct LoraEntry {
 }
 
 /// Adapters sharing a top-level directory.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LoraGroup {
     /// The first path segment, in the spelling seen first.
     ///
@@ -74,7 +81,8 @@ pub struct LoraGroup {
 }
 
 /// Why a choice did not become an entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExclusionReason {
     /// Not a loadable adapter -- a training state, an optimiser dump.
     ///
@@ -90,14 +98,14 @@ pub enum ExclusionReason {
 }
 
 /// A choice that did not become an entry, and why.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Excluded {
     pub path: String,
     pub reason: ExclusionReason,
 }
 
 /// The installed LoRAs, grouped and filtered for a picker.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct LoraCatalog {
     /// Named groups first, alphabetically; loose files last.
     pub groups: Vec<LoraGroup>,
@@ -326,6 +334,31 @@ mod tests {
             "this fixture must keep announcing that it is constructed"
         );
         choices(fixture.get("choices").expect("choices"))
+    }
+
+    /// Protects: the frontend's fixture is this function's own output.
+    ///
+    /// `app/src/state/loras.test.ts` cannot call Rust, so it reads a committed
+    /// JSON catalog. Hand-writing that file is the trap this repo has hit
+    /// twice: a fixture written to agree with the code agrees with the code.
+    /// It is generated from the real 53-entry capture instead -- and nothing
+    /// generates one language's fixture from the other's output, so without
+    /// this test the two drift silently, which is the same gap
+    /// `profile_inputs`' wire-shape tests exist to close.
+    ///
+    /// Underscore-prefixed keys are the fixture's own provenance and are not
+    /// part of the shape.
+    #[test]
+    fn test_the_committed_catalog_fixture_matches_the_catalog() {
+        let mut fixture = read_fixture("lora_catalog.ace-step.json");
+        let object = fixture.as_object_mut().expect("a JSON object");
+        object.retain(|key, _| !key.starts_with('_'));
+
+        assert_eq!(
+            fixture,
+            serde_json::to_value(catalog(&installed())).unwrap(),
+            "regenerate testdata/mcp/lora_catalog.ace-step.json from catalog()"
+        );
     }
 
     /// Protects: the headline. 53 raw choices become 12 pickable entries.

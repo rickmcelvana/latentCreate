@@ -1,0 +1,321 @@
+{
+  "_derived_from": "nodes.LoraLoaderModelOnly.json",
+  "_why": "Generated from create_core::loras::catalog() over the verbatim 53-entry capture next door, so the frontend tests run against the same real install the Rust tests do. Not hand-written: a fixture written to agree with the code agrees with the code. create-core's test_the_committed_catalog_fixture_matches_the_catalog re-derives this and fails if the two drift, because nothing else generates one language's fixture from the other's output.",
+  "groups": [
+    {
+      "name": "ACE-Step-v1.5-acoustic-guitar-and-a-merge-LoRA",
+      "primary": [
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "ACE-Step-v1.5-acoustic-guitar-and-a-merge-LoRA",
+          "path": "ACE-Step-v1.5-acoustic-guitar-and-a-merge-LoRA\\adapter_model.safetensors"
+        },
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "vocal_instrument_merge",
+          "path": "ACE-Step-v1.5-acoustic-guitar-and-a-merge-LoRA\\vocal_instrument_merge_adapter_model.safetensors"
+        }
+      ],
+      "superseded": []
+    },
+    {
+      "name": "ACE-Step-v1.5-ambient_dream1-LoRA",
+      "primary": [
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "ACE-Step-v1.5-ambient_dream1-LoRA",
+          "path": "ACE-Step-v1.5-ambient_dream1-LoRA\\adapter_model.safetensors"
+        }
+      ],
+      "superseded": []
+    },
+    {
+      "name": "ACE-Step-v1.5-chinese-new-year-LoRA",
+      "primary": [
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "ACE-Step-v1.5-chinese-new-year-LoRA",
+          "path": "ACE-Step-v1.5-chinese-new-year-LoRA\\adapter_model.safetensors"
+        }
+      ],
+      "superseded": []
+    },
+    {
+      "name": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs",
+      "primary": [
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs",
+          "path": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\adapter_model.safetensors"
+        },
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "instrumental",
+          "path": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\instrumental_adapter_model.safetensors"
+        },
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "male_vocals",
+          "path": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\male_vocals_adapter_model.safetensors"
+        },
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "voc_06_inst_14",
+          "path": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\voc_06_inst_14___adapter_model.safetensors"
+        },
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "voc_14_inst_06",
+          "path": "ACE-Step-v1.5-raspy-vocal-and-instrumental-5-LoRAs\\voc_14_inst_06___adapter_model.safetensors"
+        }
+      ],
+      "superseded": []
+    },
+    {
+      "name": "loragoth",
+      "primary": [
+        {
+          "epoch": null,
+          "is_final": true,
+          "label": "final",
+          "path": "loragoth\\final\\adapter\\adapter_model.safetensors"
+        }
+      ],
+      "superseded": [
+        {
+          "epoch": 300,
+          "is_final": false,
+          "label": "checkpoint-epoch-300",
+          "path": "loragoth\\checkpoint-epoch-300\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 285,
+          "is_final": false,
+          "label": "checkpoint-epoch-285",
+          "path": "loragoth\\checkpoint-epoch-285\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 270,
+          "is_final": false,
+          "label": "checkpoint-epoch-270",
+          "path": "loragoth\\checkpoint-epoch-270\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 255,
+          "is_final": false,
+          "label": "checkpoint-epoch-255",
+          "path": "loragoth\\checkpoint-epoch-255\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 240,
+          "is_final": false,
+          "label": "checkpoint-epoch-240",
+          "path": "loragoth\\checkpoint-epoch-240\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 225,
+          "is_final": false,
+          "label": "checkpoint-epoch-225",
+          "path": "loragoth\\checkpoint-epoch-225\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 210,
+          "is_final": false,
+          "label": "checkpoint-epoch-210",
+          "path": "loragoth\\checkpoint-epoch-210\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 195,
+          "is_final": false,
+          "label": "checkpoint-epoch-195",
+          "path": "loragoth\\checkpoint-epoch-195\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 180,
+          "is_final": false,
+          "label": "checkpoint-epoch-180",
+          "path": "loragoth\\checkpoint-epoch-180\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 165,
+          "is_final": false,
+          "label": "checkpoint-epoch-165",
+          "path": "loragoth\\checkpoint-epoch-165\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 150,
+          "is_final": false,
+          "label": "checkpoint-epoch-150",
+          "path": "loragoth\\checkpoint-epoch-150\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 135,
+          "is_final": false,
+          "label": "checkpoint-epoch-135",
+          "path": "loragoth\\checkpoint-epoch-135\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 120,
+          "is_final": false,
+          "label": "checkpoint-epoch-120",
+          "path": "loragoth\\checkpoint-epoch-120\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 105,
+          "is_final": false,
+          "label": "checkpoint-epoch-105",
+          "path": "loragoth\\checkpoint-epoch-105\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 90,
+          "is_final": false,
+          "label": "checkpoint-epoch-90",
+          "path": "loragoth\\checkpoint-epoch-90\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 75,
+          "is_final": false,
+          "label": "checkpoint-epoch-75",
+          "path": "loragoth\\checkpoint-epoch-75\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 60,
+          "is_final": false,
+          "label": "checkpoint-epoch-60",
+          "path": "loragoth\\checkpoint-epoch-60\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 45,
+          "is_final": false,
+          "label": "checkpoint-epoch-45",
+          "path": "loragoth\\checkpoint-epoch-45\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 30,
+          "is_final": false,
+          "label": "checkpoint-epoch-30",
+          "path": "loragoth\\checkpoint-epoch-30\\adapter\\adapter_model.safetensors"
+        },
+        {
+          "epoch": 15,
+          "is_final": false,
+          "label": "checkpoint-epoch-15",
+          "path": "loragoth\\checkpoint-epoch-15\\adapter\\adapter_model.safetensors"
+        }
+      ]
+    },
+    {
+      "name": "",
+      "primary": [
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16",
+          "path": "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors"
+        },
+        {
+          "epoch": null,
+          "is_final": false,
+          "label": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16",
+          "path": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+        }
+      ],
+      "superseded": []
+    }
+  ],
+  "excluded": [
+    {
+      "path": "loragoth\\checkpoint-epoch-105\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-120\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-135\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-150\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-15\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-165\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-180\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-195\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-210\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-225\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-240\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-255\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-270\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-285\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-300\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-30\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-45\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-60\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-75\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\checkpoint-epoch-90\\training_state.pt",
+      "reason": "not_an_adapter"
+    },
+    {
+      "path": "loragoth\\final\\training_state.pt",
+      "reason": "not_an_adapter"
+    }
+  ]
+}
