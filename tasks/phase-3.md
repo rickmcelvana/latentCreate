@@ -420,7 +420,7 @@ no-op. 17.6's silence belongs to the *non-adapter* case, which validates clean b
 real member of the enum. A stale list is therefore a **short** list, and the panel's cache note
 says what is missing rather than cautioning about what is shown.
 
-### T-309d — Generate: the panel becomes a job  — **LANDED 2026-08-28**, click-through pending ([brief](t-309d-brief.md))
+### T-309d — Generate: the panel becomes a job  — **LANDED 2026-08-28**, click-through generated the project's first track ([brief](t-309d-brief.md))
 Part 1 (spec assembly, blockers, submit store, `jobs.register`) architect-direct; Part 2
 (`<GenerateBar>`, CSS, wiring) the Aider run. Frontend 206 -> **239 tests**, fourteen mutations,
 fourteen killed -- including the one that reproduces the shipping bug: delete the `register` call
@@ -434,6 +434,15 @@ that produced them, so generating two LoRAs on ACE-Step and then switching to Mi
 anyone who generated, checked their lyrics and came back. The two button labels also moved into
 `generate.ts`; that one is consistency with the T-309b rule rather than a defect, since unlike
 the epoch label they carry no information a test needs to check.
+
+**The click-through generated the project's first audio** and found one blocker. MiniMax queued,
+tracked to `completed`, and wrote a playable FLAC -- which also proved the lossless swap live
+(the template ships that node set to `mp3`/`V0`) and settled MCP-SURFACE 18.5 by reading
+`GET /history/<prompt_id>`: MiniMax's seed does reach the sampler, through `37/38.seed` alone,
+and four of the seven "could not be checked" addresses turn out to have applied. **ACE-Step
+failed outright** -- `has no input named cfg_scale` -- because the panel flattened
+`planner.cfg_scale` to `cfg_scale` while `flat_inputs` keeps the dot. Both sides' tests passed;
+neither crossed. Fixed, with the flattened list now a contract both languages assert against.
 
 **A sequencing mistake worth not repeating:** the brief shipped with an Aider launch command
 while its architect-direct Part 1 was still unwritten, so the executor stopped and asked for four
@@ -468,6 +477,17 @@ disabling on `jobs.connected` would leave the button dead on every cold start. A
 text being submitted is byte-identical to the approved version's, because a ref naming v2 beside
 v3's words is exactly the provenance error T-311's "reproduces from the sidecar alone" bar
 cannot survive. That closes, cheaply, the gap PROJECT.md deferred to T-311 on 2026-08-27.
+
+### T-309e — trim MiniMax's inert slot addresses  ← proposed, needs a verification run
+`GET /history` on the first live run (MCP-SURFACE 18.5) shows `37/13.seed`, `37/9.seed` and
+`37/15.seconds` are link-fed and therefore inert; the profile writes them anyway. Harmless,
+because the effective `37/38.seed` is also written -- but they are three of the seven
+"could not be checked" warnings a MiniMax user sees on every generation, and a warning that
+fires seven times when four of the seven were fine is a warning that gets ignored.
+
+Not a doc edit: changing a profile's slot addresses is profile authoring, which this repo only
+does against a live template with a run to confirm it (the 2026-08-23 rule). Scope: drop the
+three, regenerate, and read `/history` again to confirm the seed and duration still land.
 
 ### T-310 — the queue panel
 Pending / running / progress / failed with error text, cancel, multiple jobs. **Read

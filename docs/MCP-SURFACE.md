@@ -1313,7 +1313,7 @@ that template is `i64::MAX`, not `u64::MAX`. `InputSpec::Seed` declares no range
 the profile schema expresses this yet -- an open question, not a T-306 problem, since validation
 rejects an over-range seed before it costs anything.
 
-### 18.5 OPEN MiniMax's three seed addresses are all link-fed too
+### 18.5 RESOLVED MiniMax's three seed addresses are all link-fed too
 
 The MiniMax profile's `seed` names `37/13.seed`, `37/9.seed` and `37/38.seed`. In the fixture's
 subgraph, `13.seed` and `9.seed` are driven by links 52/53 from **`SeedNode` 38**, and `38.seed`
@@ -1322,10 +1322,32 @@ is driven by link 54 from `origin_id: -10` -- the subgraph's promoted input prox
 So the same shape as 18.1, one level down, and `list_workflow_slots` again lists all three with
 current values and no hint that two are driven by the third.
 
-**Not yet settled**, and deliberately so: `audit_slots` reports subgraph-interior addresses as
-`unchecked` rather than guessing, and deciding which address actually reaches the sampler needs
-a MiniMax run and a read of `GET /history/<prompt_id>` (17.2). Until then, treat MiniMax's seed
-as unverified rather than working.
+**RESOLVED 2026-08-28** by the first real generation this project ever ran, read back from
+`GET /history/<prompt_id>` exactly as this paragraph prescribed. The executed prompt, against
+the template's own widget defaults:
+
+| address | template default | executed | verdict |
+|---|---|---|---|
+| `37/38.seed` | `0`, "randomize" | `8578771011914929` | **applied** -- and in `freshSeed`'s 53-bit range, so it is the app's |
+| `37/13.seed` | `222` | `["37:38", 0]` | link-fed from 38 -- **inert** |
+| `37/9.seed` | `1111111112` | `["37:38", 0]` | link-fed from 38 -- **inert** |
+| `37/15.seconds` | `120` | `["37:13", 1]` | link-fed from 13 -- **inert** |
+| `37/13.max_duration` | `60` | `120.0` | **applied** (the profile's `duration_s`) |
+| `37/13.lyrics` | `""` | the user's lyrics | **applied** |
+| `37/6.unet_name` | int8 file | unchanged | **applied** (the `slot_overrides` correction, 14.4) |
+
+So MiniMax's seed **does** reach the sampler, through `37/38.seed` alone. The profile writes all
+three; two are no-ops that happen to be harmless because the effective one is also written. The
+same holds for `37/15.seconds`. Trimming the three inert addresses from the profile would remove
+three of the seven "could not be checked" warnings a user currently sees, and needs its own
+verification run rather than a doc edit.
+
+**Two notation facts for whoever walks these.** The executed prompt separates subgraph interiors
+with a **colon** (`37:13`) while `list_workflow_slots` uses a **slash** (`37/13`); the same node,
+two spellings, on two surfaces. And the subgraph is *flattened* into the executed prompt -- 12
+plain nodes, no nesting -- which is why `audit_slots`, which reads the un-flattened file, cannot
+resolve them and reports `unchecked` rather than guessing. That behaviour is correct and should
+stay: the seven warnings were honest, and four of the seven addresses turned out to be applied.
 
 Structural note for whoever does it: **subgraph links are objects**
 (`{"id", "origin_id", "origin_slot", "target_id", "target_slot", "type"}`), not the
@@ -1436,3 +1458,24 @@ shell heredoc reaches Python with `\f` read as an escape rather than as a separa
 `unknown_enum_value`. Reading the value echoed back in the error message is what caught it.
 **Backslashes in a LoRA path are the payload here**, so any tooling that touches one has to be
 checked rather than trusted.
+
+## 20. The first real generation -- 2026-08-28
+
+Everything before this was proven against the mock transport. On 2026-08-28 the app's own
+Generate button queued a MiniMax Music 3 job, the queue panel tracked it to `completed`, and a
+playable file landed in the output directory.
+
+**The lossless swap is proven live.** The template ships node 35 as
+`SaveAudioAdvanced` with `["audio/audio_minimax_music3", "mp3", "V0"]`. The executed prompt
+carries `format: "flac"`, and the output is `audio_minimax_music3_00001.flac`. This is the first
+end-to-end evidence for the T-305a graph edit and for the 2026-08-27 decision that the test must
+be the **format value** rather than the node class -- MiniMax ships the modern node already set
+to MP3, so a class check would have passed it and shipped lossy audio into the mastering stage.
+
+**The seed reaches the engine**, settling 18.5 above.
+
+**ACE-Step failed on the same button**, for a reason that had nothing to do with ComfyUI: the
+webview and `create-core` disagreed about what a grouped input is called (`cfg_scale` versus
+`planner.cfg_scale`), so `resolve_slots` rejected the spec before any MCP call. MiniMax declares
+no groups, which is why it succeeded and hid the defect. Fixed, with the flattened-name list now
+a committed contract both languages assert against.
