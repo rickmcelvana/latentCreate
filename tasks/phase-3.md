@@ -587,7 +587,41 @@ mutations, three killed and the control alive.
 failure's status is `error`, not `failed`. The rule has been dead since it was written and nobody
 could see it, since no generation had ever failed until 24 was measured.
 
-### T-311 — output ingestion, library write, provenance sidecar
+### T-311 — output ingestion, library write, provenance sidecar — **SPLIT 2026-08-29; T-311a briefed** ([brief](t-311a-brief.md), Aider lane)
+
+**Split into three, because one task here is far past a 400-line diff and the parts have different
+verification stories.**
+
+- **T-311a** — the offline half: `Project::next_track_seq`, `create_core::audio::flac_duration_s`,
+  and `library::tracks` (mint, save, load, paths). No ComfyUI needed to test any of it. Briefed.
+- **T-311b** — ingestion: `fetch_outputs` on completion, the audio into the project's `tracks/`,
+  the `Provenance` built and the `Track` written. Needs a live run.
+- **T-311c** — the Library view. `app/src/views/Library.tsx` is a 13-line placeholder, so until it
+  is written a sidecar has no reader and the work is invisible. **This entry did not scope it and
+  should have.**
+
+**Three claims in the original entry were checked while briefing, and two were wrong.**
+
+1. It reads as though the sidecar must be designed. **`Track`, `Provenance` and `ComfyServerInfo`
+   already exist** in `create-core/src/provenance.rs` with a two-LoRA round-trip test, landed in
+   T-003b. T-311 writes them; it does not define them.
+2. It says the sidecar needs "both levels". Correct, and already the shape of `Provenance`
+   (`spec` + `resolved_slots`).
+3. "Record the real output format from the file rather than from intent" — correct and now
+   verified: the produced file is genuinely FLAC at 48 kHz/16-bit/120.000 s (MCP-SURFACE 26.2), and
+   its duration is readable from 42 bytes of header, so `duration_s` is measured rather than copied
+   from what the user asked for.
+
+**The design problem this entry does not mention, and T-311b's real work:** provenance needs the
+spec, the resolved slots and the profile's licence, all of which exist only at *submit* time, while
+ingestion happens at *completion*. `generate_audio` retains none of it. Recomputing `resolve_slots`
+later is not equivalent — it records what the app would resolve now, not what it did. Details and
+the likely shape are at the bottom of the T-311a brief. Also unresolved: **which project a track
+belongs to**, since `generate_audio` takes no slug and only `lyricdoc.rs` has a `default_project`
+helper.
+
+#### The original entry, as written before any of the above was checked
+
 `fetch_outputs` on completion, the audio copied into `library/projects/<slug>/tracks/`, and
 the sidecar written per ARCHITECTURE 8: **both levels** — the `GenerationSpec` the user chose
 *and* the resolved slot values actually submitted — plus the LoRA stack (file, strength,

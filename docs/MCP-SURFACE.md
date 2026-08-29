@@ -1902,3 +1902,61 @@ The app does not need it yet -- "Queued" versus "Running" was the whole of the r
 and `queueRows` already sorts live jobs above finished ones. Displaying "2nd in queue" would mean
 polling a second surface on a timer, which is a real cost for a nicety. **Recorded as available,
 deliberately unused.**
+
+## 26. `fetch_outputs`, measured on a real completed run -- 2026-08-29
+
+Called against `09380675`, one of the producer's own ACE-Step generations, while briefing T-311.
+
+```json
+{
+  "prompt_id": "09380675-b6fd-4e8e-98cb-9ee447a9798e",
+  "out_dir": "<the directory given>",
+  "files": [
+    {
+      "url": "http://127.0.0.1:8188/view?filename=ACE_Step1.5_xl_turbo_00002.flac&subfolder=audio&type=output",
+      "path": "<out_dir>\09380675_000.flac",
+      "size": 13693460
+    }
+  ]
+}
+```
+
+**`mcp_bridge::OutputBatch` already matches this exactly** -- `prompt_id`, `out_dir`,
+`files: [{url, path, size}]`. The wrapper landed in T-104a against a payload nobody had run; it is
+now confirmed against a real one and needs no change.
+
+### 26.1 comfy-cli renames the file, and the real name survives only in the URL
+
+The download is written as **`<short_prompt_id>_<NNN>.<ext>`** -- `09380675_000.flac` -- not under
+ComfyUI's own output name, which was `ACE_Step1.5_xl_turbo_00002.flac`. That name appears **only**
+inside `url`. Anything wanting ComfyUI's filename has to parse the query string for it; nothing in
+the app does, and the sidecar records the app's own `tracks/<track-id>.<ext>` name instead.
+
+The index is per job, so a multi-output job is `_000`, `_001`, ... -- which is what makes
+`out_dir` safe to point straight at a project's `tracks/` directory without collisions between jobs.
+It is a **copy**: ComfyUI's original stays in its own output directory, and the download runs over
+HTTP from `127.0.0.1` even though both processes are on this machine.
+
+### 26.2 The file is what the app asked for, proven at the byte level
+
+`fLaC` magic, **48 kHz, stereo, 16-bit, 5 760 000 samples = exactly 120.000 s**, 13 693 460 bytes.
+
+Section 20.1 established the lossless swap by reading the *executed prompt* from `GET /history`.
+This is the other half and the stronger one: the **file on disk** is genuinely lossless FLAC, from a
+template that ships `SaveAudioMP3` at `V0`. The swap works end to end.
+
+### 26.3 Duration comes free, from 42 bytes
+
+A FLAC's STREAMINFO block is mandatory, must be the first metadata block, and therefore sits at a
+fixed offset: 4 bytes of magic, a 4-byte block header, 34 bytes of STREAMINFO. Sample rate is 20
+bits and total samples 36, both unaligned. Reading the first 42 bytes of the file yields the exact
+duration with no decoder and no dependency.
+
+Worth stating because the alternative was recording the *requested* duration: here the user asked
+for 120 s and got 120.000 s, but provenance that reports an input as though it were an outcome is
+worth nothing on the day the two differ. `total_samples: 0` is FLAC's legitimate "unknown length",
+so it reads as absent rather than as zero.
+
+The first 42 bytes of this exact file are committed at **`testdata/audio/ace-step.flac.head`** so
+the reader is tested against bytes ComfyUI actually produced rather than a header written from this
+description.

@@ -290,23 +290,31 @@ comfy-mcp itself, so such a gate would leave the button dead on every cold start
 
 ## 8. Library, provenance, storage
 
-- App data dir (`%APPDATA%/latentCreate` / platform equivalents):
+- App data dir, Tauri `app_config_dir()` under identifier **`com.latentbeats.create`**
+  (`%APPDATA%\com.latentbeats.create\` on Windows). **Verified on disk 2026-08-29** -- there is
+  no `library/` level, and the identifier is not `latentCreate`; both were wrong here for months,
+  and every path below is now what `library::projects::project_dir` actually builds:
 
 ```
-library/
-├── projects/<project-slug>/
-│   ├── project.json           # name, created, lyric doc versions, track refs, album lists
-│   ├── lyrics/<doc-id>.json   # one LyricDoc, every version inline (see below)
-│   ├── tracks/<track-id>.flac # (or wav/mp3 as produced)
-│   ├── tracks/<track-id>.json # SIDECAR = the whole Track record, incl. Provenance:
-│   │                          #   model profile+licence, template, the GenerationSpec
-│   │                          #   the user chose, the RESOLVED slot values actually
-│   │                          #   submitted, LoRA stack (file+strength+order), seed,
-│   │                          #   lyric version ref, optimized flags, comfy server
-│   │                          #   info, timestamps, duration
-│   └── art/<img-id>.png (+ .json sidecar)
-└── config.json                # non-secret config (secrets → OS keychain)
+<app config dir>/
+├── config.json                # non-secret config (secrets -> OS keychain)
+├── session.log                # + session.log.1
+├── jobs/<job-id>/workflow.json  # per-job working copy; the record of what was submitted
+└── projects/<project-slug>/
+    ├── project.json           # name, created, lyric doc ids, track ids, album lists
+    ├── lyrics/<doc-id>.json   # one LyricDoc, every version inline (see below)
+    ├── tracks/<track-id>.flac # (or wav/mp3 as produced)
+    ├── tracks/<track-id>.json # SIDECAR = the whole Track record, incl. Provenance:
+    │                          #   model profile+licence, template, the GenerationSpec
+    │                          #   the user chose, the RESOLVED slot values actually
+    │                          #   submitted, LoRA stack (file+strength+order), seed,
+    │                          #   lyric version ref, optimized flags, comfy server
+    │                          #   info, timestamps, duration
+    └── art/<img-id>.png (+ .json sidecar)
 ```
+
+  `config.json` sits **beside** `projects/`, not inside it. The `library` crate is the code that
+  owns this tree; it is not a directory in it.
 
 - JSON files, no database. Human-readable, git-able, trivially portable. Revisit only if scanning gets slow (thousands of tracks).
 - **One file per lyric document** (2026-08-25, Phase 2 boundary): `lyrics/<doc-id>.json`

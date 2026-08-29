@@ -121,7 +121,7 @@ pub struct AlbumList {
 /// its sidecar, so a rename cannot leave two files disagreeing (ARCHITECTURE 8).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
-    /// Directory name under `library/projects/`; filesystem-safe.
+    /// Directory name under the app config dir's `projects/`; filesystem-safe.
     pub slug: String,
     /// User-facing project name.
     pub name: String,
