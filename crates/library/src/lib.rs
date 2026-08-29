@@ -9,6 +9,7 @@ pub mod lyrics;
 pub mod profiles;
 pub mod projects;
 pub mod secrets;
+pub mod tracks;
 
 /// Re-export of [`config::Config`].
 pub use config::Config;

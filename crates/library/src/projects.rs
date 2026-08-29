@@ -1,4 +1,4 @@
-//! Projects on disk: `library/projects/<slug>/project.json`.
+//! Projects on disk: `<app config dir>/projects/<slug>/project.json`.
 //!
 //! Listing mirrors `config`'s contract -- it **never fails**, and a project that
 //! cannot be read becomes a warning rather than hiding every other one. Loading

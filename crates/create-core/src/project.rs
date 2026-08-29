@@ -143,9 +143,21 @@ pub struct Project {
     /// one, and a track's provenance `LyricRef` would then point at unrelated lyrics.
     #[serde(default = "default_lyric_seq")]
     pub next_lyric_seq: u32,
+    /// Sequence number the next track in this project will be minted from.
+    ///
+    /// Monotonic and **never reused**, even after a track is deleted. Minting from
+    /// the surviving file list instead would hand a deleted track's id to a later
+    /// one, and an `AlbumList` still holding the old `TrackId` would then point at
+    /// unrelated audio.
+    #[serde(default = "default_track_seq")]
+    pub next_track_seq: u32,
 }
 
 fn default_lyric_seq() -> u32 {
+    1
+}
+
+fn default_track_seq() -> u32 {
     1
 }
 
@@ -165,6 +177,7 @@ impl Project {
             lyrics: Vec::new(),
             albums: Vec::new(),
             next_lyric_seq: default_lyric_seq(),
+            next_track_seq: default_track_seq(),
         }
     }
 }
@@ -367,5 +380,15 @@ mod tests {
         let project: Project = serde_json::from_str(json).unwrap();
         assert_eq!(project.next_lyric_seq, 1);
         assert!(project.lyrics.is_empty());
+    }
+
+    /// Invariant: a project file written before `next_track_seq` existed still
+    /// loads, and starts minting at 1 rather than 0.
+    #[test]
+    fn test_track_seq_defaults_for_a_project_written_before_it_existed() {
+        let json = r#"{"slug":"demo","name":"Demo","created_at":"2026-08-25T10:00:00Z"}"#;
+        let project: Project = serde_json::from_str(json).unwrap();
+        assert_eq!(project.next_track_seq, 1);
+        assert!(project.tracks.is_empty());
     }
 }

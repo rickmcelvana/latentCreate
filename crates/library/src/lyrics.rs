@@ -1,4 +1,4 @@
-//! Lyric documents on disk: `library/projects/<slug>/lyrics/<doc-id>.json`.
+//! Lyric documents on disk: `<app config dir>/projects/<slug>/lyrics/<doc-id>.json`.
 //!
 //! **One file per document, every version inside it** (PROJECT.md decisions log,
 //! 2026-08-25). `LyricDoc` already models its versions inline; splitting the text

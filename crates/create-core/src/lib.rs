@@ -2,6 +2,7 @@
 //!
 //! Pure data: no I/O, no async, no file loading -- that is `library`'s job.
 //!
+//! [`audio`] reads durations from audio file headers.
 //! [`profile`] holds the model capability schema (T-003), the abstraction the whole
 //! app is built on: supporting a new music model is a JSON file, not code.
 //! [`generation`] holds what the user asked for before it is fanned out to slots.
@@ -13,6 +14,7 @@
 //! [`readiness`] decides whether a profile's model files are present.
 //! [`lyrics`] holds the lyric brief and the prompt assembled from it.
 
+pub mod audio;
 pub mod audit;
 pub mod generation;
 pub mod graph;
@@ -23,6 +25,7 @@ pub mod project;
 pub mod provenance;
 pub mod readiness;
 
+pub use audio::*;
 pub use audit::*;
 pub use generation::*;
 pub use graph::*;
