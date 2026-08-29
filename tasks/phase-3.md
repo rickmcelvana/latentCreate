@@ -601,6 +601,9 @@ verification stories.**
   120.000 s, duration read from the header) and its sidecar, and **the sidecar matches what
   ComfyUI actually executed field for field** -- checked against `GET /history`, not against
   our own tests (MCP-SURFACE 27). The milestone's bar is met. src-tauri 82.
+- **T-311d** — `Provenance.prompt_id`, so a track can be traced to the run that made it.
+  **LANDED 2026-08-29** ([brief](t-311d-brief.md), architect-direct). Numbered `d` but landed
+  **before** `c`, whose number was already published; numbers are labels, not an ordering.
 - **T-311c** — the Library view. `app/src/views/Library.tsx` is a 13-line placeholder, so until it
   is written a sidecar has no reader and the work is invisible. **This entry did not scope it and
   should have.**

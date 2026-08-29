@@ -311,7 +311,7 @@ async fn ingest_if_pending(
     };
 
     let now = library::projects::now_rfc3339();
-    match ingest_outputs(root, &p, &batch, &now) {
+    match ingest_outputs(root, &p, &batch, &now, id) {
         Ok(tracks) => {
             for track in tracks {
                 let _ = app.emit(

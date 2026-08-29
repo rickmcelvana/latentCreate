@@ -56,10 +56,11 @@ pub fn ingest_outputs(
     pending: &PendingTrack,
     batch: &OutputBatch,
     created_at: &str,
+    prompt_id: &str,
 ) -> Result<Vec<Track>, IngestError> {
     let mut tracks = Vec::new();
     for file in &batch.files {
-        if let Some(track) = ingest_one_file(root, pending, file, created_at)? {
+        if let Some(track) = ingest_one_file(root, pending, file, created_at, prompt_id)? {
             tracks.push(track);
         }
     }
@@ -72,6 +73,7 @@ fn ingest_one_file(
     pending: &PendingTrack,
     file: &OutputFile,
     created_at: &str,
+    prompt_id: &str,
 ) -> Result<Option<Track>, IngestError> {
     let ext = match audio_extension(&file.path) {
         Some(e) => e,
@@ -82,15 +84,7 @@ fn ingest_one_file(
     // write. A crash after this point burns an id rather than overwriting a
     // track the user already has.
     let (mut project, id) = mint_and_save_project(root, &pending.project_slug)?;
-    let track = write_track_file(
-        root,
-        &pending.project_slug,
-        &id,
-        &ext,
-        &file.path,
-        pending,
-        created_at,
-    )?;
+    let track = write_track_file(root, &id, &ext, &file.path, pending, created_at, prompt_id)?;
     project.tracks.push(id);
     library::projects::save_project(root, &project)?;
     Ok(Some(track))
@@ -107,20 +101,21 @@ fn mint_and_save_project(root: &Path, slug: &str) -> Result<(Project, TrackId), 
 /// Move the downloaded audio into place and write its sidecar.
 fn write_track_file(
     root: &Path,
-    slug: &str,
     id: &TrackId,
     ext: &str,
     src: &Path,
     pending: &PendingTrack,
     created_at: &str,
+    prompt_id: &str,
 ) -> Result<Track, IngestError> {
+    let slug = pending.project_slug.as_str();
     let tracks_dir = library::tracks::tracks_dir(root, slug)?;
     std::fs::create_dir_all(&tracks_dir)?;
     let dst = library::tracks::audio_path(root, slug, id, ext)?;
     std::fs::rename(src, &dst)?;
     let duration_s = library::tracks::duration_of(&dst);
     let file_rel = format!("tracks/{}.{}", id.0, ext);
-    let track = build_track(id, &file_rel, duration_s, pending, created_at);
+    let track = build_track(id, &file_rel, duration_s, pending, created_at, prompt_id);
     library::tracks::save_track(root, slug, &track)?;
     Ok(track)
 }
@@ -145,6 +140,7 @@ fn build_track(
     duration_s: Option<f64>,
     pending: &PendingTrack,
     created_at: &str,
+    prompt_id: &str,
 ) -> Track {
     Track {
         id: id.clone(),
@@ -160,6 +156,7 @@ fn build_track(
             resolved_slots: pending.resolved_slots.clone(),
             comfy: pending.comfy.clone(),
             created_at: created_at.to_string(),
+            prompt_id: Some(prompt_id.to_string()),
         },
     }
 }
@@ -173,6 +170,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     const NOW: &str = "2026-08-25T20:11:04Z";
+    const PROMPT: &str = "3f55e2fb-60e1-40b9-9cb7-61b37906622e";
 
     fn root_with_project() -> (tempfile::TempDir, String) {
         let root = tempfile::tempdir().unwrap();
@@ -279,7 +277,7 @@ mod tests {
 
         let pending = pending(&slug, false, 120.0);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW).unwrap();
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
         assert_eq!(tracks.len(), 1);
         let track = &tracks[0];
@@ -307,7 +305,7 @@ mod tests {
 
         let pending = pending(&slug, true, 120.0);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW).unwrap();
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
         let loaded = library::tracks::load_track(root.path(), &slug, &tracks[0].id).unwrap();
         let spec = loaded.provenance.spec;
@@ -351,7 +349,8 @@ mod tests {
         );
 
         // Phase 2: write the track file and sidecar.
-        let track = write_track_file(root.path(), &slug, &id, "flac", &src, &pending, NOW).unwrap();
+        let track =
+            write_track_file(root.path(), &id, "flac", &src, &pending, NOW, PROMPT).unwrap();
         assert_eq!(track.id, id);
 
         // Phase 3: register the id and persist again.
@@ -360,6 +359,30 @@ mod tests {
 
         let final_project = library::projects::load_project(root.path(), &slug).unwrap();
         assert_eq!(final_project.tracks.len(), 1);
+    }
+
+    /// Protects: a track that cannot be traced to the run that made it.
+    ///
+    /// `GET /history/<prompt_id>` is the only surface reporting what the
+    /// engine actually executed (MCP-SURFACE 17.2), so without this the check
+    /// performed on T-311b means matching timestamps by hand.
+    ///
+    /// Asserted from the file rather than the returned value: the sidecar is
+    /// the artifact, and a field that never reaches disk is not provenance.
+    #[test]
+    fn test_ingest_records_the_prompt_id_that_produced_the_track() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("tracks").join("prompt_000.flac");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
+        std::fs::write(&src, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0);
+        let batch = batch_with(&src);
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        let loaded = library::tracks::load_track(root.path(), &slug, &tracks[0].id).unwrap();
+        assert_eq!(loaded.provenance.prompt_id, Some(PROMPT.to_string()));
     }
 
     /// Protects: a failed write handing the same id to the next track.
@@ -381,7 +404,7 @@ mod tests {
         let pending = pending(&slug, false, 120.0);
         let batch = batch_with(&missing);
 
-        let result = ingest_outputs(root.path(), &pending, &batch, NOW);
+        let result = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT);
         assert!(
             result.is_err(),
             "a missing download must not report success"
@@ -408,7 +431,7 @@ mod tests {
 
         let pending = pending(&slug, false, 120.0);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW).unwrap();
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
         assert!(tracks.is_empty());
 
         let project = library::projects::load_project(root.path(), &slug).unwrap();
@@ -426,7 +449,7 @@ mod tests {
 
         let pending = pending(&slug, false, 120.0);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW).unwrap();
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
         assert_eq!(tracks[0].file, "tracks/tr-0001.wav");
         let audio = library::tracks::audio_path(root.path(), &slug, &tracks[0].id, "wav").unwrap();
@@ -444,7 +467,7 @@ mod tests {
 
         let pending = pending(&slug, false, 90.0);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW).unwrap();
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
         assert_eq!(tracks[0].duration_s, Some(120.0));
     }

@@ -212,6 +212,7 @@ mod tests {
                     url: Some("http://127.0.0.1:8188".to_string()),
                 }),
                 created_at: "2026-08-23T18:31:24Z".to_string(),
+                prompt_id: None,
             },
         }
     }

@@ -43,6 +43,19 @@ pub struct Provenance {
     pub comfy: Option<ComfyServerInfo>,
     /// RFC 3339, when generation finished.
     pub created_at: String,
+    /// ComfyUI prompt id of the run that produced this track.
+    ///
+    /// `None` for a sidecar written before this field existed, and for any
+    /// track whose origin is not a ComfyUI run.
+    ///
+    /// Not needed to reproduce the track -- everything for that is in `spec`
+    /// and `resolved_slots` -- but it is the key to `GET /history/<prompt_id>`,
+    /// the only surface that reports what the engine actually executed
+    /// (MCP-SURFACE 17.2). Without it, matching a sidecar to its run means
+    /// comparing timestamps by hand, which is exactly what verifying T-311b
+    /// took.
+    #[serde(default)]
+    pub prompt_id: Option<String>,
 }
 
 /// One generated audio file: the contents of `tracks/<id>.json`, the sidecar that is
@@ -69,6 +82,37 @@ mod tests {
     use crate::generation::{InputValue, LoraRef, LyricDocId, LyricRef};
     use crate::profile::SlotAddress;
     use std::collections::BTreeMap;
+
+    /// Invariant: a sidecar written before `prompt_id` existed still loads.
+    ///
+    /// Not hypothetical -- `projects/my-first-song/tracks/tr-0001.json` was
+    /// written on 2026-08-29, before this field, and is the only track the
+    /// project has. A required field would have made it unreadable, and a
+    /// `String` default would have loaded it as `""`, which is the
+    /// absent-versus-empty confusion that has produced four bugs here. `None`
+    /// says absent.
+    #[test]
+    fn test_a_sidecar_written_before_prompt_id_still_loads() {
+        let json = r#"{
+            "id": "tr-0001",
+            "title": null,
+            "file": "tracks/tr-0001.flac",
+            "duration_s": 120.0,
+            "provenance": {
+                "profile_id": "ace-step-1.5-turbo",
+                "profile_display_name": "ACE-Step 1.5 XL Turbo",
+                "model_license": "Apache-2.0",
+                "template": "audio_ace_step1_5_xl_turbo",
+                "spec": {"profile_id": "ace-step-1.5-turbo", "inputs": {}},
+                "created_at": "2026-08-29T05:56:07Z"
+            }
+        }"#;
+
+        let track: Track = serde_json::from_str(json).expect("an older sidecar still loads");
+
+        assert_eq!(track.provenance.prompt_id, None);
+        assert_eq!(track.file, "tracks/tr-0001.flac");
+    }
 
     #[test]
     fn test_track_sidecar_roundtrips() {
@@ -134,6 +178,7 @@ mod tests {
                     url: Some("http://127.0.0.1:8188".to_string()),
                 }),
                 created_at: "2026-08-23T18:31:24Z".to_string(),
+                prompt_id: Some("3f55e2fb-60e1-40b9-9cb7-61b37906622e".to_string()),
             },
         };
 
@@ -172,6 +217,7 @@ mod tests {
             resolved_slots,
             comfy: None,
             created_at: "2026-08-23T18:31:24Z".to_string(),
+            prompt_id: Some("3f55e2fb-60e1-40b9-9cb7-61b37906622e".to_string()),
         };
 
         let json = serde_json::to_string(&provenance).unwrap();
