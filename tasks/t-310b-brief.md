@@ -24,7 +24,7 @@ It computes `running` inline from a three-way `!==` chain, shows `completed` and
 tokens, has no ordering, and cannot say which model a row is. It also returns `null` for an empty
 queue, so the Audio view gives no sign that a queue exists until the first generation.
 
-**`app/src/theme.css` is 1514 lines** and already carries a `.job-*` block at **lines 205–264**:
+**`app/src/theme.css` is 1514 lines** and already carries a `.job-*` block at **lines 203–263**:
 `.job-queue`, `.job-item`, `.job-status`, `.job-item-completed .job-status`,
 `.job-item-failed .job-status`, `.job-item-cancelled .job-status`, `.job-error`, `.job-cancel`,
 `.job-cancel:hover`. **Do not rewrite that block.** Add to it and add after it.
@@ -105,8 +105,9 @@ Each row:
 </li>
 ```
 
-`type="button"` on the Cancel button. Three buttons shipped without it in T-309b; harmless with no
-`<form>` in the tree and a submit the moment one appears.
+`type="button"` on the Cancel button. The existing one already has it — keep it. Three buttons
+shipped without it in T-309b; harmless with no `<form>` in the tree and a submit the moment one
+appears.
 
 `key={row.id}`. Never the array index — rows reorder as jobs finish, which is the exact case an
 index key gets wrong.
@@ -118,8 +119,10 @@ New classes: `.job-panel`, `.job-empty`, `.job-model`, `.job-elapsed`, plus
 
 - `.job-model` — `var(--text)`, 13px. It is the row's identity, so it should not be the faintest
   thing in it.
-- `.job-elapsed` — `var(--text-muted)`, 12px, tabular numerals if a token exists for it; the label
-  changes every second and digits of different widths make the row twitch.
+- `.job-elapsed` — `var(--text-muted)`, 12px, plus `font-variant-numeric: tabular-nums`; the label
+  changes every second and digits of different widths make the row twitch. **Checked 2026-08-28:
+  `theme.css` has no numeral token, and none is needed** -- `tabular-nums` is a property value, not
+  a colour or a spacing literal, so writing it directly is not the thing "tokens only" forbids.
 - `.job-empty` — `var(--text-muted)`, 13px, matching `.generate-note` (theme.css, end of file).
 - `.job-item-error .job-status` — `var(--danger)`, alongside the existing `.job-item-failed` rule.
   Write them as one selector list so they cannot drift apart again.
