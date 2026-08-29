@@ -158,10 +158,28 @@ export function modelName(profileId: string, names: Record<string, string>): str
 /**
  * The rows, ordered.
  *
- * **Live jobs first, then newest first within each group.** Ordering by time
- * alone buries the job the user is waiting on underneath the ones that have
- * finished -- and the queue only earns its place on screen when more than one
- * job is in it, which is precisely when that happens.
+ * **Live jobs first, then two different orders for two different questions.**
+ *
+ * Ordering by time alone buries the job the user is waiting on underneath the
+ * ones that have finished, and the queue only earns its place on screen when
+ * more than one job is in it, which is precisely when that happens. So the
+ * live/finished split comes first.
+ *
+ * Within the live group the order is **oldest first**, which is execution
+ * order: the job on the GPU, then the ones waiting in the order they will run.
+ * Newest-first here listed a pending queue backwards -- submit three jobs and
+ * the panel showed them in the reverse of the order ComfyUI would run them.
+ * Nobody saw it while every waiting row also claimed to be running (section 25).
+ *
+ * **This never asks which status means "running".** Under FIFO the running job
+ * is by construction the oldest live one, so sorting by time gets it right
+ * without naming a status -- and a vocabulary this app has now been wrong about
+ * three times is one to stop consulting. Verified live 2026-08-29: of two jobs
+ * submitted back to back the earlier ran and the later reported
+ * `queue_position: 1` (MCP-SURFACE 25).
+ *
+ * Within the finished group the order stays **newest first**: that half is a
+ * history, not a pipeline, and the most recent result is the one worth seeing.
  *
  * `now` is a parameter rather than a `Date.now()` call inside, so elapsed
  * times are testable and every row in one render agrees on the time.
@@ -175,7 +193,7 @@ export function queueRows(
     .toSorted((a, b) => {
       const live = Number(isDone(a)) - Number(isDone(b))
       if (live !== 0) return live
-      return b.submittedAt - a.submittedAt
+      return isDone(a) ? b.submittedAt - a.submittedAt : a.submittedAt - b.submittedAt
     })
     .map((job) => ({
       id: job.id,

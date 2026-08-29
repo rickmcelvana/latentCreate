@@ -218,12 +218,67 @@ describe('queueRows', () => {
     expect(rows(newest, live).map((r) => r.id)).toEqual(['live', 'newest'])
   })
 
-  it('orders newest first within a group', () => {
+  /**
+   * Protects: the live/finished split being carried by luck.
+   *
+   * The commonest sequence there is -- generate, watch it finish, generate
+   * again -- and the only case where the two rules actually disagree: the live
+   * job is the **newest** thing in the queue, so the live-group ordering
+   * (oldest first) would put it last if the split above it were removed. Every
+   * other ordering test here has the live job older than the finished ones,
+   * where ascending time lands it on top by coincidence and deleting the split
+   * changes nothing.
+   *
+   * Added because a mutation dropping the split survived the suite.
+   */
+  it('keeps a newly started job above jobs that finished before it', () => {
+    const fresh = job({ id: 'fresh', status: 'running', submittedAt: T0 + 90_000 })
+
+    expect(rows(older, newest, fresh).map((r) => r.id)).toEqual(['fresh', 'newest', 'older'])
+  })
+
+  it('orders finished jobs newest first, because that half is a history', () => {
     expect(rows(older, newest).map((r) => r.id)).toEqual(['newest', 'older'])
   })
 
-  it('applies both rules together', () => {
-    expect(rows(older, newest, live).map((r) => r.id)).toEqual(['live', 'newest', 'older'])
+  /**
+   * Protects: the pending queue is listed backwards.
+   *
+   * The live half is a pipeline, not a history: the running job, then the ones
+   * waiting **in the order they will run**. Newest-first here reversed it, so
+   * three queued jobs displayed in the opposite order to their execution -- a
+   * defect that stayed invisible while every waiting row also read "Running"
+   * (MCP-SURFACE 25), because there was nothing on screen to compare.
+   *
+   * Three live jobs, not two: with two, ascending and descending differ by a
+   * swap that a wrong comparator can still stumble into. Three cannot be got
+   * right by accident.
+   */
+  it('orders live jobs in the order they will run', () => {
+    const running = job({ id: 'running', status: 'running', submittedAt: T0 })
+    const next = job({ id: 'next', status: 'pending', submittedAt: T0 + 1_000 })
+    const last = job({ id: 'last', status: 'pending', submittedAt: T0 + 2_000 })
+
+    expect(rows(last, next, running).map((r) => r.id)).toEqual(['running', 'next', 'last'])
+  })
+
+  /**
+   * Protects: the two halves drifting onto one comparator.
+   *
+   * The orders are deliberately opposite -- ascending while live, descending
+   * once finished -- so a single `sort` that "simplifies" them into agreement
+   * breaks exactly one half and passes the other's tests.
+   */
+  it('applies both rules together, in opposite directions', () => {
+    const running = job({ id: 'running', status: 'running', submittedAt: T0 })
+    const waiting = job({ id: 'waiting', status: 'pending', submittedAt: T0 + 1_000 })
+
+    expect(rows(older, newest, waiting, running).map((r) => r.id)).toEqual([
+      'running',
+      'waiting',
+      'newest',
+      'older',
+    ])
   })
 
   it('is empty for an empty queue', () => {
