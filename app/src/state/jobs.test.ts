@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { JobEvent } from '../bridge/jobs'
 import { applyJobEvent, useJobsStore, type Job } from './jobs'
 
 const mockConnectComfy = vi.fn()
@@ -72,6 +73,7 @@ describe('jobs store', () => {
         error: null,
         profileId: 'ace-step-1.5-turbo',
         submittedAt: 0,
+        finishedAt: null,
       },
     }
 
@@ -124,6 +126,7 @@ describe('jobs store', () => {
         error: null,
         profileId: 'ace-step-1.5-turbo',
         submittedAt: 0,
+        finishedAt: null,
       },
     }
 
@@ -136,5 +139,72 @@ describe('jobs store', () => {
   /** Protects: a cancellation for a job this store never started is ignored. */
   it('test_a_cancelled_event_for_an_unknown_job_changes_nothing', () => {
     expect(applyJobEvent({}, { kind: 'cancelled', payload: { id: 'someone-else' } })).toEqual({})
+  })
+
+  /**
+   * Protects: the elapsed clock never stops.
+   *
+   * Aimed at a *missing* stamp, which is the mutation that survives everything
+   * else -- every assertion about status still passes with `finishedAt` left
+   * null, and the only symptom is a row that counts upward for ever. A producer
+   * found this one by watching a cancelled job reach twenty minutes.
+   *
+   * All three terminal kinds in one test on purpose: the defect is not "done
+   * forgot to stamp", it is "some ending does not stamp", and checking them
+   * separately is how one gets missed.
+   */
+  it('test_every_terminal_event_stamps_the_finish_time', () => {
+    const kinds: JobEvent[] = [
+      { kind: 'done', payload: { id: 'p-1', outputs: [] } },
+      { kind: 'cancelled', payload: { id: 'p-1' } },
+      { kind: 'failed', payload: { id: 'p-1', error: 'node blew up' } },
+    ]
+
+    for (const event of kinds) {
+      const jobs: Record<string, Job> = {
+        'p-1': {
+          id: 'p-1',
+          status: 'running',
+          outputs: [],
+          error: null,
+          profileId: 'ace-step-1.5-turbo',
+          submittedAt: 0,
+          finishedAt: null,
+        },
+      }
+
+      const after = applyJobEvent(jobs, event, 9_000)
+
+      expect(after['p-1']!.finishedAt, `${event.kind} must stamp a finish time`).toBe(9_000)
+    }
+  })
+
+  /**
+   * Protects: a running job's clock freezes early.
+   *
+   * The mirror of the test above. `progress` is the only non-terminal event,
+   * and stamping it would stop the timer on the first poll -- every row would
+   * then read the same two or three seconds no matter how long it ran.
+   */
+  it('test_a_progress_event_leaves_the_finish_time_unset', () => {
+    const jobs: Record<string, Job> = {
+      'p-1': {
+        id: 'p-1',
+        status: 'queued',
+        outputs: [],
+        error: null,
+        profileId: 'ace-step-1.5-turbo',
+        submittedAt: 0,
+        finishedAt: null,
+      },
+    }
+
+    const after = applyJobEvent(
+      jobs,
+      { kind: 'progress', payload: { id: 'p-1', status: 'pending', outputs: [] } },
+      9_000,
+    )
+
+    expect(after['p-1']!.finishedAt).toBeNull()
   })
 })

@@ -26,17 +26,39 @@ function job(over: Partial<Job> = {}): Job {
     error: null,
     profileId: 'ace-step-1.5-turbo',
     submittedAt: T0,
+    finishedAt: null,
     ...over,
   }
 }
 
 describe('statusLabel', () => {
   it('names each status ComfyUI has actually been observed to send', () => {
-    expect(statusLabel(job({ status: 'queued' }))).toBe(QUEUED)
+    // Measured live 2026-08-29 against a real two-job queue (MCP-SURFACE 25),
+    // not assumed. The previous version of this test listed `queued` as an
+    // observed value and omitted `pending`; `queued` is the submit response's
+    // word and this store's own initial value, and the poll never sends it.
+    expect(statusLabel(job({ status: 'pending' }))).toBe(QUEUED)
     expect(statusLabel(job({ status: 'running' }))).toBe(RUNNING)
     expect(statusLabel(job({ status: 'completed' }))).toBe(DONE)
     expect(statusLabel(job({ status: 'cancelled' }))).toBe(CANCELLED)
     expect(statusLabel(job({ status: 'error' }))).toBe(FAILED)
+  })
+
+  /**
+   * Protects: a job waiting its turn claims to be running.
+   *
+   * The whole point of the column. `pending` used to fall through to the
+   * default and read "Running", so a producer queuing three jobs behind a slow
+   * one saw four rows all claiming the GPU -- while three of them had not
+   * started and the GPU was idle at 4 GB.
+   */
+  it('reads a job waiting its turn as Queued, not Running', () => {
+    expect(statusLabel(job({ status: 'pending' }))).toBe(QUEUED)
+  })
+
+  /** The word this store sets locally before the first poll lands. */
+  it('still reads its own initial `queued` as Queued', () => {
+    expect(statusLabel(job({ status: 'queued' }))).toBe(QUEUED)
   })
 
   it('reads `failed` as a failure even though it has never been observed', () => {
@@ -145,6 +167,40 @@ describe('elapsed', () => {
 
   it('does not go negative if the clock disagrees with itself', () => {
     expect(elapsed(job(), T0 - 5_000)).toBe('0s')
+  })
+
+  /**
+   * Protects: the clock runs for ever on a job that ended.
+   *
+   * Found by a producer, not by this suite: a cancelled row was still counting
+   * past twenty minutes. The assertion that matters is the second one -- the
+   * label must be identical at two very different `now`s, because "it shows the
+   * right number once" is exactly what the broken version also did.
+   */
+  it('stops counting once the job has finished', () => {
+    const finished = job({ status: 'completed', finishedAt: T0 + 30_000 })
+
+    expect(elapsed(finished, T0 + 30_000)).toBe('30s')
+    expect(elapsed(finished, T0 + 20 * 60_000)).toBe('30s')
+  })
+
+  /**
+   * Protects: `||` creeping in where `??` belongs.
+   *
+   * A job that finished in the same millisecond it started stamps `finishedAt`
+   * at a falsy-adjacent instant relative to `submittedAt`. This is the fourth
+   * absent-versus-empty bug this project has had, so it gets a test rather than
+   * a comment.
+   */
+  it('treats a finish time of zero as a real instant', () => {
+    const instant = job({ status: 'completed', submittedAt: 0, finishedAt: 0 })
+
+    expect(elapsed(instant, 999_000)).toBe('0s')
+  })
+
+  /** A job still running has no stamp, so it tracks the live clock. */
+  it('keeps counting while the job is still running', () => {
+    expect(elapsed(job({ status: 'running' }), T0 + 12_000)).toBe('12s')
   })
 })
 

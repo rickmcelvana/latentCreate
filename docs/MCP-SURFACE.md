@@ -1856,3 +1856,49 @@ trust signals both said it was fine. The cause is ordinary: the server was resta
 than through comfy-cli, so comfy-cli's captured log is not the live server's. **A server started
 outside comfy-cli has no log for `get_logs` to read**, and it says so in no way the caller can
 detect. T-314 should not plan to read across a crash without checking `mtime` first.
+
+## 25. `pending` -- the status word the app had never heard -- 2026-08-29
+
+**Produced on purpose**, the same way section 24's failure was: two MiniMax jobs submitted
+back to back via `run_workflow(wait=False)`, then both polled while the second sat behind the
+first. Nothing here is inferred from a completed job's record, because the state being measured
+only exists while a job is waiting.
+
+| | `action="status"` -> `status` | `action="queue"` -> `queue_position` |
+|---|---|---|
+| the job on the GPU (`1d98b288`) | `running` | `null` |
+| the job waiting its turn (`1ce3156d`) | **`pending`** | **`1`** |
+
+Both cancelled immediately afterwards; neither ran to completion.
+
+### 25.1 `queued` and `pending` are different surfaces' words for the same state
+
+`run_workflow`'s **submit response** returns `"status": "queued"`. The **status poll** never
+says `queued` -- a waiting job is `pending`. The app set `queued` locally in `newJob` and
+recognised only that, so:
+
+- for about one second a new row read **Queued**, from the local value;
+- the first poll landed, wrote `pending`, and `statusLabel`'s `default -> RUNNING` took over;
+- the row then read **Running** until it genuinely started.
+
+A producer queuing three jobs behind a slow MiniMax run therefore saw four rows all claiming the
+GPU while three had not started and VRAM sat at 4 GB. Fixed in T-310c by mapping `pending` and
+`queued` to the same label.
+
+**This is the third time this project has been caught assuming it knew ComfyUI's status
+vocabulary**, after the missing `cancelled` (section 21) and `failure_reason` reading the error
+payload as a string (24.3). The pattern is identical each time: a value the code had never seen,
+a comment listing "observed values" that were never observed, and a green suite. `jobs.ts` had
+`Observed values: queued, running, completed, cancelled, error` -- a list containing one value
+the poll does not send and missing the one it sends most often.
+
+### 25.2 23.6 confirmed: `queue_position` is real, and it is the only ordering source
+
+`queue_position: 1` on the pending job, `null` on the running one, exactly as 23.6 predicted from
+terminal-only evidence. It appears **only** on `action="queue"`; the event stream the app's pump
+reads carries no position at all.
+
+The app does not need it yet -- "Queued" versus "Running" was the whole of the reported defect,
+and `queueRows` already sorts live jobs above finished ones. Displaying "2nd in queue" would mean
+polling a second surface on a timer, which is a real cost for a nicety. **Recorded as available,
+deliberately unused.**

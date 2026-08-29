@@ -69,6 +69,13 @@ export function canCancel(job: Job): boolean {
  */
 export function statusLabel(job: Job): string {
   switch (job.status) {
+    // `pending` is what the *server* calls a job waiting its turn; `queued` is
+    // what the *submit response* calls it and what this app sets locally before
+    // the first poll. Both are the same state to a person, so both get the same
+    // word. Measured live 2026-08-29 (MCP-SURFACE 25) -- until then `pending`
+    // fell through to the default below and every waiting job read "Running",
+    // including jobs that had not touched the GPU.
+    case 'pending':
     case 'queued':
       return QUEUED
     case 'completed':
@@ -97,9 +104,21 @@ export function errorFor(job: Job): string | null {
   return job.error
 }
 
-/** `"12s"`, `"1m 12s"`. */
+/**
+ * `"12s"`, `"1m 12s"`.
+ *
+ * **A finished job's clock stops.** Once `finishedAt` is stamped it replaces
+ * `now`, so the label freezes at the duration the job actually took instead of
+ * counting on for ever -- which is what a cancelled row did for twenty minutes
+ * while a producer watched it.
+ *
+ * `??` and not `||`: a `finishedAt` of 0 is a real instant, and `||` would
+ * discard it. The same absent-versus-empty confusion has now cost this project
+ * four separate bugs.
+ */
 export function elapsed(job: Job, now: number): string {
-  const seconds = Math.max(0, Math.floor((now - job.submittedAt) / 1000))
+  const end = job.finishedAt ?? now
+  const seconds = Math.max(0, Math.floor((end - job.submittedAt) / 1000))
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }

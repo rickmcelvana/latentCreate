@@ -25,8 +25,14 @@ export const UNKNOWN_PROFILE = ''
  * `state/queue.ts` maps it to a label and treats anything unrecognised as still
  * running rather than rendering a blank row.
  *
- * Observed values: `queued`, `running`, `completed`, `cancelled`, `error`.
- * `failed` is inferred and has never been seen (MCP-SURFACE 24).
+ * Measured live 2026-08-29 by queuing two jobs at once (MCP-SURFACE 25):
+ * the status poll says `pending` for a job waiting its turn and `running` for
+ * the one on the GPU. **`queued` is not a poll value at all** -- it is what the
+ * submit response says, and what [`newJob`] sets locally before the first poll
+ * lands. Terminal: `completed`, `cancelled`, `error`; `failed` is inferred and
+ * has never been seen (MCP-SURFACE 24). The list above this line used to say
+ * `queued` and omit `pending`, which is how every waiting job came to read
+ * "Running".
  */
 export interface Job {
   id: string
@@ -44,11 +50,29 @@ export interface Job {
    * and missing for others with nothing on screen explaining why.
    */
   submittedAt: number
+  /**
+   * `Date.now()` when a terminal event arrived, or `null` while the job runs.
+   *
+   * The elapsed label needs an end as well as a start. Without this the clock
+   * ticks for ever on a finished row -- a producer watched a cancelled job pass
+   * twenty minutes. Stamped locally for the same reason as [`Job.submittedAt`]:
+   * the server timestamp is absent from one of comfy-cli's two stores
+   * (MCP-SURFACE 23.3), so half the rows would have frozen and half would not.
+   */
+  finishedAt: number | null
 }
 
 /** A job as it starts life, before the pump has said anything about it. */
 function newJob(id: string, profileId: string, now: number): Job {
-  return { id, status: 'queued', outputs: [], error: null, profileId, submittedAt: now }
+  return {
+    id,
+    status: 'queued',
+    outputs: [],
+    error: null,
+    profileId,
+    submittedAt: now,
+    finishedAt: null,
+  }
 }
 
 /**
@@ -57,8 +81,21 @@ function newJob(id: string, profileId: string, now: number): Job {
  * Pure so it can be tested without a store or a Tauri bridge: it maps
  * `progress`/`done`/`failed` to a job's status and payload. An event for an
  * unknown id is ignored and the same map is returned unchanged.
+ *
+ * `now` is a parameter, defaulted, for the same reason `queueRows` takes one:
+ * a `Date.now()` buried in here would make the stamped finish time untestable.
+ *
+ * **Every terminal event stamps `finishedAt`.** The three cases below are the
+ * complete set: `monitor_job` matches exhaustively on `TerminalOutcome` and
+ * emits exactly one of done/cancelled/failed for every ending it has, a poll
+ * error included. A terminal status can therefore never arrive as `progress`,
+ * which is what makes the stamp complete rather than best-effort.
  */
-export function applyJobEvent(jobs: Record<string, Job>, event: JobEvent): Record<string, Job> {
+export function applyJobEvent(
+  jobs: Record<string, Job>,
+  event: JobEvent,
+  now: number = Date.now(),
+): Record<string, Job> {
   const job = jobs[event.payload.id]
   if (!job) return jobs
   switch (event.kind) {
@@ -70,16 +107,26 @@ export function applyJobEvent(jobs: Record<string, Job>, event: JobEvent): Recor
     case 'done':
       return {
         ...jobs,
-        [event.payload.id]: { ...job, status: 'completed', outputs: event.payload.outputs },
+        [event.payload.id]: {
+          ...job,
+          status: 'completed',
+          outputs: event.payload.outputs,
+          finishedAt: now,
+        },
       }
     case 'cancelled':
       // Not `failed`: nothing went wrong, and an error string here would
       // report the user's own decision back to them as a fault.
-      return { ...jobs, [event.payload.id]: { ...job, status: 'cancelled' } }
+      return { ...jobs, [event.payload.id]: { ...job, status: 'cancelled', finishedAt: now } }
     case 'failed':
       return {
         ...jobs,
-        [event.payload.id]: { ...job, status: 'failed', error: event.payload.error },
+        [event.payload.id]: {
+          ...job,
+          status: 'failed',
+          error: event.payload.error,
+          finishedAt: now,
+        },
       }
   }
 }
