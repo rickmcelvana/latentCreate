@@ -1543,3 +1543,104 @@ body {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* --- Library (T-311e) --- */
+
+.track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.track-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.track-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.track-name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.track-duration {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-recipe {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--gap-xs) var(--gap-md);
+  margin: 0;
+}
+
+.track-fact dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.track-fact dd {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.track-file {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.library-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.library-warning {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13px;
+}
+
+.library-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.library-retry {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.library-retry:hover {
+  background: var(--panel-hover);
+  border-color: var(--accent);
+}

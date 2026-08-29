@@ -441,6 +441,16 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   enough.
 ## Backlog (accepted, not yet scheduled)
 
+- **Three identical retry buttons.** `.param-options-retry`, `.lora-stack-retry` and
+  `.library-retry` (T-311e) are the same rule written three times -- same margin, padding,
+  font, colours and border. Each new panel that can fail copies the last one, so the count
+  grows with the app. Worth one selector list, the way T-310b merged
+  `.job-item-failed`/`.job-item-error` so they could not drift. Not done inside T-311e
+  because consolidating three components' styling is a refactor its brief forbade
+  (`no existing theme.css rule may change`), and a scope-widening tidy is how a two-file
+  task becomes a review problem. **Note the `2px` in the padding has no token** -- either
+  a `--gap-2xs` gets added or the merged rule keeps one literal honestly.
+
 - **Verify MiniMax's seed mapping the way ACE-Step's was verified.** All three addresses its
   profile names are link-fed (MCP-SURFACE 18.5); `audit_slots` reports them `unchecked` because
   they are subgraph interiors. Needs one MiniMax generation and a read of
