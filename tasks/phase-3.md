@@ -605,12 +605,12 @@ verification stories.**
   **LANDED 2026-08-29** ([brief](t-311d-brief.md), architect-direct). Numbered `d` but landed
   **before** `c`, whose number was already published; numbers are labels, not an ordering.
 - **T-311c** — the Library's **data path**: `list_tracks`, the `library_tracks` command, the
-  bridge, and `state/library.ts` where every row decision is made and tested. **Briefed
-  2026-08-29** ([brief](t-311c-brief.md), Aider lane).
-- **T-311e** — `<Library>` itself, JSX and CSS only. Split from T-311c because together they run
-  to roughly 600 lines, and because T-310a proved a row's *wording* is the part that hides bugs
-  from a DOM-less vitest. `Library.tsx` stays a 13-line placeholder until this lands. Neither was
-  scoped by the original T-311 entry; both should have been.
+  bridge, and `state/library.ts`. **LANDED 2026-08-29** ([brief](t-311c-brief.md)); library 55,
+  frontend 285. Review found the module could not be called `library` -- `src-tauri` depends on a
+  crate of that name, so `mod library;` shadowed it crate-wide. Renamed `tracks`.
+- **T-311e** — `<Library>` itself, JSX and CSS only. **Briefed 2026-08-29**
+  ([brief](t-311e-brief.md), Aider lane). Two files, test count pinned at 285. Its click-through
+  is the first thing ever to exercise `track://saved` end to end.
 
 **Three claims in the original entry were checked while briefing, and two were wrong.**
 
