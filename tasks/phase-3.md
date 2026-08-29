@@ -674,7 +674,12 @@ wrong."*
    vary. And "the variations sound different" proves nothing either: ACE-Step is not reproducible
    run-to-run on a fixed seed (17.3). **The check is four sidecars carrying four different seeds.**
 
-### T-312b — serialize ingestion (only if T-312's click-through warrants it)
+### T-312b — serialize ingestion (measured 2026-08-29: not warranted yet)
+**T-312's click-through watched for this and the window did not open** — the batch's tracks
+appeared in the Library one at a time, never two together, which is what ComfyUI running one job
+at a time predicts. Left unbriefed on that evidence. Revisit if T-313's imported workflows, a
+remote `comfy_target`, or anything else makes two jobs finish at once.
+
 `ingest_outputs` does an unguarded read-modify-write of `project.json` — load the project, mint the
 id, save — with one tokio task per job and no lock between them, so two overlapping completions
 could mint the same `tr-NNNN`. **Never observed**, and narrow: ComfyUI runs one job at a time, and

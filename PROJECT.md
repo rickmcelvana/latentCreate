@@ -3582,10 +3582,18 @@ survivor is honest: dropping `specsFor`'s `name === null` passes all 299 tests a
 `tsc` instead. It narrows the computed key, and `effectiveCount` now covers the behaviour it used
 to guard.
 
-**T-312b has no evidence yet.** The click-through was asked to report whether two jobs' ingests
-ever overlap, and that observation did not come back. So the `project.json` read-modify-write
-race stays exactly where it was -- real in the code, never observed, narrow -- and **T-312b stays
-unbriefed** rather than being written against a paragraph of reasoning.
+**T-312b has its evidence, and it is negative.** The click-through was asked to report whether two
+jobs' ingests ever overlap. **They did not** -- the tracks appeared in the Library one at a time,
+never two arriving together. So the `project.json` read-modify-write race is real in the code and
+now *measured* as not opening under an ordinary batch, which is what ComfyUI running one job at a
+time predicts. **T-312b stays unbriefed on the strength of that**, not on an absence of evidence;
+it is a ten-line mutex if T-313's imported workflows or a remote `comfy_target` ever widen the
+window.
+
+*(Corrected within the session: this paragraph first recorded the observation as never having come
+back. It had -- "the click-through passed" from this producer covers every step of the written
+list, including the thing the list asked to be watched. Reading a summary as a partial report is
+the mistake, not the reporting.)*
 
 **Next: T-315**, the crash path's error copy, with its evidence in MCP-SURFACE 28. Then T-313 or
 T-314. Standing notes unchanged, except that `theme.css` is now **1683 lines**.
