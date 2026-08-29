@@ -1,11 +1,11 @@
 import { create } from 'zustand'
 import { isTauri } from '../bridge/comfy'
 import { generateAudio, type Submission } from '../bridge/generate'
-import { approvedFill, blockers, specFor } from './generate'
+import { approvedFill, blockers, specsFor } from './generate'
 import { useJobsStore } from './jobs'
 import { useLoraPanelStore } from './loraPanel'
 import { useLyricsStore } from './lyrics'
-import { useParamPanelStore } from './paramPanel'
+import { freshSeed, useParamPanelStore } from './paramPanel'
 
 /**
  * Pressing Generate: assemble, submit, and hand the job to the queue.
@@ -23,7 +23,12 @@ interface GenerateState {
   last: Submission | null
   /** The profile `last` was generated for -- see `notesFor`. */
   lastProfileId: string | null
+  /** How many variations this click will queue. Not a profile input. */
+  count: number
+  /** How many of the current batch ComfyUI has accepted so far. */
+  queued: number
   submit: () => Promise<void>
+  setCount: (n: number) => void
   useApprovedLyric: () => void
 }
 
@@ -32,9 +37,11 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
   error: null,
   last: null,
   lastProfileId: null,
+  count: 1,
+  queued: 0,
 
   /**
-   * Queue one generation.
+   * Queue one or more generations.
    *
    * The `blockers` check is repeated here even though the button is disabled
    * on it. That is not belt-and-braces: the button is a view, and this is the
@@ -43,7 +50,14 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
    *
    * **`register` is the load-bearing line.** `generate_audio` starts the job
    * pump itself, and without this the queue panel never hears about the job it
-   * is running (jobs.ts).
+   * is running (jobs.ts). In a batch it happens once per accepted job, inside the
+   * loop, because each job has its own prompt id and the queue ignores events
+   * for ids it does not know.
+   *
+   * Sequential `await`, never `Promise.all`: one stdio transport, and
+   * `register` stamps `submittedAt = Date.now()` which `queueRows` sorts by.
+   * Parallel submits would interleave and list the queue in an order ComfyUI
+   * will not run it in.
    */
   submit: async () => {
     if (!isTauri() || get().busy) return
@@ -54,21 +68,28 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
 
     const stack = useLoraPanelStore.getState().stack
     const doc = useLyricsStore.getState().doc
+    const { count } = get()
 
-    set({ busy: true, error: null })
+    set({ busy: true, error: null, queued: 0 })
     try {
-      const submission = await generateAudio(specFor(profileId, model, values, stack, doc))
-      useJobsStore.getState().register(submission.prompt_id, profileId)
-      set({ last: submission, lastProfileId: profileId })
+      const specs = specsFor(profileId, model, values, stack, doc, count, freshSeed)
+      for (const spec of specs) {
+        const submission = await generateAudio(spec)
+        useJobsStore.getState().register(submission.prompt_id, profileId)
+        set({ last: submission, lastProfileId: profileId, queued: get().queued + 1 })
+      }
     } catch (e) {
       // Verbatim. The param panel once shipped a note with comfy-cli's raw
       // transport error spliced into the middle of a sentence, and it took
       // somebody reading the screen to find it while every test passed.
-      set({ error: String(e), last: null, lastProfileId: null })
+      // Do not clear `last`: a partial batch really is running on the GPU.
+      set({ error: String(e) })
     } finally {
       set({ busy: false })
     }
   },
+
+  setCount: (n) => set({ count: n }),
 
   /** Fill the lyrics field from the approved version. */
   useApprovedLyric: () => {

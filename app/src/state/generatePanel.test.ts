@@ -19,12 +19,30 @@ let reply: Submission | Error = {
   lora_nodes: [],
   output_format: 'flac',
 }
+let callCount = 0
+let failAfter: number | null = null
+let inFlight = 0
+let maxInFlight = 0
 
 vi.mock('../bridge/comfy', () => ({ isTauri: () => true }))
 vi.mock('../bridge/generate', () => ({
-  generateAudio: (spec: GenerationSpec) => {
+  generateAudio: async (spec: GenerationSpec) => {
     sent = spec
-    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply)
+    callCount++
+    inFlight++
+    maxInFlight = Math.max(maxInFlight, inFlight)
+    if (failAfter !== null && callCount > failAfter) {
+      inFlight--
+      return Promise.reject(new Error('mid-batch failure'))
+    }
+    if (reply instanceof Error) {
+      inFlight--
+      return Promise.reject(reply)
+    }
+    await Promise.resolve()
+    inFlight--
+    const promptId = callCount === 1 ? reply.prompt_id : `prompt-${callCount}`
+    return { ...reply, prompt_id: promptId }
   },
 }))
 
@@ -37,7 +55,18 @@ beforeEach(() => {
     lora_nodes: [],
     output_format: 'flac',
   }
-  useGenerateStore.setState({ busy: false, error: null, last: null, lastProfileId: null })
+  callCount = 0
+  failAfter = null
+  inFlight = 0
+  maxInFlight = 0
+  useGenerateStore.setState({
+    busy: false,
+    error: null,
+    last: null,
+    lastProfileId: null,
+    count: 1,
+    queued: 0,
+  })
   useJobsStore.setState({ jobs: {} })
   useLoraPanelStore.setState({ stack: [] })
   useLyricsStore.setState({ doc: null })
@@ -189,6 +218,69 @@ describe('useGenerateStore.submit', () => {
     expect(job).toBeDefined()
     expect(job.profileId).toBe('ace-step-1.5-turbo')
     expect(job.submittedAt).toBeGreaterThan(0)
+  })
+
+  /** Protects: a batch queues every spec and registers every job. */
+  it('test_a_batch_submits_every_spec_and_registers_every_job', async () => {
+    useGenerateStore.setState({ count: 4 })
+
+    await useGenerateStore.getState().submit()
+
+    expect(callCount).toBe(4)
+    const jobs = useJobsStore.getState().jobs
+    expect(Object.keys(jobs)).toHaveLength(4)
+    expect(jobs['prompt-abc']).toBeDefined()
+    expect(jobs['prompt-2']).toBeDefined()
+    expect(jobs['prompt-3']).toBeDefined()
+    expect(jobs['prompt-4']).toBeDefined()
+  })
+
+  /**
+   * Protects: a partial batch keeps what was queued and does not wipe the note.
+   *
+   * `last` must survive a failure: two jobs are on the GPU and the screen should
+   * still say so.
+   */
+  it('test_a_failure_midway_keeps_what_was_queued', async () => {
+    useGenerateStore.setState({ count: 4 })
+    failAfter = 2
+
+    await useGenerateStore.getState().submit()
+
+    const state = useGenerateStore.getState()
+    expect(state.queued).toBe(2)
+    expect(state.error).toContain('mid-batch failure')
+    expect(state.last).not.toBeNull()
+    expect(Object.keys(useJobsStore.getState().jobs)).toHaveLength(2)
+  })
+
+  /**
+   * Protects: a retry that queues nothing reports zero, not the last success.
+   *
+   * `last` is deliberately kept through a failure (a partial batch is really
+   * running), so `queued` is the only thing that can tell the bar this click
+   * added nothing -- see `notesFor`'s zero guard.
+   */
+  it('test_a_click_that_queues_nothing_reports_zero', async () => {
+    await useGenerateStore.getState().submit()
+    expect(useGenerateStore.getState().queued).toBe(1)
+
+    failAfter = 0
+    await useGenerateStore.getState().submit()
+
+    const state = useGenerateStore.getState()
+    expect(state.queued).toBe(0)
+    expect(state.error).toContain('mid-batch failure')
+    expect(Object.keys(useJobsStore.getState().jobs)).toHaveLength(1)
+  })
+
+  /** Protects: jobs are submitted one at a time, never in parallel. */
+  it('test_a_batch_submits_one_at_a_time', async () => {
+    useGenerateStore.setState({ count: 4 })
+
+    await useGenerateStore.getState().submit()
+
+    expect(maxInFlight).toBe(1)
   })
 })
 

@@ -22,6 +22,12 @@ export const USE_APPROVED = 'Use it'
 export const GENERATE = 'Generate'
 export const QUEUEING = 'Queueing…'
 
+/** How many variations one click can queue. */
+export const MAX_BATCH = 8
+
+/** The choices the Variations select offers. */
+export const BATCH_CHOICES = [1, 2, 4, 8] as const
+
 /**
  * The lyrics control this profile declares, or `null` when it has none.
  *
@@ -39,6 +45,30 @@ function lyricsControl(model: PanelModel): string | null {
 function seedControl(model: PanelModel): string | null {
   const control = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
   return control?.name ?? null
+}
+
+/**
+ * Whether this model can be batched at all: only a seed makes two jobs differ.
+ *
+ * A model with no seed control would queue N identical specs, and their
+ * sidecars could not be told apart -- so the UI does not offer the control.
+ */
+export function canBatch(model: PanelModel | null): boolean {
+  if (model === null) return false
+  return seedControl(model) !== null
+}
+
+/**
+ * How many jobs a click will actually queue.
+ *
+ * One rule, one owner. The count survives a profile switch, so a 4 chosen on
+ * ACE-Step is still 4 when the panel shows a model with no seed -- where the
+ * control is not even on screen and only one job can be queued. Without this
+ * the button would count `1 of 4` through a batch of one.
+ */
+export function effectiveCount(model: PanelModel | null, count: number): number {
+  if (!canBatch(model)) return 1
+  return Math.min(Math.max(Math.trunc(count), 1), MAX_BATCH)
 }
 
 /**
@@ -158,6 +188,41 @@ export function specFor(
 }
 
 /**
+ * The specs for one click: the first exactly as `specFor` builds it, the rest
+ * identical but for a fresh seed.
+ *
+ * `nextSeed` is a parameter with no default. `freshSeed` lives in `paramPanel.ts`,
+ * which imports zustand, and this module is pure -- importing a store here to get
+ * a random number would pull the store graph into the one file that has none.
+ */
+export function specsFor(
+  profileId: string,
+  model: PanelModel,
+  values: Record<string, ControlValue>,
+  stack: StackRow[],
+  doc: LyricDoc | null,
+  count: number,
+  nextSeed: () => number,
+): GenerationSpec[] {
+  const name = seedControl(model)
+  const first = specFor(profileId, model, values, stack, doc)
+  const total = effectiveCount(model, count)
+  if (name === null || total <= 1) return [first]
+
+  const specs = [first]
+  for (let i = 1; i < total; i++) {
+    specs.push(specFor(profileId, model, { ...values, [name]: nextSeed() }, stack, doc))
+  }
+  return specs
+}
+
+/** The button's label while a batch is in flight. */
+export function queueingLabel(queued: number, total: number): string {
+  if (total <= 1) return QUEUEING
+  return `Queueing ${queued + 1} of ${total}…`
+}
+
+/**
  * What to say about a job that was just queued.
  *
  * The LoRA and format lines are the only confirmation anyone gets that the two
@@ -171,8 +236,10 @@ export function specFor(
  * the edit wrote, and a sentence that would become a lie if a profile ever
  * opted into something else is not worth the extra word.
  */
-export function submissionNotes(submission: Submission): string[] {
-  const notes = [QUEUED]
+export function submissionNotes(submission: Submission, queued: number = 1): string[] {
+  const notes = [
+    queued <= 1 ? QUEUED : `Queued ${queued}. Watch them in the queue below.`,
+  ]
 
   const loras = submission.lora_nodes.length
   if (loras > 0) {
@@ -204,12 +271,20 @@ export function submissionNotes(submission: Submission): string[] {
  * Keyed on the profile rather than cleared on mount: a view re-mounts on every
  * tab switch, and clearing there would wipe the notes for anyone who generated,
  * looked at their lyrics, and came back.
+ *
+ * **`queued === 0` clears them**, and that guard is what makes T-312's "do not
+ * clear `last` on a failure" safe. A partial batch must keep its notes -- two
+ * jobs really are on the GPU -- but a click where *nothing* was accepted must
+ * not inherit the last successful submission's, or killing ComfyUI and pressing
+ * Generate again shows the transport error and `Queued.` in the same breath.
  */
 export function notesFor(
   last: Submission | null,
   lastProfileId: string | null,
   profileId: string | null,
+  queued: number = 1,
 ): string[] {
   if (last === null || lastProfileId === null || lastProfileId !== profileId) return []
-  return submissionNotes(last)
+  if (queued === 0) return []
+  return submissionNotes(last, queued)
 }

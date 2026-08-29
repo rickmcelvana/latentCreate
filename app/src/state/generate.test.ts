@@ -1,22 +1,27 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import aceProfile from '../../../profiles/ace-step-1.5-turbo.json'
 import type { Submission } from '../bridge/generate'
 import type { LyricDoc, LyricVersion } from '../bridge/lyricdoc'
 import type { ProfileInputs } from '../bridge/profiles'
 import {
   GENERATE,
+  MAX_BATCH,
   QUEUED,
   QUEUEING,
   approvedFill,
   approvedOffer,
   blockers,
+  canBatch,
+  effectiveCount,
   lyricRefFor,
   notesFor,
+  queueingLabel,
   specFor,
+  specsFor,
   submissionNotes,
 } from './generate'
 import type { StackRow } from './loras'
-import { defaults, panelModel } from './params'
+import { defaults, panelModel, type PanelModel } from './params'
 
 const model = panelModel(aceProfile.inputs as unknown as ProfileInputs)
 
@@ -224,6 +229,163 @@ describe('specFor', () => {
   })
 })
 
+describe('specsFor', () => {
+  /** Protects: a count of one is exactly the single-spec path. */
+  it('test_a_count_of_one_is_exactly_the_single_spec', () => {
+    const nextSeed = vi.fn(() => 9999)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      1,
+      nextSeed,
+    )
+
+    expect(specs).toHaveLength(1)
+    expect(specs[0]).toEqual(
+      specFor('ace-step-1.5-turbo', model, values({ seed: 4242 }), [], null),
+    )
+    expect(nextSeed).not.toHaveBeenCalled()
+  })
+
+  /** Protects: every spec in a batch gets its own seed. */
+  it('test_each_spec_carries_its_own_seed', () => {
+    const seeds = [1111, 2222, 3333]
+    const nextSeed = vi.fn(() => seeds.shift()!)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      4,
+      nextSeed,
+    )
+
+    expect(specs).toHaveLength(4)
+    expect(specs[0].inputs.seed).toEqual({ type: 'seed', value: 4242 })
+    expect(specs[1].inputs.seed).toEqual({ type: 'seed', value: 1111 })
+    expect(specs[2].inputs.seed).toEqual({ type: 'seed', value: 2222 })
+    expect(specs[3].inputs.seed).toEqual({ type: 'seed', value: 3333 })
+  })
+
+  /** Protects: only the seed varies between specs. */
+  it('test_only_the_seed_differs', () => {
+    const seeds = [1111, 2222, 3333]
+    const nextSeed = vi.fn(() => seeds.shift()!)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242, tags: 'synthwave' }),
+      [],
+      null,
+      4,
+      nextSeed,
+    )
+
+    const [first, ...rest] = specs
+    for (const spec of rest) {
+      expect(spec.profile_id).toBe(first.profile_id)
+      expect(spec.loras).toEqual(first.loras)
+      expect(spec.lyrics).toEqual(first.lyrics)
+      for (const [key, value] of Object.entries(spec.inputs)) {
+        if (key === 'seed') continue
+        expect(value).toEqual(first.inputs[key])
+      }
+    }
+  })
+
+  /** Protects: N specs share no mutable state. */
+  it('test_the_specs_are_separate_objects', () => {
+    const nextSeed = vi.fn(() => 9999)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      4,
+      nextSeed,
+    )
+
+    specs[0].inputs.seed = { type: 'seed', value: 1111 }
+    expect(specs[1].inputs.seed).toEqual({ type: 'seed', value: 9999 })
+  })
+
+  /** Protects: a model with no seed cannot produce distinguishable variations. */
+  it('test_a_model_with_no_seed_cannot_batch', () => {
+    const noSeedModel: PanelModel = {
+      ...model,
+      basic: model.basic.filter((c) => c.kind !== 'seed'),
+      advanced: model.advanced.filter((c) => c.kind !== 'seed'),
+    }
+    const nextSeed = vi.fn(() => 9999)
+
+    expect(canBatch(noSeedModel)).toBe(false)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      noSeedModel,
+      values({ seed: 4242 }),
+      [],
+      null,
+      4,
+      nextSeed,
+    )
+    expect(specs).toHaveLength(1)
+    expect(nextSeed).not.toHaveBeenCalled()
+  })
+
+  /** Protects: the UI cannot ask for more than the app supports. */
+  it('test_the_count_is_capped', () => {
+    const nextSeed = vi.fn(() => 9999)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      99,
+      nextSeed,
+    )
+
+    expect(specs).toHaveLength(MAX_BATCH)
+    expect(nextSeed).toHaveBeenCalledTimes(MAX_BATCH - 1)
+  })
+})
+
+describe('queueingLabel', () => {
+  /** Protects: the button label counts the job being submitted now. */
+  it('test_queueing_label_counts_for_batches', () => {
+    expect(queueingLabel(0, 1)).toBe(QUEUEING)
+    expect(queueingLabel(0, 4)).toBe('Queueing 1 of 4…')
+    expect(queueingLabel(3, 4)).toBe('Queueing 4 of 4…')
+  })
+})
+
+describe('effectiveCount', () => {
+  /**
+   * Protects: the count the button counts to is the count that will be queued.
+   *
+   * The chosen count outlives the profile it was chosen on, and a model with no
+   * seed queues one job whatever it says.
+   */
+  it('test_a_model_that_cannot_batch_queues_one', () => {
+    const noSeedModel: PanelModel = {
+      ...model,
+      basic: model.basic.filter((c) => c.kind !== 'seed'),
+      advanced: model.advanced.filter((c) => c.kind !== 'seed'),
+    }
+
+    expect(effectiveCount(noSeedModel, 4)).toBe(1)
+    expect(effectiveCount(null, 4)).toBe(1)
+    expect(effectiveCount(model, 4)).toBe(4)
+    expect(effectiveCount(model, 99)).toBe(MAX_BATCH)
+    expect(effectiveCount(model, 0)).toBe(1)
+  })
+})
+
 describe('submissionNotes', () => {
   it('test_a_plain_submission_just_says_it_is_queued', () => {
     expect(submissionNotes(submission())).toEqual([QUEUED])
@@ -271,6 +433,14 @@ describe('submissionNotes', () => {
       false,
     )
   })
+
+  /** Protects: the queued line names the batch size when there is one. */
+  it('test_the_queued_line_counts', () => {
+    const s = submission()
+
+    expect(submissionNotes(s, 4)[0]).toBe('Queued 4. Watch them in the queue below.')
+    expect(submissionNotes(s)[0]).toBe(QUEUED)
+  })
 })
 
 describe('notesFor', () => {
@@ -293,6 +463,23 @@ describe('notesFor', () => {
   it('test_nothing_queued_says_nothing', () => {
     expect(notesFor(null, null, 'ace-step-1.5-turbo')).toEqual([])
     expect(notesFor(submission(), null, 'ace-step-1.5-turbo')).toEqual([])
+  })
+
+  /**
+   * Protects: a click that queued nothing does not inherit the last one's notes.
+   *
+   * `submit` keeps `last` through a failure so a *partial* batch can still say
+   * how many are running. The cost, without this guard, is a click where every
+   * job was refused showing the transport error and `Queued.` together, both
+   * describing the previous generation.
+   */
+  it('test_a_click_that_queued_nothing_shows_no_notes', () => {
+    const stale = submission({ lora_nodes: ['200'] })
+
+    expect(notesFor(stale, 'ace-step-1.5-turbo', 'ace-step-1.5-turbo', 0)).toEqual([])
+    expect(notesFor(stale, 'ace-step-1.5-turbo', 'ace-step-1.5-turbo', 2)).toContain(
+      'Queued 2. Watch them in the queue below.',
+    )
   })
 
   /** Protects: the button says something in both states. */

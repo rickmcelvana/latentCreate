@@ -1644,3 +1644,40 @@ body {
   background: var(--panel-hover);
   border-color: var(--accent);
 }
+
+/* --- Batch count (T-312) --- */
+
+.generate-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.generate-count {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.generate-count select {
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color var(--transition);
+}
+
+.generate-count select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.generate-count select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

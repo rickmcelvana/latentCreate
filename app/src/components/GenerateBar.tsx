@@ -1,10 +1,13 @@
 import {
+  BATCH_CHOICES,
   GENERATE,
-  QUEUEING,
   USE_APPROVED,
   approvedOffer,
   blockers,
+  canBatch,
+  effectiveCount,
   notesFor,
+  queueingLabel,
 } from '../state/generate'
 import { useGenerateStore } from '../state/generatePanel'
 import { useLyricsStore } from '../state/lyrics'
@@ -15,7 +18,10 @@ export function GenerateBar() {
   const error = useGenerateStore((s) => s.error)
   const last = useGenerateStore((s) => s.last)
   const lastProfileId = useGenerateStore((s) => s.lastProfileId)
+  const count = useGenerateStore((s) => s.count)
+  const queued = useGenerateStore((s) => s.queued)
   const submit = useGenerateStore((s) => s.submit)
+  const setCount = useGenerateStore((s) => s.setCount)
   const useApprovedLyric = useGenerateStore((s) => s.useApprovedLyric)
 
   const profileId = useParamPanelStore((s) => s.profileId)
@@ -25,7 +31,7 @@ export function GenerateBar() {
 
   const offer = approvedOffer(doc, model, values)
   const reasons = blockers(profileId, model, values)
-  const notes = notesFor(last, lastProfileId, profileId)
+  const notes = notesFor(last, lastProfileId, profileId, queued)
 
   return (
     <section className="panel generate-bar">
@@ -48,14 +54,33 @@ export function GenerateBar() {
         </p>
       ))}
 
-      <button
-        type="button"
-        className="generate-button"
-        disabled={reasons.length > 0 || busy}
-        onClick={() => void submit()}
-      >
-        {busy ? QUEUEING : GENERATE}
-      </button>
+      <div className="generate-actions">
+        {canBatch(model) ? (
+          <label className="generate-count">
+            Variations
+            <select
+              value={count}
+              disabled={busy}
+              onChange={(e) => setCount(Number(e.target.value))}
+            >
+              {BATCH_CHOICES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <button
+          type="button"
+          className="generate-button"
+          disabled={reasons.length > 0 || busy}
+          onClick={() => void submit()}
+        >
+          {busy ? queueingLabel(queued, effectiveCount(model, count)) : GENERATE}
+        </button>
+      </div>
 
       {error !== null ? <p className="generate-error">{error}</p> : null}
 
