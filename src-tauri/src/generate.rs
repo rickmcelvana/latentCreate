@@ -29,13 +29,16 @@ use create_core::audit::{audit_slots, SlotAudit};
 use create_core::generation::{GenerationSpec, ResolvedSlots};
 use create_core::graph::{ensure_lossless_output, splice_loras, GraphError, LoraChoice};
 use create_core::profile::ModelProfile;
-use mcp_bridge::{Finding, LocalComfy, SlotOverride, Validation, Verdict};
+use create_core::provenance::ComfyServerInfo;
+use mcp_bridge::{Finding, LocalComfy, ServerInfo, SlotOverride, Validation, Verdict};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
 
 use crate::comfy::{ensure_connected, EnsureError};
+use crate::ingest::PendingTrack;
 use crate::jobs::ComfyState;
+use crate::projectctx::default_project;
 use crate::{ConfigDir, ProfilesDir};
 
 /// What was queued, and what the app could not check while queueing it.
@@ -92,8 +95,26 @@ pub async fn generate_audio(
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
 
-    let submission = build_and_submit(&comfy, &workflow, &profile, &spec).await?;
-    state.pump(app, comfy, submission.prompt_id.clone());
+    let (submission, resolved) = build_and_submit(&comfy, &workflow, &profile, &spec).await?;
+    let server_info = comfy.health().await.ok().as_ref().map(server_info_of);
+    let project = default_project(&config_dir.0).map_err(|e| e.to_string())?;
+    let pending = PendingTrack {
+        project_slug: project.slug,
+        profile_id: profile.id.clone(),
+        profile_display_name: profile.display_name.clone(),
+        model_license: profile.license.clone(),
+        template: profile.comfy.template.clone(),
+        spec: spec.clone(),
+        resolved_slots: resolved,
+        comfy: server_info,
+    };
+    state.pump(
+        app,
+        comfy,
+        submission.prompt_id.clone(),
+        Some(pending),
+        config_dir.0.clone(),
+    );
     Ok(submission)
 }
 
@@ -102,12 +123,15 @@ pub async fn generate_audio(
 /// Takes the workflow path rather than minting one so a test can place a real
 /// captured template where `fetch_template` would have written it: a mock
 /// transport reproduces comfy-mcp's replies, not its side effects.
+///
+/// Returns the submission record plus the resolved slots, so the caller can
+/// capture them in the pending provenance record without recomputing.
 pub(crate) async fn build_and_submit(
     comfy: &LocalComfy,
     workflow: &Path,
     profile: &ModelProfile,
     spec: &GenerationSpec,
-) -> Result<Submission, String> {
+) -> Result<(Submission, ResolvedSlots), String> {
     let template = profile.comfy.template.as_deref().ok_or_else(|| {
         format!(
             "{} declares no gallery template; imported workflows are not wired up yet",
@@ -162,13 +186,32 @@ pub(crate) async fn build_and_submit(
     }
 
     let run = comfy.run(workflow).await.map_err(|e| e.to_string())?;
-    Ok(Submission {
-        prompt_id: run.prompt_id,
-        workflow_path: workflow.display().to_string(),
-        unchecked_slots: audit.unchecked,
-        lora_nodes: edits.lora_nodes,
-        output_format: edits.output_format,
-    })
+    Ok((
+        Submission {
+            prompt_id: run.prompt_id,
+            workflow_path: workflow.display().to_string(),
+            unchecked_slots: audit.unchecked,
+            lora_nodes: edits.lora_nodes,
+            output_format: edits.output_format,
+        },
+        resolved,
+    ))
+}
+
+/// Map a live server info reading to the provenance record.
+fn server_info_of(info: &ServerInfo) -> ComfyServerInfo {
+    ComfyServerInfo {
+        comfyui_version: info
+            .freshness
+            .as_ref()
+            .and_then(|f| f.core.as_ref())
+            .and_then(|c| c.installed.clone()),
+        comfy_cli_version: info
+            .compatibility
+            .as_ref()
+            .and_then(|c| c.comfy_cli_version.clone()),
+        url: info.server.as_ref().and_then(|s| s.url.clone()),
+    }
 }
 
 /// The slot writes for one resolved spec, in the shape `set_slots` wants.
@@ -398,7 +441,7 @@ mod tests {
         }));
 
         let (comfy, calls) = client_and_log(replies).await;
-        let submission = build_and_submit(&comfy, &workflow, &profile, &spec)
+        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
             .await
             .expect("pipeline runs");
 
@@ -530,7 +573,7 @@ mod tests {
         }));
 
         let (comfy, _calls) = client_and_log(replies).await;
-        let submission = build_and_submit(&comfy, &workflow, &profile, &spec)
+        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
             .await
             .expect("MiniMax must still generate");
 
@@ -591,7 +634,7 @@ mod tests {
         }));
 
         let (comfy, _calls) = client_and_log(replies).await;
-        let submission = build_and_submit(&comfy, &workflow, &profile, &spec)
+        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
             .await
             .expect("pipeline runs");
 

@@ -1,6 +1,7 @@
 //! Job pump: poll a running job and re-emit its lifecycle as Tauri events.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use serde_json::Value;
 use tauri::{async_runtime, AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 
+use crate::ingest::{ingest_outputs, PendingTrack};
 use crate::ConfigDir;
 
 /// Poll interval for the job pump.
@@ -37,15 +39,26 @@ pub struct JobFailed {
     pub error: String,
 }
 
+/// Emitted once per track saved after a successful generation.
+#[derive(Debug, Clone, Serialize)]
+pub struct TrackSaved {
+    pub id: String,
+    pub project_slug: String,
+    pub file: String,
+}
+
 /// The backend and the active job pumps, held as Tauri managed state.
 ///
 /// `comfy` is `None` until [`connect_comfy`] succeeds. `jobs` maps a prompt id
 /// to the abort handle of its monitor task, so [`cancel_job`] can stop a pump
 /// that is stuck polling (CONVENTIONS: no detached fire-and-forget loops).
+/// `pending` holds the provenance records for jobs submitted through
+/// `generate_audio`; a bare `run_workflow` job has no record and is not ingested.
 #[derive(Default)]
 pub struct ComfyState {
     comfy: RwLock<Option<Arc<LocalComfy>>>,
     jobs: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
+    pending: Arc<Mutex<HashMap<String, PendingTrack>>>,
 }
 
 impl ComfyState {
@@ -77,9 +90,45 @@ impl ComfyState {
     /// calls this rather than spawning its own monitor -- a second lifecycle
     /// would emit a second set of events for the same prompt id, and
     /// [`cancel_job`] would only know about one of them.
-    pub(crate) fn pump(&self, app: AppHandle, comfy: Arc<LocalComfy>, id: String) {
+    /// Record a job's provenance, when it has any.
+    ///
+    /// Split out of [`ComfyState::pump`] so the rule can be tested without an
+    /// `AppHandle`: no test in this crate builds one, and reaching for
+    /// `tauri::test` would turn a one-line invariant into a new dependency
+    /// feature. `None` is a bare `run_workflow` submission, which has no
+    /// profile behind it and therefore no sidecar to write.
+    fn remember(&self, id: &str, pending: Option<PendingTrack>) {
+        if let Some(p) = pending {
+            self.pending
+                .lock()
+                .expect("pending lock poisoned")
+                .insert(id.to_string(), p);
+        }
+    }
+
+    /// The provenance record for a finished job, if it had one.
+    #[cfg(test)]
+    fn remembered(&self, id: &str) -> Option<PendingTrack> {
+        self.pending
+            .lock()
+            .expect("pending lock poisoned")
+            .get(id)
+            .cloned()
+    }
+
+    pub(crate) fn pump(
+        &self,
+        app: AppHandle,
+        comfy: Arc<LocalComfy>,
+        id: String,
+        pending: Option<PendingTrack>,
+        root: PathBuf,
+    ) {
+        self.remember(&id, pending);
         let jobs = Arc::clone(&self.jobs);
-        let handle = async_runtime::spawn(monitor_job(app, comfy, id.clone(), jobs));
+        let pending_map = Arc::clone(&self.pending);
+        let handle =
+            async_runtime::spawn(monitor_job(app, comfy, id.clone(), root, pending_map, jobs));
         self.jobs
             .lock()
             .expect("jobs lock poisoned")
@@ -109,6 +158,7 @@ pub async fn connect_comfy(
 pub async fn run_workflow(
     app: AppHandle,
     state: State<'_, ComfyState>,
+    config_dir: State<'_, ConfigDir>,
     workflow_path: String,
 ) -> Result<String, String> {
     let comfy = state
@@ -123,7 +173,7 @@ pub async fn run_workflow(
         .await
         .map_err(|e| e.to_string())?;
     let id = run.prompt_id.clone();
-    state.pump(app, comfy, id.clone());
+    state.pump(app, comfy, id.clone(), None, config_dir.0.clone());
     Ok(id)
 }
 
@@ -170,6 +220,8 @@ async fn monitor_job(
     app: AppHandle,
     comfy: Arc<LocalComfy>,
     id: String,
+    root: PathBuf,
+    pending: Arc<Mutex<HashMap<String, PendingTrack>>>,
     jobs: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
 ) {
     let result = poll_until_terminal(
@@ -201,6 +253,7 @@ async fn monitor_job(
                     outputs,
                 },
             );
+            ingest_if_pending(&app, &comfy, &id, &root, &pending).await;
         }
         TerminalOutcome::Cancelled => {
             let _ = app.emit("job://cancelled", JobCancelled { id: id.clone() });
@@ -216,9 +269,80 @@ async fn monitor_job(
         }
     }
 
+    if let Ok(mut p) = pending.lock() {
+        p.remove(&id);
+    }
     if let Ok(mut jobs) = jobs.lock() {
         jobs.remove(&id);
     }
+}
+
+/// Fetch outputs and turn them into tracks when there is a pending record.
+async fn ingest_if_pending(
+    app: &AppHandle,
+    comfy: &Arc<LocalComfy>,
+    id: &str,
+    root: &Path,
+    pending: &Arc<Mutex<HashMap<String, PendingTrack>>>,
+) {
+    let maybe_pending = pending.lock().ok().and_then(|m| m.get(id).cloned());
+    let Some(p) = maybe_pending else {
+        return;
+    };
+
+    let tracks_dir = match library::tracks::tracks_dir(root, &p.project_slug) {
+        Ok(d) => d,
+        Err(e) => {
+            log_ingest_failure(app, id, root, &e.to_string());
+            return;
+        }
+    };
+    if let Err(e) = std::fs::create_dir_all(&tracks_dir) {
+        log_ingest_failure(app, id, root, &e.to_string());
+        return;
+    }
+
+    let batch = match comfy.outputs(id, &tracks_dir).await {
+        Ok(b) => b,
+        Err(e) => {
+            log_ingest_failure(app, id, root, &e.to_string());
+            return;
+        }
+    };
+
+    let now = library::projects::now_rfc3339();
+    match ingest_outputs(root, &p, &batch, &now) {
+        Ok(tracks) => {
+            for track in tracks {
+                let _ = app.emit(
+                    "track://saved",
+                    TrackSaved {
+                        id: track.id.0.clone(),
+                        project_slug: p.project_slug.clone(),
+                        file: track.file.clone(),
+                    },
+                );
+            }
+        }
+        Err(e) => {
+            log_ingest_failure(app, id, root, &e.to_string());
+        }
+    }
+}
+
+/// Log an ingest failure and re-emit it as a job failure so the row does not
+/// show Done for a track that was never saved.
+fn log_ingest_failure(app: &AppHandle, id: &str, root: &Path, message: &str) {
+    if let Ok(log) = SessionLog::open(root.join("session.log")) {
+        log.log_result("ingest_outputs", false, message);
+    }
+    let _ = app.emit(
+        "job://failed",
+        JobFailed {
+            id: id.to_string(),
+            error: format!("ingestion failed: {message}"),
+        },
+    );
 }
 
 /// Poll `job_status` until the job is terminal, calling `on_update` for each
@@ -405,6 +529,53 @@ mod tests {
 
         assert!(!cancelled.found);
         assert!(!cancelled.interrupt_ok);
+    }
+
+    /// Protects: a bare `run_workflow` job growing a provenance record.
+    ///
+    /// `run_workflow` submits a workflow with no profile behind it, so there is
+    /// nothing to write a sidecar from -- and inventing one would file a track
+    /// under a model that never ran. The `Option` states that in the type; this
+    /// asserts the type is actually honoured.
+    ///
+    /// Tests [`ComfyState::remember`] rather than [`ComfyState::pump`]: pump
+    /// needs an `AppHandle`, no test in this crate builds one, and enabling
+    /// `tauri`'s `test` feature to reach a one-line rule would be a dependency
+    /// change made in service of a test.
+    #[test]
+    fn test_a_bare_run_workflow_job_has_no_pending_record() {
+        let state = ComfyState::default();
+
+        state.remember("bare", None);
+        assert!(
+            state.remembered("bare").is_none(),
+            "a job with no profile must not be remembered"
+        );
+
+        state.remember("generated", Some(sample_pending()));
+        assert!(
+            state.remembered("generated").is_some(),
+            "a generated job must be remembered, or its provenance is lost"
+        );
+    }
+
+    /// A minimal pending record; only its presence is under test here.
+    fn sample_pending() -> PendingTrack {
+        PendingTrack {
+            project_slug: "night-drive".to_string(),
+            profile_id: "ace-step-1.5-turbo".to_string(),
+            profile_display_name: "ACE-Step 1.5 XL Turbo".to_string(),
+            model_license: "Apache-2.0".to_string(),
+            template: None,
+            spec: create_core::generation::GenerationSpec {
+                profile_id: "ace-step-1.5-turbo".to_string(),
+                inputs: Default::default(),
+                loras: Vec::new(),
+                lyrics: None,
+            },
+            resolved_slots: Default::default(),
+            comfy: None,
+        }
     }
 
     /// Protects: a cancelled poll result becomes a cancellation, not a failure.

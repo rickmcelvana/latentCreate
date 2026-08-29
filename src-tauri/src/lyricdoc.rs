@@ -6,33 +6,13 @@
 //! lint it. Until Phase 4's Library view, there is exactly one project and one
 //! working document, both created on demand.
 
-use std::path::Path;
-
 use create_core::lyrics::lint::{lint_lyrics, LintFinding};
 use create_core::lyrics::LyricBrief;
-use create_core::project::{LyricDoc, Project};
+use create_core::project::LyricDoc;
 use tauri::State;
 
+use crate::projectctx::default_project;
 use crate::{ConfigDir, ProfilesDir};
-
-/// Name of the project lyrics are written under, before the user has named one.
-const DEFAULT_PROJECT_NAME: &str = "My First Song";
-
-/// The project lyrics are written under, creating it on first use.
-///
-/// The default is the first project in slug order; a fresh root has none, so
-/// one is created. Deterministic so a restart lands on the same project.
-fn default_project(root: &Path) -> Result<Project, library::LibraryError> {
-    let set = library::projects::list_projects(root);
-    if let Some(first) = set.projects.into_iter().next() {
-        return Ok(first);
-    }
-    library::projects::create_project(
-        root,
-        DEFAULT_PROJECT_NAME,
-        &library::projects::now_rfc3339(),
-    )
-}
 
 /// Open the working lyric document, creating it (and its project) on first use.
 ///
@@ -94,20 +74,7 @@ fn lint_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Protects: the default project exists after the first open, and a second
-    /// open lands on the same one rather than minting a second.
-    #[test]
-    fn test_default_project_is_created_once_and_reused() {
-        let root = tempfile::tempdir().unwrap();
-        let first = default_project(root.path()).unwrap();
-        assert_eq!(first.name, DEFAULT_PROJECT_NAME);
-        assert_eq!(first.slug, "my-first-song");
-
-        let again = default_project(root.path()).unwrap();
-        assert_eq!(again.slug, "my-first-song");
-        assert_eq!(again.created_at, first.created_at);
-    }
+    use std::path::Path;
 
     /// Protects: a lyric with a stray production direction is linted against
     /// the shipped profile, and a missing profile lints to nothing rather than

@@ -94,6 +94,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tempfile",
+ "thiserror 2.0.20",
  "tokio",
 ]
 

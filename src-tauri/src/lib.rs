@@ -9,6 +9,7 @@ use tauri::Manager;
 
 mod comfy;
 mod generate;
+mod ingest;
 mod install;
 mod jobs;
 mod llm;
@@ -18,6 +19,7 @@ mod lyrics;
 mod models;
 mod optimize;
 mod profile;
+mod projectctx;
 
 use jobs::ComfyState;
 use lyrics::LyricsState;
