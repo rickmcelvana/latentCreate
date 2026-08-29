@@ -10,7 +10,8 @@ T-309a (LoRA refs in the spec). **Crate/dir:** `crates/create-core`, `crates/lib
 - `crates/create-core/src/audio.rs` — **new**, one pure function
 - `crates/create-core/src/lib.rs` — `pub mod audio;`
 - `crates/library/src/tracks.rs` — **new**
-- `crates/library/src/lib.rs` — `pub mod tracks;` and the re-exports
+- `crates/library/src/lib.rs` — **`pub mod tracks;` and nothing else**. See the note below;
+  this line previously said "and the re-exports" and was wrong.
 
 `testdata/audio/ace-step.flac.head` already exists and is committed. Do not regenerate it.
 
@@ -114,6 +115,18 @@ profiles force FLAC (`prefer_lossless: true`, `SaveAudioAdvanced`), so this cove
 itself produces. A profile opting out gets `None`, which is what `Option<f64>` is for.
 
 ### 3. `library::tracks`
+
+**`lib.rs` gets `pub mod tracks;` and no `pub use` line** (corrected 2026-08-29, after the executor
+rightly queried it). Every existing re-export in that file names a type **defined in one of this
+crate's own modules** -- `Config`, `LyricDocSet`, `ProfileSet`, `ProjectSet`, `SecretKey`. The crate
+re-exports nothing from `create-core`: `lyrics.rs` works with `LyricDoc` throughout and does not
+re-export it, and callers such as `src-tauri/src/lyricdoc.rs` import it directly as
+`create_core::project::LyricDoc`.
+
+`tracks.rs` as scoped here defines **no types at all** -- only functions -- so it has nothing to
+re-export, and re-exporting `Track`/`TrackId` from `create-core` would invent a second import path
+for one type. A `pub use tracks::TrackSet;` line becomes correct in **T-311c**, when `list_tracks`
+and its warning set arrive with the Library view.
 
 Mirror `library::lyrics`. Public surface, and nothing beyond it:
 
