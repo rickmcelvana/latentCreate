@@ -181,6 +181,16 @@ Unit tests must not require a running ComfyUI/LLM. Rules:
   started. Fix the line; the pointer to the authoritative doc stays, the permission to be wrong
   goes.
 
+- **A doc comment in the source is a doc.** The rule above says to check a claim before building
+  on it; a `///` or `/** */` listing "observed values", naming a surface's behaviour or stating what
+  a third party sends is exactly such a claim, and it is the *most* trusted kind because it sits
+  next to the code that acts on it. Three bugs have now come from one: the missing `cancelled`
+  (MCP-SURFACE 21), `failure_reason` reading an error payload as a string (24.3), and `jobs.ts`
+  listing `queued` as an observed poll value when the poll sends `pending` (25.1). Each had a green
+  suite, because the tests were written from the same comment. **If a comment says the surface does
+  X, go and see whether it does** -- and when you verify one, write the date and the measurement
+  into it, not just the conclusion.
+
 - **Date every count.** Test counts, entry counts, file counts and version numbers go stale
   silently and are the most-copied lines in the repo. Write them with the date they were true.
 
