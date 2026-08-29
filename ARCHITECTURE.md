@@ -106,7 +106,9 @@ holds `Arc<LocalComfy>`. Recorded in PROJECT.md's decisions log.
 
 Graph *structure* changes — inserting a LoRA loader, swapping the save node — are the exception and do require editing the workflow file (§5a, §7).
 
-**Two-way mapping rule:** one UI control may drive several slots. ACE-Step 1.5 turbo exposes duration twice (`94.duration` and `98.seconds`) and two independent seeds (`94.seed` planner, `3.seed` sampler). Profiles map one semantic input to a **list** of addresses; the UI shows one control. Hiding exactly this kind of trap is the app's reason to exist.
+**Two-way mapping rule:** one UI control may drive several slots. ACE-Step 1.5 turbo exposes duration twice (`94.duration` and `98.seconds`), and profiles map one semantic input to a **list** of addresses while the UI shows one control. Hiding exactly this kind of trap is the app's reason to exist.
+
+⚠ **The seed was this rule's other example until a live run disproved it.** ACE-Step appears to expose two independent seeds (`94.seed` planner, `3.seed` sampler), and the profile fanned out to both — but both are *driven by* `PrimitiveInt` 109, so both writes were accepted and ignored (§2a below, MCP-SURFACE §18.1). The fix was not a longer list but a **shorter** one: the profile writes `109.value` alone. Fan-out and redirect look identical in a slot list and are opposites in the graph; `create-core::audit_slots` is what tells them apart.
 
 - Long jobs: poll `job_status` (`job(action="status")`; `"wait"`/`"watch"` also exist) on a tokio task; progress re-emitted to the frontend as Tauri events (`job://progress`, `job://done`, `job://failed`). The UI never polls Rust; Rust pushes.
 - All tool-call payloads and results are logged (redacted) to a rotating session log for the diagnostics pane.
@@ -190,7 +192,10 @@ A profile binds **semantic input -> slot address(es)** on a named template. Valu
                     "reason": "TextEncodeAceStepAudio1.5 exposes no negative input" },
     "duration_s": { "type": "float",  "slots": ["94.duration", "98.seconds"],  // BOTH, kept in sync
                     "min": 10, "max": 300, "default": 120 },
-    "seed":       { "type": "seed",   "slots": ["94.seed", "3.seed"] },        // planner + sampler
+    "seed":       { "type": "seed",   "slots": ["109.value"] },                // the PrimitiveInt that
+                                                                               // drives 94.seed and
+                                                                               // 3.seed; writing those
+                                                                               // two directly is inert
     "bpm":        { "type": "int",    "slots": ["94.bpm"], "min": 10, "max": 300, "default": 120 },
     "keyscale":   { "type": "enum",   "slots": ["94.keyscale"], "from_node_choices": true },
     "timesig":    { "type": "enum",   "slots": ["94.timesignature"], "from_node_choices": true },
@@ -284,6 +289,7 @@ comfy-mcp itself, so such a gate would leave the button dead on every cold start
    - `filename_prefix` on the swapped node is still a normal slot, so only the format needs the graph edit.
 4. `validate_workflow` on the edited copy before submitting — cheap, and worth being precise about. **Measured on the live install (MCP-SURFACE §17–18):** it catches `unknown_enum_value`, `above_max` and `required_input_missing` before any GPU time. It is **blind to reachability** — a LoRA chain spliced in but feeding nothing validates clean, runs, and writes audio with no LoRA applied (§17.1) — and documented blind to `COMFY_DYNAMICCOMBO_V3` sub-inputs, which is the save format. **A clean validation is not evidence that a graph edit took effect.** Reachability is asserted in `create-core`'s own tests, before submission. Treat `Verdict::Vacuous` as failure, not success.
 5. Job lifecycle streamed to a **queue panel** (pending/running/progress %/failed with error text) via `job(action="status"|"watch")`. Multiple queued jobs allowed; batch = N seeds of the same spec.
+   - **Built in the frontend, not in Rust** (T-312). `state/generate.ts::specsFor` varies the panel's *values* and re-calls `specFor`, and the store awaits one `generate_audio` per spec, registering each prompt id as it lands. There is no batch command: each call already mints its own working copy, its own `PendingTrack` and its own pump, so N calls are N independent jobs, and sequential submission is what keeps `submittedAt` — the key the live queue sorts by — in execution order. `GenerationSpec::with_seed` exists in `create-core` and is **not** on this path.
    - ⚠ **The submitter must register the returned `prompt_id` with the frontend jobs store.** `generate_audio` starts the pump itself rather than going through `run_workflow`, and the store's reducer ignores events for ids it does not know -- correctly, or a foreign job would invent an entry. Both halves are right alone and deaf together: without `useJobsStore.register`, a generation runs to completion on the GPU and every progress, done and failed event is discarded, leaving an empty queue and no error anywhere (T-309d).
    - A known, accepted gap: the pump can emit before `register` runs, so an early status may be missed. Terminal events always arrive after, so nothing hangs. Closing it means a new `job://queued` event from the backend, for a cosmetic gain.
 6. On completion: `fetch_outputs` → audio copied into the library (§8) with a **provenance sidecar** that includes the resolved slot values actually submitted, not just the UI values.
