@@ -2026,3 +2026,72 @@ T-314's kill-mid-job check is still owed.
 - **LoRA filenames carry Windows subfolder separators verbatim** (`...LoRA\adapter_model.safetensors`).
   That is correct -- it is the exact enum value the server holds, and normalising it would break the
   reproduction it exists for -- but any future path handling must leave these alone.
+
+## 28. ComfyUI killed mid-job -- the crash path, finally observed from inside the app -- 2026-08-29
+
+The producer started a MiniMax generation and **closed ComfyUI while it ran**. This is the check
+24.5 and 27.3 both said was still owed, and T-310b's failure rendering was explicitly provisional
+for it. It is now observed, and the app's handling of it is wrong in a way only a real crash could
+have shown.
+
+### 28.1 The same event has two different codes, at two different moments
+
+| when | what asks | what comes back |
+|---|---|---|
+| **during** the outage | the app's pump polling `job(action="status")` | the **tool call itself fails**: `ComfyError::Tool { tool: "job", code: "server_not_running" }` |
+| **after** the server is back | `job(action="status")` on the same id | `status: "error"` with a structured `error` object, `code: "server_died"`, `source: "state_file"` |
+
+The recovered record is clean and well-formed:
+
+```json
+{ "status": "error", "error": {
+    "code": "server_died",
+    "message": "ComfyUI server 127.0.0.1:8188 became unreachable while job d3715c6b... was 'running'. The server likely crashed or was killed while executing it (e.g. an out-of-memory allocation).",
+    "details": { "host": "127.0.0.1", "port": 8188, "last_status": "running", "consecutive_failed_probes": 3 } },
+  "source": "state_file", "submitted_at": "...07:49:09", "updated_at": "...07:49:39" }
+```
+
+**So the app never sees `server_died`.** By the time that record exists the pump has already retired,
+having emitted the *transport* failure instead. 24.5 assumed a crash would reach the app as
+`server_died`; it does not. The app's vocabulary for a crash is `server_not_running`, and
+`server_died` is only ever visible to a **later** read -- which is exactly the shape of the finding
+in 23.1, where the same job reads differently on three surfaces.
+
+`consecutive_failed_probes: 3` is also worth having: comfy-cli does not declare a death on the first
+missed probe.
+
+### 28.2 What the queue row actually showed, and why it is a defect
+
+```
+job failed [server_not_running]: Error executing tool job: comfy jobs status d3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe
+failed [server_not_running]: ComfyUI not running on 127.0.0.1:8188 - job d3715c6b... was 'running' when the server
+was last seen (submitted 2026-08-29T07:49:09+00:00, last update 2026-08-29T07:49:27+00:00). The server may have died
+while executing it (e.g. killed by the OS on an out-of-memory allocation). hint: run: comfy launch - then check
+`comfy jobs ls` for the job's last recorded state
+```
+
+Around 400 characters in a row sized for a short sentence. Three separate problems:
+
+1. **The code and the word "failed" appear twice.** `terminal_outcome`'s `Err(e) => e.to_string()`
+   renders `ComfyError::Tool`, whose format is `"{tool} failed [{code}]: {message}"` -- and
+   comfy-mcp's own message already opens with `"...comfy jobs status ... failed [server_not_running]: ..."`.
+   Our wrapper repeats what the payload already says.
+2. **It is tool diagnostics, not a user-facing error.** A prompt id, two ISO timestamps, a CLI
+   invocation and a backticked shell command. CONVENTIONS requires every user-facing error to say
+   what to do next; the one actionable phrase here (`run: comfy launch`) is buried in the middle of
+   the diagnostics rather than being the message.
+3. **The pump's `Err` path has no vocabulary of its own.** Every transport failure -- a crash, a
+   killed process, an unreachable port -- renders as whatever string the tool produced. `failure_reason`
+   (24.3) does careful work for a *node* failure and there is no equivalent for this path.
+
+**None of this is T-310b's fault.** Its brief said the failure line was correct for an ordinary node
+failure and provisional for a crash, and that is precisely what it turned out to be.
+
+### 28.3 What was right
+
+The failure path left the library **clean**: no partial track, no stray download in `tracks/`, and
+`next_track_seq` unmoved at 3. Ingestion runs only on `TerminalOutcome::Done`, and this confirms it
+live rather than by reading the match arm.
+
+The row also settled correctly rather than hanging -- the pump retired within seconds of the server
+going away, which is the behaviour section 21 was written to protect.

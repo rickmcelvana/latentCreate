@@ -662,6 +662,23 @@ indistinguishable from a shipped one.
 
 Largest task in the phase and the most likely to need splitting.
 
+### T-315 — the crash path says what to do about it
+**Found 2026-08-29** by the producer closing ComfyUI mid-generation -- the check T-314 owed,
+done early and out of order. Full evidence: MCP-SURFACE 28.
+
+The row rendered ~400 characters of tool diagnostics, with the error code and the word
+"failed" doubled, and the one actionable phrase (`run: comfy launch`) buried in the middle.
+CONVENTIONS requires user-facing errors to say what to do next.
+
+Scope: `terminal_outcome`'s `Err` arm currently renders `ComfyError::to_string()` verbatim and
+has no vocabulary of its own, while `failure_reason` does careful work for the *node* failure
+path next to it. Give the transport path the same treatment: a short sentence per known code,
+starting with `server_not_running`, ending with the next step. **The app never sees
+`server_died`** -- that code only exists in the state file after recovery, by which time the
+pump has retired (28.1), so do not build the mapping around it.
+
+Small, and it is the last thing between a crash and a queue row a person can act on.
+
 ### T-314 — Phase 3 milestone verification (live)
 The ROADMAP's checklist, run by a person: tags + lyrics → queued job → track in the library
 with a complete sidecar; a two-LoRA ACE-Step run reproduces from its sidecar alone; **the
