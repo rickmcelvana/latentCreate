@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use create_core::audio::flac_duration_s;
 use create_core::project::{Project, TrackId};
 use create_core::provenance::Track;
+use serde::{Deserialize, Serialize};
 
 use crate::atomic;
 use crate::projects::project_dir;
@@ -27,6 +28,29 @@ const ID_PREFIX: &str = "tr-";
 /// Padded so that sorting the directory by name matches the order the tracks
 /// were created in -- `tr-10` would otherwise sort before `tr-2`.
 const ID_DIGITS: usize = 4;
+
+/// Something about listing a project's tracks the user should be told.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TrackWarning {
+    /// `project.json` lists an id with no sidecar behind it. Surfaced rather than
+    /// dropped: a track the user generated is missing, and silence would read as
+    /// "there was never one".
+    Missing { id: String },
+    /// The sidecar exists but could not be read.
+    Unreadable { id: String, detail: String },
+    /// The sidecar is not a valid track record.
+    Malformed { id: String, detail: String },
+}
+
+/// Every track a project could offer, plus anything worth reporting.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrackSet {
+    /// In `Project::tracks` order -- the order they were generated.
+    pub tracks: Vec<Track>,
+    #[serde(default)]
+    pub warnings: Vec<TrackWarning>,
+}
 
 /// Whether an id may be joined onto a project directory.
 ///
@@ -118,6 +142,52 @@ pub fn load_track(root: &Path, slug: &str, id: &TrackId) -> Result<Track, Librar
         }
     })?;
     Ok(serde_json::from_str(&text)?)
+}
+
+/// Reads every track `project` lists. **Never fails.**
+///
+/// Driven by `Project::tracks` rather than by the directory, so the order is the
+/// user's and a stray file left by a failed write is ignored rather than
+/// appearing as a track. An id with nothing behind it becomes a warning.
+pub fn list_tracks(root: &Path, project: &Project) -> TrackSet {
+    let mut tracks = Vec::with_capacity(project.tracks.len());
+    let mut warnings = Vec::new();
+
+    for id in &project.tracks {
+        let path = match sidecar_path(root, &project.slug, id) {
+            Ok(path) => path,
+            Err(e) => {
+                warnings.push(TrackWarning::Unreadable {
+                    id: id.0.clone(),
+                    detail: e.to_string(),
+                });
+                continue;
+            }
+        };
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warnings.push(TrackWarning::Missing { id: id.0.clone() });
+                continue;
+            }
+            Err(e) => {
+                warnings.push(TrackWarning::Unreadable {
+                    id: id.0.clone(),
+                    detail: e.to_string(),
+                });
+                continue;
+            }
+        };
+        match serde_json::from_str::<Track>(&text) {
+            Ok(track) => tracks.push(track),
+            Err(e) => warnings.push(TrackWarning::Malformed {
+                id: id.0.clone(),
+                detail: e.to_string(),
+            }),
+        }
+    }
+
+    TrackSet { tracks, warnings }
 }
 
 /// Length in seconds, read from the audio file's header.
@@ -350,5 +420,109 @@ mod tests {
                 "ext {ext:?} should be refused"
             );
         }
+    }
+
+    /// Invariant: the listing follows the project's own order, and a stray file
+    /// nothing references is not mistaken for a track.
+    #[test]
+    fn test_list_tracks_returns_them_in_project_order() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let first = sample_track(
+            TrackId("tr-0001".to_string()),
+            "tracks/tr-0001.flac".to_string(),
+        );
+        let second = sample_track(
+            TrackId("tr-0002".to_string()),
+            "tracks/tr-0002.flac".to_string(),
+        );
+        let third = sample_track(
+            TrackId("tr-0003".to_string()),
+            "tracks/tr-0003.flac".to_string(),
+        );
+        save_track(root.path(), &proj.slug, &first).unwrap();
+        save_track(root.path(), &proj.slug, &second).unwrap();
+        save_track(root.path(), &proj.slug, &third).unwrap();
+
+        proj.tracks = vec![third.id.clone(), first.id.clone(), second.id.clone()];
+        let set = list_tracks(root.path(), &proj);
+        let ids: Vec<&str> = set.tracks.iter().map(|t| t.id.0.as_str()).collect();
+        assert_eq!(ids, vec!["tr-0003", "tr-0001", "tr-0002"]);
+        assert!(set.warnings.is_empty());
+    }
+
+    /// Invariant: one malformed sidecar does not hide the others, and it is
+    /// named so the user can find it.
+    #[test]
+    fn test_a_malformed_sidecar_costs_one_track_not_the_library() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let first = sample_track(
+            TrackId("tr-0001".to_string()),
+            "tracks/tr-0001.flac".to_string(),
+        );
+        let bad = sample_track(
+            TrackId("tr-0002".to_string()),
+            "tracks/tr-0002.flac".to_string(),
+        );
+        let third = sample_track(
+            TrackId("tr-0003".to_string()),
+            "tracks/tr-0003.flac".to_string(),
+        );
+        save_track(root.path(), &proj.slug, &first).unwrap();
+        save_track(root.path(), &proj.slug, &third).unwrap();
+        fs::write(
+            sidecar_path(root.path(), &proj.slug, &bad.id).unwrap(),
+            "{ not json",
+        )
+        .unwrap();
+
+        proj.tracks = vec![first.id.clone(), bad.id.clone(), third.id.clone()];
+        let set = list_tracks(root.path(), &proj);
+        assert_eq!(set.tracks.len(), 2);
+        assert_eq!(set.tracks[0].id, first.id);
+        assert_eq!(set.tracks[1].id, third.id);
+        assert!(matches!(
+            set.warnings.as_slice(),
+            [TrackWarning::Malformed { id, .. }] if id == &bad.id.0
+        ));
+    }
+
+    /// Invariant: an id the project lists with no sidecar behind it is surfaced.
+    /// Dropping it silently would tell the user they never generated the track.
+    #[test]
+    fn test_a_missing_sidecar_is_a_warning_not_a_silence() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let present = sample_track(
+            TrackId("tr-0001".to_string()),
+            "tracks/tr-0001.flac".to_string(),
+        );
+        let missing = sample_track(
+            TrackId("tr-0002".to_string()),
+            "tracks/tr-0002.flac".to_string(),
+        );
+        save_track(root.path(), &proj.slug, &present).unwrap();
+
+        proj.tracks = vec![present.id.clone(), missing.id.clone()];
+        let set = list_tracks(root.path(), &proj);
+        assert_eq!(set.tracks.len(), 1);
+        assert_eq!(set.tracks[0].id, present.id);
+        assert_eq!(
+            set.warnings,
+            vec![TrackWarning::Missing {
+                id: missing.id.0.clone()
+            }]
+        );
+    }
+
+    /// Invariant: a project with no tracks offers an empty library, not an error.
+    #[test]
+    fn test_list_tracks_is_empty_for_a_project_with_none() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        let set = list_tracks(root.path(), &proj);
+        assert!(set.tracks.is_empty());
+        assert!(set.warnings.is_empty());
     }
 }

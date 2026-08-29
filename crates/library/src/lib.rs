@@ -35,6 +35,10 @@ pub use projects::ProjectSet;
 pub use projects::ProjectWarning;
 /// Re-export of [`secrets::SecretKey`].
 pub use secrets::SecretKey;
+/// Re-export of [`tracks::TrackSet`].
+pub use tracks::TrackSet;
+/// Re-export of [`tracks::TrackWarning`].
+pub use tracks::TrackWarning;
 
 use thiserror::Error;
 

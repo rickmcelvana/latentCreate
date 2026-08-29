@@ -20,6 +20,7 @@ mod models;
 mod optimize;
 mod profile;
 mod projectctx;
+mod tracks;
 
 use jobs::ComfyState;
 use lyrics::LyricsState;
@@ -75,6 +76,7 @@ pub fn run() {
             jobs::connect_comfy,
             jobs::run_workflow,
             jobs::cancel_job,
+            tracks::library_tracks,
             lyrics::lyrics_generate,
             lyrics::lyrics_cancel,
             optimize::lyrics_optimize,
