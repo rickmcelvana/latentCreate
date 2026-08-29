@@ -36,6 +36,7 @@ export function AudioStudio() {
   const effectiveId = effectiveProfileId(config)
   const selected = selectedProfile(view, config)
   const rows = pickable(view, 'music')
+  const names = Object.fromEntries(rows.map((p) => [p.id, p.display_name]))
 
   useEffect(() => {
     void load(effectiveId)
@@ -91,7 +92,7 @@ export function AudioStudio() {
 
       <GenerateBar />
 
-      <JobQueue />
+      <JobQueue names={names} />
     </>
   )
 }

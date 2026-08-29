@@ -1,29 +1,53 @@
-import { useJobsStore, type Job } from '../state/jobs'
+import { useEffect, useState } from 'react'
+import { EMPTY_QUEUE, queueRows, type QueueRow } from '../state/queue'
+import { useJobsStore } from '../state/jobs'
+
+interface JobQueueProps {
+  names: Record<string, string>
+}
 
 /** Renders the active job queue. Empty when nothing has been generated. */
-export function JobQueue() {
+export function JobQueue({ names }: JobQueueProps) {
   const jobs = useJobsStore((state) => state.jobs)
   const cancel = useJobsStore((state) => state.cancel)
-  const entries = Object.values(jobs)
-  if (entries.length === 0) return null
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const rows = queueRows(jobs, now, names)
+
   return (
-    <ul className="job-queue">
-      {entries.map((job) => (
-        <JobItem key={job.id} job={job} onCancel={cancel} />
-      ))}
-    </ul>
+    <section className="panel job-panel">
+      <h2 className="job-panel-title">Queue</h2>
+      {rows.length === 0 ? (
+        <p className="job-empty">{EMPTY_QUEUE}</p>
+      ) : (
+        <ul className="job-queue">
+          {rows.map((row) => (
+            <JobRow key={row.id} row={row} onCancel={cancel} />
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
-function JobItem({ job, onCancel }: { job: Job; onCancel: (id: string) => void }) {
-  const running =
-    job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled'
+function JobRow({ row, onCancel }: { row: QueueRow; onCancel: (id: string) => void }) {
   return (
-    <li className={`job-item job-item-${job.status}`}>
-      <span className="job-status">{job.status}</span>
-      {job.error !== null ? <span className="job-error">{job.error}</span> : null}
-      {running ? (
-        <button type="button" className="job-cancel" onClick={() => onCancel(job.id)}>
+    <li className={`job-item job-item-${row.status}`}>
+      <span className="job-status">{row.label}</span>
+      <span className="job-model">{row.model}</span>
+      <span className="job-elapsed">{row.elapsed}</span>
+      {row.error !== null ? <span className="job-error">{row.error}</span> : null}
+      {row.canCancel ? (
+        <button
+          type="button"
+          className="job-cancel"
+          onClick={() => void onCancel(row.id)}
+        >
           Cancel
         </button>
       ) : null}

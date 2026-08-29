@@ -232,7 +232,8 @@ body {
   color: var(--success);
 }
 
-.job-item-failed .job-status {
+.job-item-failed .job-status,
+.job-item-error .job-status {
   color: var(--danger);
 }
 
@@ -261,6 +262,36 @@ body {
 .job-cancel:hover {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+.job-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.job-panel-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.job-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.job-model {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.job-elapsed {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Setup wizard steps --- */
