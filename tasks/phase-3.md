@@ -608,9 +608,12 @@ verification stories.**
   bridge, and `state/library.ts`. **LANDED 2026-08-29** ([brief](t-311c-brief.md)); library 55,
   frontend 285. Review found the module could not be called `library` -- `src-tauri` depends on a
   crate of that name, so `mod library;` shadowed it crate-wide. Renamed `tracks`.
-- **T-311e** — `<Library>` itself, JSX and CSS only. **Briefed 2026-08-29**
-  ([brief](t-311e-brief.md), Aider lane). Two files, test count pinned at 285. Its click-through
-  is the first thing ever to exercise `track://saved` end to end.
+- **T-311e** — `<Library>` itself. **LANDED 2026-08-29** ([brief](t-311e-brief.md)) and **passed
+  its click-through, all five steps**: the existing track renders with its recipe and *no* Run line
+  (it predates T-311d), a new track appears **without a reload** and does have one, and the recipe
+  grid wraps with no sideways scroll. Step 3 was the first thing ever to exercise `track://saved`
+  end to end. Two files, test count held at 285. Review reverted an out-of-scope `.lyrics-draft`
+  edit and backlogged a third identical retry rule.
 
 **Three claims in the original entry were checked while briefing, and two were wrong.**
 
