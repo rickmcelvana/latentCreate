@@ -593,9 +593,12 @@ could see it, since no generation had ever failed until 24 was measured.
 verification stories.**
 
 - **T-311a** — the offline half: `Project::next_track_seq`, `create_core::audio::flac_duration_s`,
-  and `library::tracks` (mint, save, load, paths). No ComfyUI needed to test any of it. Briefed.
+  and `library::tracks` (mint, save, load, paths). **LANDED 2026-08-29** ([brief](t-311a-brief.md));
+  create-core 153, library 51. Review found a vacuous test, an untested id whitelist and a
+  short-read bug, all fixed before the commit.
 - **T-311b** — ingestion: `fetch_outputs` on completion, the audio into the project's `tracks/`,
-  the `Provenance` built and the `Track` written. Needs a live run.
+  the `Provenance` built and the `Track` written. **Briefed 2026-08-29**
+  ([brief](t-311b-brief.md), Aider lane). T-311a landed, so it is runnable now.
 - **T-311c** — the Library view. `app/src/views/Library.tsx` is a 13-line placeholder, so until it
   is written a sidecar has no reader and the work is invisible. **This entry did not scope it and
   should have.**
