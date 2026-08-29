@@ -650,8 +650,32 @@ Record the real output format from the file rather than from intent — the app 
 `flac`, and what it got is what provenance should say.
 
 ### T-312 — batch by seeds
-N jobs from one spec, differing only in seed, sharing the queue and the ingestion path. Small,
-and it is the feature that makes the two-seed trap (T-304) visible if it was got wrong.
+**BRIEFED 2026-08-29** ([brief](t-312-brief.md)). N jobs from one spec, differing only in seed.
+
+**Two of the original entry's claims were checked against the code and both were wrong.** The
+original read: *"N jobs from one spec, differing only in seed, sharing the queue and the ingestion
+path. Small, and it is the feature that makes the two-seed trap (T-304) visible if it was got
+wrong."*
+
+1. **"Sharing the queue and the ingestion path" is already true and needs no work.** `mint_job_id`
+   gives every call its own working copy, `pump` stores a `PendingTrack` per prompt id,
+   `ingest_outputs` mints one track per output, and `queueRows` already lists live jobs oldest-first
+   (T-310d). The Rust side needs no change; **the task is the frontend loop that was never
+   written**, four files.
+2. **The two-seed trap is closed and cannot be the acceptance check.** The seed fans out to *one*
+   address in both shipped profiles — `109.value` (T-306a's `PrimitiveInt` redirect) and
+   `37/38.seed` (settled live, 18.5). The surviving fan-out is `duration_s`, which a batch does not
+   vary. And "the variations sound different" proves nothing either: ACE-Step is not reproducible
+   run-to-run on a fixed seed (17.3). **The check is four sidecars carrying four different seeds.**
+
+### T-312b — serialize ingestion (only if T-312's click-through warrants it)
+`ingest_outputs` does an unguarded read-modify-write of `project.json` — load the project, mint the
+id, save — with one tokio task per job and no lock between them, so two overlapping completions
+could mint the same `tr-NNNN`. **Never observed**, and narrow: ComfyUI runs one job at a time, and
+an ingest is seconds against a minutes-long generation. T-312 is the first thing that makes
+back-to-back completions ordinary, so its click-through is the first real evidence about the gap.
+Fix is a mutex in `ComfyState` held around `ingest_outputs` only — never across the `fetch_outputs`
+await — plus a two-thread test. Write the brief on what the run shows, not on this paragraph.
 
 ### T-313 — custom workflow import and input mapping
 ARCHITECTURE 5b, and the pressure-release valve that stops the profile abstraction becoming a
