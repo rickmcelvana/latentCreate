@@ -604,9 +604,13 @@ verification stories.**
 - **T-311d** — `Provenance.prompt_id`, so a track can be traced to the run that made it.
   **LANDED 2026-08-29** ([brief](t-311d-brief.md), architect-direct). Numbered `d` but landed
   **before** `c`, whose number was already published; numbers are labels, not an ordering.
-- **T-311c** — the Library view. `app/src/views/Library.tsx` is a 13-line placeholder, so until it
-  is written a sidecar has no reader and the work is invisible. **This entry did not scope it and
-  should have.**
+- **T-311c** — the Library's **data path**: `list_tracks`, the `library_tracks` command, the
+  bridge, and `state/library.ts` where every row decision is made and tested. **Briefed
+  2026-08-29** ([brief](t-311c-brief.md), Aider lane).
+- **T-311e** — `<Library>` itself, JSX and CSS only. Split from T-311c because together they run
+  to roughly 600 lines, and because T-310a proved a row's *wording* is the part that hides bugs
+  from a DOM-less vitest. `Library.tsx` stays a 13-line placeholder until this lands. Neither was
+  scoped by the original T-311 entry; both should have been.
 
 **Three claims in the original entry were checked while briefing, and two were wrong.**
 
