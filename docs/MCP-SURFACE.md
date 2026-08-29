@@ -1960,3 +1960,69 @@ so it reads as absent rather than as zero.
 The first 42 bytes of this exact file are committed at **`testdata/audio/ace-step.flac.head`** so
 the reader is tested against bytes ComfyUI actually produced rather than a header written from this
 description.
+
+## 27. Ingestion verified live, and the LoRA chain finally read at the graph level -- 2026-08-29
+
+The producer generated one ACE-Step track with two LoRAs through the app's own Generate button
+(T-311b's click-through). Prompt `3f55e2fb`. What landed:
+
+```
+projects/my-first-song/
+  project.json          tracks: ["tr-0001"], next_track_seq: 2
+  tracks/tr-0001.flac   13 692 233 bytes, fLaC, 48 kHz stereo 16-bit, 120.000 s
+  tracks/tr-0001.json   6 150 bytes, the sidecar
+```
+
+No `<prompt_id>_000.flac` left behind, so the rename ran. `duration_s: 120.0` was **read from the
+file's header**, not copied from the spec.
+
+### 27.1 The sidecar matches what ComfyUI actually executed, field for field
+
+Checked against `GET /history/3f55e2fb`, which is the only surface that shows what really ran
+(17.2). Thirteen nodes executed: the template's eleven plus two spliced LoRA loaders.
+
+| | sidecar | executed graph |
+|---|---|---|
+| LoRA 1 | `ACE-Step-v1.5-acoustic-guitar-...\vocal_instrument_merge_adapter_model.safetensors` @ 1.0 | node **111**, `model` from `["104", 0]` |
+| LoRA 2 | `ACE-Step-v1.5-raspy-vocal-...\adapter_model.safetensors` @ 1.0 | node **112**, `model` from `["111", 0]` |
+| seed | `109.value = 1683823317247452` | `109` `PrimitiveInt` `value: 1683823317247452` |
+| duration | `94.duration` and `98.seconds` both 120.0 | both 120.0 |
+| tags | `synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm` | identical |
+| lyrics | 1436 characters | identical |
+| save | -- | `107` `SaveAudioAdvanced`, `format: "flac"` |
+
+**So the milestone bar is met and was checked against the engine rather than against our own
+tests:** a two-LoRA run reproduces from its sidecar alone.
+
+### 27.2 `104 -> 111 -> 112` closes the oldest open question in this file
+
+Section 17.1 recorded that **a LoRA splice feeding nothing validates clean, runs, and writes
+audio** -- `validate_workflow` is a schema check, not a reachability check -- and 20.1 called the
+first live evidence against it circumstantial. This is direct: each loader's `model` input names
+the previous node, so the two adapters are genuinely chained onto the UNET rather than sitting
+beside it. Order is preserved end to end, which matters because LoRA order changes the output.
+
+17.1 stays true as a statement about `validate_workflow`. What is now settled is that **this app's
+splice is correct**, on a real two-LoRA run, verified at the graph level.
+
+### 27.3 `server_died` is no longer unobserved
+
+24.5 recorded `server_died` as the one job outcome nobody had produced. It is now in the store:
+prompt `1ce3156d` -- a probe job cancelled at 03:01 while pending -- reports
+`status: "error", error_code: "server_died"` with `updated_at` 03:26:12. ComfyUI went down between
+03:25:30 (a normal `cancelled`) and 03:26:12, and was back for the run at 03:44.
+
+**What this does and does not settle.** The *store* produces `server_died`, with `error_code` as
+the discriminator exactly as 24.1 describes. It says nothing about how the app renders it: no app
+job was live across that crash, so T-310b's failure line remains **provisional for a crash** and
+T-314's kill-mid-job check is still owed.
+
+### 27.4 Two gaps worth naming
+
+- **The sidecar records no `prompt_id`.** Everything needed to *reproduce* is there, but nothing
+  ties a track back to the run that produced it -- so the cross-check performed above cannot be
+  done from the sidecar alone. Recommended as a field on `Provenance`, not added here, because
+  T-311a's rule is that a new field on `Track`/`Provenance` gets asked about rather than slipped in.
+- **LoRA filenames carry Windows subfolder separators verbatim** (`...LoRA\adapter_model.safetensors`).
+  That is correct -- it is the exact enum value the server holds, and normalising it would break the
+  reproduction it exists for -- but any future path handling must leave these alone.

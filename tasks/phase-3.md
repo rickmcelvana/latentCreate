@@ -596,9 +596,11 @@ verification stories.**
   and `library::tracks` (mint, save, load, paths). **LANDED 2026-08-29** ([brief](t-311a-brief.md));
   create-core 153, library 51. Review found a vacuous test, an untested id whitelist and a
   short-read bug, all fixed before the commit.
-- **T-311b** — ingestion: `fetch_outputs` on completion, the audio into the project's `tracks/`,
-  the `Provenance` built and the `Track` written. **Briefed 2026-08-29**
-  ([brief](t-311b-brief.md), Aider lane). T-311a landed, so it is runnable now.
+- **T-311b** — ingestion. **LANDED and VERIFIED LIVE 2026-08-29** ([brief](t-311b-brief.md)).
+  A two-LoRA ACE-Step run generated from the app wrote `tracks/tr-0001.flac` (real FLAC,
+  120.000 s, duration read from the header) and its sidecar, and **the sidecar matches what
+  ComfyUI actually executed field for field** -- checked against `GET /history`, not against
+  our own tests (MCP-SURFACE 27). The milestone's bar is met. src-tauri 82.
 - **T-311c** — the Library view. `app/src/views/Library.tsx` is a 13-line placeholder, so until it
   is written a sidecar has no reader and the work is invisible. **This entry did not scope it and
   should have.**
