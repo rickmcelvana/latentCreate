@@ -650,7 +650,13 @@ Record the real output format from the file rather than from intent — the app 
 `flac`, and what it got is what provenance should say.
 
 ### T-312 — batch by seeds
-**BRIEFED 2026-08-29** ([brief](t-312-brief.md)). N jobs from one spec, differing only in seed.
+**LANDED 2026-08-29** ([brief](t-312-brief.md)) and **passed its click-through**: a batch queued,
+the queue listed it as expected, and the Library's recipe cards showed a **different seed per
+batched track** — the acceptance check, since the audio could never have been one. Frontend
+285 -> 299. Review found four things in the executor's tree, one of them caused by the brief
+(see the session log): the gate was red on two unused imports; `notesFor` kept the previous
+submission's notes through a click that queued nothing; the button could count to a number it
+would never reach; and `Queueing…` lost its ellipsis while the new select lost its focus ring.
 
 **Two of the original entry's claims were checked against the code and both were wrong.** The
 original read: *"N jobs from one spec, differing only in seed, sharing the queue and the ingestion
