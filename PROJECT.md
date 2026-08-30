@@ -4026,3 +4026,49 @@ frontend **310**.
 from T-313b, T-313d and T-313e, none of which have ever had a caller. After it, **T-314**, the live
 milestone, whose "an imported user workflow generates successfully" line this whole task chain
 exists to satisfy.
+
+### 2026-08-30 -- T-313f: the import view, and the file the gate cannot check
+
+**Landed** ([brief](tasks/t-313f-brief.md), architect-direct). `<ImportWorkflow>` sits in the Audio
+view's profile-picker section -- an imported workflow *becomes a model profile*, so the import
+belongs where someone is already choosing a model, not in the first-run wizard.
+
+**Frontend stays at 310**, and that is the point rather than an omission: the component renders
+`roleRows`, `canSave` and `phase` and decides nothing, so there is nothing new to test. Same
+evidence T-310b used.
+
+`@tauri-apps/plugin-dialog` turned out to be **wired end to end already** -- npm package, Rust
+plugin, and `dialog:default` in the capability file -- though nothing in `app/src` had ever called
+it. Checking that before writing the brief is the difference between this being a view and being a
+view plus a plugin install.
+
+**The finding worth carrying forward: `theme.css` is the one file where the gate proves nothing.**
+The first draft of the styles used eleven CSS custom properties that **do not exist** --
+`--space-2`, `--border-subtle`, `--surface-raised`, `--radius-sm`, `--font-sm` and more. `theme.css`
+actually defines `--gap-sm`, `--border`, `--panel-hover`, `--radius`. An undefined custom property
+resolves to nothing and **fails silently**, so `tsc`, oxlint, 310 tests and `vite build` were all
+green while the panel would have rendered with no padding, no borders and no background.
+
+Caught by grepping every `var(--…)` in the new block against the `:root` block, not by the gate.
+Worth a standing habit: after touching `theme.css`, check the tokens resolve, because nothing else
+will.
+
+One deliberate copy decision: the idle state states the **cost of the owner's copy-not-reference
+decision** on screen -- "latentCreate keeps its own copy, so later edits in ComfyUI will not follow
+-- re-import to pick them up". That trade is invisible until it surprises someone, and this is the
+only place they can learn it first.
+
+Cancelling the file dialog returns to `idle`, never `failed`. Reporting a cancel as an error is the
+same mistake as rendering a cancelled *job* as failed, which this project already made once
+(MCP-SURFACE 21).
+
+**T-313 is complete across all six parts.** A person can import their own ComfyUI workflow, confirm
+what the app guessed about it, save it as a profile indistinguishable from a shipped one, and
+generate from it.
+
+**Counts:** create-core 173, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 104, frontend 310.
+
+**Next: the T-313f click-through**, which carries three deferred ones (T-313b, T-313d, T-313e) and
+whose step 5 *is* the Phase 3 milestone line "an imported user workflow generates successfully".
+Then **T-314**, whose remaining live work is the full-length run and settling `vram_gb_min: 8`
+against the 15.93 GiB card (MCP-SURFACE 29.6).

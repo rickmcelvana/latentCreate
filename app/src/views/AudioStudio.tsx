@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { GenerateBar } from '../components/GenerateBar'
+import { ImportWorkflow } from '../components/ImportWorkflow'
 import { JobQueue } from '../components/JobQueue'
 import { LoraStack } from '../components/LoraStack'
 import { ParamPanel } from '../components/ParamPanel'
@@ -84,6 +85,8 @@ export function AudioStudio() {
             />
           ))}
         </ul>
+
+        <ImportWorkflow />
       </section>
 
       <ParamPanel />

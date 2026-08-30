@@ -1681,3 +1681,113 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ---- Workflow import (T-313f) ---------------------------------------- */
+
+.import-workflow {
+  margin-top: var(--gap-lg);
+  padding-top: var(--gap-lg);
+  border-top: 1px solid var(--border);
+}
+
+.import-button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-hover);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  padding: var(--gap-sm) var(--gap-md);
+  cursor: pointer;
+}
+
+.import-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.import-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.import-button-quiet {
+  background: transparent;
+}
+
+.import-note,
+.import-role-empty,
+.import-candidate-reason {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.import-note {
+  margin-top: var(--gap-sm);
+  max-width: 60ch;
+}
+
+.import-busy,
+.import-saved {
+  color: var(--text-muted);
+}
+
+.import-error {
+  color: var(--danger);
+  max-width: 70ch;
+}
+
+.import-warning {
+  color: var(--warning);
+  font-size: 0.875rem;
+  max-width: 70ch;
+}
+
+.import-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  margin-bottom: var(--gap-md);
+  max-width: 32ch;
+}
+
+.import-field input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap-sm);
+}
+
+.import-roles {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--gap-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.import-role-label {
+  font-weight: 600;
+}
+
+.import-candidates {
+  list-style: none;
+  padding: 0;
+  margin: var(--gap-xs) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.import-candidate {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-sm);
+  cursor: pointer;
+}
+
+.import-actions {
+  display: flex;
+  gap: var(--gap-sm);
+}

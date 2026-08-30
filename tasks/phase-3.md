@@ -762,8 +762,12 @@ that a `possible` candidate is never pre-ticked** — otherwise T-313c's confide
 decoration and the app silently accepts its own graph-shape guess as the user's seed mapping, with
 nothing erroring. Frontend 299 -> 310; two mutations, two killed.
 
-**T-313f — the view.** `<ImportWorkflow>`, the file picker, and the entry point. Carries the
-click-throughs deferred from T-313b, T-313d and T-313e, none of which have had a caller.
+**T-313f — the view. LANDED 2026-08-30** ([brief](t-313f-brief.md), architect-direct).
+`<ImportWorkflow>` in the Audio view's profile-picker section: pick a file, map the roles the app
+suggested, name it, save. Renders the store and derives nothing -- frontend **stays at 310**, which
+is the proof. `@tauri-apps/plugin-dialog` needed no plumbing; it was already wired end to end.
+**Its click-through is owed and carries three others** (T-313b, T-313d, T-313e), and step 5 of it is
+the Phase 3 milestone line *"an imported user workflow generates successfully"*.
 
 ### T-315 — the crash path says what to do about it
 **LANDED 2026-08-29** ([brief](t-315-brief.md), architect-direct lane). `transport_reason` gives
