@@ -16,6 +16,7 @@
 
 pub mod audio;
 pub mod audit;
+pub mod emit;
 pub mod generation;
 pub mod graph;
 pub mod loras;

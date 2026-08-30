@@ -748,8 +748,12 @@ lives on `109.value`, whose name and class match nothing. So suggestion reads th
 are link-fed and both land, because `PrimitiveNode` is frontend-only. create-core 157 → 164; three
 mutations, three killed.
 
-**T-313d — profile emission.** Mapping decisions → a `ModelProfile` written to the user profile
-dir, including save-node detection so the lossless swap still applies to an imported graph.
+**T-313d — profile emission. LANDED 2026-08-30** ([brief](t-313d-brief.md), architect-direct).
+`create_core::emit::build_profile` plus the `save_imported_profile` command: accepted mappings
+become a real `ModelProfile` in `config_dir/profiles/`, verified by loading the written **file**
+back through `library::profiles::load` rather than by a struct round trip. Bounds come from the live
+node registry and a numeric role without them is **refused rather than guessed**; lyrics never get a
+default and tags do. create-core 164 -> 173, src-tauri 101 -> 104; three mutations, three killed.
 
 **T-313e — the UI.** Import and mapping screens.
 

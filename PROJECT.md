@@ -3944,3 +3944,45 @@ crate for a pure ranking pass. The ACE-Step slot fixture is the live 33-slot pay
 **Next: T-313d** -- profile emission. Accepted candidates become a `ModelProfile` with
 `comfy.workflow` set, written to the user profile dir. It must not emit a profile declaring both a
 template and a workflow; T-313a already refuses that, and the test naming T-313d is already written.
+
+### 2026-08-30 -- T-313d: profile emission
+
+**Landed** ([brief](tasks/t-313d-brief.md), architect-direct): `create_core::emit::build_profile`
+and the `save_imported_profile` command. create-core 164 -> **173**, src-tauri 101 -> **104**.
+
+Reading the shipped ACE-Step profile before writing the builder settled the design and produced
+**two honest limits, stated rather than hidden**:
+
+- **Emitted bounds come out wider.** The shipped profile declares `steps: 1..100`; the node really
+  accepts `1..10000` (read live). That narrowing is a human curating a model they know, and emission
+  cannot reproduce it -- the alternative is inventing a range for a graph nobody here has seen. A
+  numeric role whose bounds the registry does not report at all is **refused**, not filled in: a
+  slider with invented limits looks authoritative and is not.
+- **Lyrics never get a default, tags do.** Not an inconsistency: the shipped profile's own reason is
+  that prefilled lyrics are words the app put in the user's mouth, while the tags in someone's own
+  graph *are* their prompt. MCP-SURFACE 20.2 is about a *template's* demo text running invisibly
+  under an empty box, which is the opposite situation.
+
+**The key names turned out to be free.** `app/src/state/generate.ts` finds the lyrics control **by
+kind, not by the name "lyrics"** -- its comment says so outright. So the binding contract is the
+`InputSpec` variant, not the map key, and emission uses the shipped names only because a person
+reads the file.
+
+**The test that actually means something is the one the brief did not ask for.** The brief specified
+a serde round trip, which proves the *struct*. 5b's bar is a profile indistinguishable from a
+shipped one, so the emitted **file** is now loaded back through `library::profiles::load` -- the
+same call five commands make, from the directory the picker really reads. A round trip inside
+`create-core` would pass even if the profile landed somewhere nothing looks.
+
+Two things writing the tests caught: `has_audio_save_node` had to scan **subgraph interiors**, or it
+would refuse MiniMax, whose save node lives in one; and `bounds_of` treats a half-open range as no
+range, since filling in a missing end would defeat the refusal by the back door.
+
+Three mutations, three killed. One had to be re-run -- the first attempt inserted a duplicate struct
+field and did not compile, which is a *broken* mutation rather than a surviving one. Worth
+distinguishing: "no test failed" looks identical in both cases, and only one of them is good news.
+
+**Counts:** create-core 173, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 104, frontend 299.
+
+**Next: T-313e** -- the UI, and the last part of T-313. It also carries the click-throughs deferred
+from T-313b and T-313d, which have no caller until it exists.

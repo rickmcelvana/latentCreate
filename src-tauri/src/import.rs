@@ -17,11 +17,14 @@
 //! - A refused import leaves **nothing** behind, so the copy is staged under a
 //!   dot-name and only renamed into place once it has passed.
 
+use std::collections::HashMap;
 use std::path::Path;
 
+use create_core::emit::{build_profile, Bounds, MappedSlot};
+use create_core::roles::Role;
 use create_core::workflow::{detect_format, WorkflowFormat};
-use mcp_bridge::{Finding, LocalComfy, Slot, Verdict};
-use serde::Serialize;
+use mcp_bridge::{Finding, LocalComfy, NodeOptions, NodeSchema, Slot, SlotList, Verdict};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
 
@@ -191,6 +194,162 @@ fn summarise_findings(findings: &[Finding]) -> String {
         })
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+/// A role the user accepted, and the slots they accepted for it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RoleMapping {
+    pub role: Role,
+    pub addresses: Vec<String>,
+}
+
+/// Where an emitted profile landed.
+#[derive(Debug, Clone, Serialize)]
+pub struct SavedProfile {
+    pub profile_id: String,
+    pub path: String,
+}
+
+/// Turn accepted mappings into a user profile the picker will list.
+#[tauri::command]
+pub async fn save_imported_profile(
+    state: State<'_, ComfyState>,
+    config_dir: State<'_, ConfigDir>,
+    workflow_id: String,
+    display_name: String,
+    mappings: Vec<RoleMapping>,
+) -> Result<SavedProfile, String> {
+    let comfy = match ensure_connected(&state, &config_dir, None).await {
+        Ok(comfy) => comfy,
+        Err(EnsureError::Comfy(e)) => return Err(e.to_string()),
+        Err(EnsureError::Log(detail)) => return Err(detail),
+    };
+    emit_profile(
+        &comfy,
+        &config_dir.0,
+        &workflow_id,
+        &display_name,
+        &mappings,
+    )
+    .await
+}
+
+/// The body of [`save_imported_profile`], taking its inputs directly so a test
+/// can drive it with a mock transport and a temp directory.
+pub(crate) async fn emit_profile(
+    comfy: &LocalComfy,
+    root: &Path,
+    workflow_id: &str,
+    display_name: &str,
+    mappings: &[RoleMapping],
+) -> Result<SavedProfile, String> {
+    let stored = root.join(WORKFLOWS_DIR).join(format!("{workflow_id}.json"));
+    if !stored.exists() {
+        return Err(format!(
+            "No imported workflow named {workflow_id}. Import it again."
+        ));
+    }
+    let graph: Value = serde_json::from_str(
+        &std::fs::read_to_string(&stored).map_err(|e| format!("{}: {e}", stored.display()))?,
+    )
+    .map_err(|e| format!("{}: {e}", stored.display()))?;
+
+    // Read the stored copy's slots for widget types and current values. The
+    // mapping carries addresses only -- everything else about a slot is the
+    // graph's to say, not the caller's.
+    let slots = comfy.list_slots(&stored).await.map_err(|e| e.to_string())?;
+    let resolved = resolve_mappings(comfy, &slots, mappings).await?;
+
+    let profile_id = free_profile_id(root, display_name)?;
+    let profile = build_profile(
+        &profile_id,
+        display_name,
+        &graph,
+        &stored.display().to_string(),
+        &resolved,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let dir = root.join("profiles");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let path = dir.join(format!("{profile_id}.json"));
+    let text = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+
+    Ok(SavedProfile {
+        profile_id,
+        path: path.display().to_string(),
+    })
+}
+
+/// Attach each mapped address to its slot, and each numeric one to its bounds.
+///
+/// **One registry lookup per node class, not per slot.** ACE-Step maps five
+/// roles onto three classes; asking `nodes(action="get")` per address would
+/// triple the round trips for the same answers.
+async fn resolve_mappings(
+    comfy: &LocalComfy,
+    slots: &SlotList,
+    mappings: &[RoleMapping],
+) -> Result<Vec<(Role, Vec<MappedSlot>)>, String> {
+    let mut schemas: HashMap<String, NodeSchema> = HashMap::new();
+    let mut out = Vec::new();
+
+    for mapping in mappings {
+        let mut mapped = Vec::new();
+        for address in &mapping.addresses {
+            let slot = slots.get(address).ok_or_else(|| {
+                format!("{address} is not a slot this workflow exposes. Import it again.")
+            })?;
+            if !schemas.contains_key(&slot.node_type) {
+                if let Ok(schema) = comfy.node_schema(&slot.node_type).await {
+                    schemas.insert(slot.node_type.clone(), schema);
+                }
+            }
+            let bounds = schemas
+                .get(&slot.node_type)
+                .and_then(|s| s.inputs.iter().find(|i| i.name == slot.name))
+                .and_then(|i| bounds_of(&i.options));
+            mapped.push(MappedSlot {
+                address: slot.address.clone(),
+                widget_type: slot.ty.clone(),
+                current_value: slot.current_value.clone(),
+                bounds,
+            });
+        }
+        out.push((mapping.role, mapped));
+    }
+    Ok(out)
+}
+
+/// `NodeOptions` to [`Bounds`], only when both ends are present.
+///
+/// A half-open range is treated as no range at all: `emit` refuses a numeric
+/// control it cannot bound, and inventing the missing end here would defeat
+/// that by the back door.
+fn bounds_of(options: &NodeOptions) -> Option<Bounds> {
+    Some(Bounds {
+        min: options.min.as_ref().and_then(Value::as_f64)?,
+        max: options.max.as_ref().and_then(Value::as_f64)?,
+        step: options.step.as_ref().and_then(Value::as_f64),
+    })
+}
+
+/// First unused profile id for `display_name`.
+fn free_profile_id(root: &Path, display_name: &str) -> Result<String, String> {
+    let dir = root.join("profiles");
+    let base = library::projects::slugify(display_name);
+    for n in 1..1000u32 {
+        let candidate = if n == 1 {
+            base.clone()
+        } else {
+            format!("{base}-{n}")
+        };
+        if !dir.join(format!("{candidate}.json")).exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!("too many profiles named {base}"))
 }
 
 /// First unused id for `source`'s filename in `dir`.
@@ -491,6 +650,133 @@ mod tests {
 
         assert!(err.contains("is not a ComfyUI workflow"), "{err}");
         assert!(workflows(tmp.path()).is_empty());
+    }
+
+    /// Replies for an emit: slots, then one node schema per distinct class.
+    fn emit_replies() -> Vec<Reply> {
+        vec![
+            Reply::Json(json!({
+                "workflow": "stored", "count": 2,
+                "slots": [
+                    { "address": "94.tags", "name": "tags", "type": "STRING",
+                      "current_value": "late night trap", "instance_id": "94",
+                      "node_type": "TextEncodeAceStepAudio1.5" },
+                    { "address": "3.steps", "name": "steps", "type": "INT",
+                      "current_value": 8, "instance_id": "3", "node_type": "KSampler" }
+                ]
+            })),
+            Reply::Json(json!({
+                "id": "TextEncodeAceStepAudio1.5", "name": "TextEncodeAceStepAudio1.5",
+                "inputs": [{ "name": "tags", "type": "STRING", "options": {} }],
+                "outputs": []
+            })),
+            // The real KSampler bounds, read live 2026-08-30.
+            Reply::Json(json!({
+                "id": "KSampler", "name": "KSampler",
+                "inputs": [{
+                    "name": "steps", "type": "INT",
+                    "options": { "min": 1, "max": 10000, "step": null, "default": 20 }
+                }],
+                "outputs": []
+            })),
+        ]
+    }
+
+    /// Protects: an emitted profile is loadable by the **real** profile
+    /// loader, from the directory the picker actually reads.
+    ///
+    /// 5b's bar is a profile indistinguishable from a shipped one, and the
+    /// only check that means anything is running it through
+    /// `library::profiles::load` -- the same call five commands make. A
+    /// serialization round trip inside `create-core` proves the struct;
+    /// this proves the *file*.
+    #[tokio::test]
+    async fn test_an_emitted_profile_loads_through_the_real_loader() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join(WORKFLOWS_DIR);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(
+            dir.join("mine.json"),
+            named_fixture("ace_step_1_5_xl_turbo.json"),
+        )
+        .expect("store a workflow");
+
+        let (comfy, _calls) = client_and_log(emit_replies()).await;
+        let saved = emit_profile(
+            &comfy,
+            tmp.path(),
+            "mine",
+            "My Import",
+            &[
+                RoleMapping {
+                    role: Role::Tags,
+                    addresses: vec!["94.tags".to_string()],
+                },
+                RoleMapping {
+                    role: Role::Steps,
+                    addresses: vec!["3.steps".to_string()],
+                },
+            ],
+        )
+        .await
+        .expect("emits");
+
+        assert_eq!(saved.profile_id, "my-import");
+
+        let set = library::profiles::load(Path::new("nonexistent"), &tmp.path().join("profiles"));
+        let loaded = set
+            .profiles
+            .get("my-import")
+            .expect("the emitted profile loads like a shipped one");
+        assert_eq!(loaded.profile.display_name, "My Import");
+        assert_eq!(loaded.profile.comfy.template, None);
+        assert!(loaded.profile.comfy.workflow.is_some());
+        assert!(loaded.profile.inputs.contains_key("tags"));
+        assert!(loaded.profile.inputs.contains_key("steps"));
+    }
+
+    /// Protects: an address the stored graph does not expose is refused with
+    /// something actionable, rather than reaching `build_profile` as a slot
+    /// with invented properties.
+    #[tokio::test]
+    async fn test_an_unknown_address_is_refused() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join(WORKFLOWS_DIR);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(
+            dir.join("mine.json"),
+            named_fixture("ace_step_1_5_xl_turbo.json"),
+        )
+        .expect("store a workflow");
+
+        let (comfy, _calls) = client_and_log(emit_replies()).await;
+        let err = emit_profile(
+            &comfy,
+            tmp.path(),
+            "mine",
+            "My Import",
+            &[RoleMapping {
+                role: Role::Tags,
+                addresses: vec!["999.nope".to_string()],
+            }],
+        )
+        .await
+        .expect_err("that slot does not exist");
+
+        assert!(err.contains("999.nope"), "{err}");
+    }
+
+    /// Protects: emitting against a workflow id nothing stored says so.
+    #[tokio::test]
+    async fn test_emitting_for_an_unknown_workflow_is_refused() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (comfy, _calls) = client_and_log(emit_replies()).await;
+
+        let err = emit_profile(&comfy, tmp.path(), "ghost", "Ghost", &[])
+            .await
+            .expect_err("nothing was imported");
+
+        assert!(err.contains("ghost"), "{err}");
     }
 
     /// Protects: the message names the user's file, not an internal path --

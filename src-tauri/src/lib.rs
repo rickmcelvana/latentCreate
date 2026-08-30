@@ -73,6 +73,7 @@ pub fn run() {
             profile::enum_choices,
             loras::lora_panel,
             import::import_workflow,
+            import::save_imported_profile,
             install::models_install,
             install::models_progress,
             jobs::connect_comfy,

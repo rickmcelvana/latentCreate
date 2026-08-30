@@ -26,7 +26,7 @@
 //! source for it. Nothing here re-derives it.
 
 use crate::audit::{audit_slots, link_origin};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// A semantic input the app knows how to drive.
@@ -34,7 +34,7 @@ use serde_json::Value;
 /// ARCHITECTURE 5b's list and no more. `bpm`, `keyscale`, `language` and the
 /// rest are real inputs the shipped ACE-Step profile declares, but adding them
 /// here widens the name table without testing anything new about the mechanism.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     Tags,
