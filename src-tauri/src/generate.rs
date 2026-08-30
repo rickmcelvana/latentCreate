@@ -1,9 +1,14 @@
 //! The generation pipeline: a `GenerationSpec` becomes a queued ComfyUI job.
 //!
-//! ARCHITECTURE 7, in order: `fetch_template` to a **per-job** working copy,
-//! `set_slots` for everything addressable, the graph edits slots cannot
-//! express, `validate_workflow`, then submit into the job pump T-104b already
-//! runs. Nothing here duplicates that lifecycle.
+//! ARCHITECTURE 7, in order: place a **per-job** working copy, `set_slots` for
+//! everything addressable, the graph edits slots cannot express,
+//! `validate_workflow`, then submit into the job pump T-104b already runs.
+//! Nothing here duplicates that lifecycle.
+//!
+//! The working copy comes from a gallery `fetch_template` **or** a copy of a
+//! workflow the user imported (ARCHITECTURE 5b) -- see [`place_working_copy`].
+//! Every step after it is identical either way, which is the whole reason the
+//! seam is there and not further down.
 //!
 //! Three things this module deliberately does NOT do, each of them a signal
 //! that looks like it should be trusted and is not:
@@ -118,6 +123,97 @@ pub async fn generate_audio(
     Ok(submission)
 }
 
+/// Put this job's own copy of the graph at `workflow`.
+///
+/// Two sources, one contract: when this returns `Ok`, `workflow` holds a
+/// **frontend-format** graph that the later steps may freely rewrite. Never a
+/// shared path -- the MCP docs warn about TOCTOU, and two generations at once
+/// would edit each other's graph.
+///
+/// A profile declares a gallery `template` **or** an imported `workflow`
+/// (ARCHITECTURE 5b), never both. The imported file is copied rather than
+/// fetched because nothing remote owns it.
+async fn place_working_copy(
+    comfy: &LocalComfy,
+    profile: &ModelProfile,
+    workflow: &Path,
+) -> Result<(), String> {
+    match (
+        profile.comfy.template.as_deref(),
+        profile.comfy.workflow.as_deref(),
+    ) {
+        // Not a precedence rule. A profile saying two contradictory things
+        // would otherwise generate from whichever the code checked first.
+        (Some(_), Some(_)) => Err(format!(
+            "{} declares both a gallery template and an imported workflow; it must declare one",
+            profile.id
+        )),
+        (Some(template), None) => comfy
+            .fetch_template(template, workflow)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        (None, Some(source)) => {
+            let source = Path::new(source);
+            std::fs::copy(source, workflow).map_err(|e| {
+                format!(
+                    "{} could not read its workflow at {}: {e}. \
+                     Re-import it, or point the profile at the file's new location.",
+                    profile.id,
+                    source.display()
+                )
+            })?;
+            // Parsed here rather than through `read_workflow` so the message
+            // names the **user's** file. `read_workflow` reports against the
+            // path it was given -- the working copy, buried under `jobs/` --
+            // which tells someone who picked the wrong file nothing they can
+            // act on.
+            let text = std::fs::read_to_string(workflow).map_err(|e| {
+                format!(
+                    "{} could not read its workflow at {}: {e}",
+                    profile.id,
+                    source.display()
+                )
+            })?;
+            let graph: Value = serde_json::from_str(&text).map_err(|e| {
+                format!(
+                    "{}'s workflow at {} is not valid JSON ({e}). \
+                     Re-export it from ComfyUI with File > Save (As).",
+                    profile.id,
+                    source.display()
+                )
+            })?;
+            ensure_frontend_format(&graph, &profile.id)
+        }
+        (None, None) => Err(format!(
+            "{} declares neither a gallery template nor an imported workflow",
+            profile.id
+        )),
+    }
+}
+
+/// Refuse a graph the later steps cannot edit.
+///
+/// The check is the presence of a top-level `nodes` array, which is what
+/// separates the frontend ("editing") export from the API export (MCP-SURFACE
+/// 29). It is done here rather than left to `validate_workflow`, because
+/// validate accepts **both** formats and reports an API export as `valid: true`
+/// (29.1) -- the run would then fail three steps later with a message about
+/// inert slots, which describes nothing the user did.
+///
+/// The remedy names the menu item, taken from comfy-cli's own refusal, which
+/// words it better than this app could.
+fn ensure_frontend_format(graph: &Value, profile_id: &str) -> Result<(), String> {
+    if graph.get("nodes").and_then(Value::as_array).is_some() {
+        return Ok(());
+    }
+    Err(format!(
+        "{profile_id}'s workflow is not the format latentCreate can edit. \
+         In ComfyUI use File > Save (As) to export the editing format -- \
+         the File > Export (API) output cannot be used here."
+    ))
+}
+
 /// Build this job's working copy and submit it.
 ///
 /// Takes the workflow path rather than minting one so a test can place a real
@@ -132,19 +228,8 @@ pub(crate) async fn build_and_submit(
     profile: &ModelProfile,
     spec: &GenerationSpec,
 ) -> Result<(Submission, ResolvedSlots), String> {
-    let template = profile.comfy.template.as_deref().ok_or_else(|| {
-        format!(
-            "{} declares no gallery template; imported workflows are not wired up yet",
-            profile.id
-        )
-    })?;
-
-    // 1. This job's own copy. Never a shared path: the MCP docs warn about
-    //    TOCTOU, and two generations at once would edit each other's graph.
-    comfy
-        .fetch_template(template, workflow)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 1. This job's own copy, from a gallery template or an imported file.
+    place_working_copy(comfy, profile, workflow).await?;
 
     // 2. Resolve, then refuse a write the engine would ignore -- before the
     //    write, so a profile bug costs nothing.
@@ -667,5 +752,178 @@ mod tests {
             loader.pointer("/widgets_values/1").and_then(|v| v.as_f64()),
             Some(0.8)
         );
+    }
+
+    /// A profile that reaches ComfyUI by an imported file instead of a
+    /// gallery template. Built from the shipped ACE-Step profile so its slot
+    /// addresses still resolve against the captured graph -- the point here is
+    /// the *source* of the working copy, not the mapping.
+    fn imported(source: &std::path::Path) -> ModelProfile {
+        let mut profile = ace();
+        profile.comfy.template = None;
+        profile.comfy.workflow = Some(source.display().to_string());
+        profile
+    }
+
+    /// Protects: an imported profile reaches ComfyUI by the same path a gallery
+    /// one does. This is ARCHITECTURE 5b's whole purpose, and until T-313a the
+    /// pipeline refused it outright.
+    #[tokio::test]
+    async fn test_an_imported_workflow_is_copied_and_runs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("mine.json");
+        std::fs::write(&source, fixture()).expect("place the user's workflow");
+        let workflow = dir.path().join("job").join("workflow.json");
+        std::fs::create_dir_all(workflow.parent().expect("has a parent")).expect("mkdir");
+
+        let profile = imported(&source);
+        let spec = spec();
+        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
+        // No `fetch_template` reply: nothing should ask for one.
+        let mut replies = happy_replies();
+        replies.remove(0);
+        replies[0] = Reply::Json(json!({
+            "applied": applied(&overrides),
+            "warnings": [],
+            "wrote": workflow.display().to_string()
+        }));
+
+        let (comfy, calls) = client_and_log(replies).await;
+        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
+            .await
+            .expect("an imported workflow runs");
+
+        assert_eq!(submission.prompt_id, "abc-123");
+        let calls = calls.lock().expect("calls lock");
+        let names: Vec<&str> = calls
+            .iter()
+            .map(|c| c.get("name").and_then(|n| n.as_str()).unwrap_or(""))
+            .collect();
+        assert!(
+            !names.contains(&"fetch_template"),
+            "nothing may fetch a template for an imported profile: {names:?}"
+        );
+        assert!(
+            workflow.exists(),
+            "the user's graph is copied to this job's own working copy"
+        );
+    }
+
+    /// Protects: the one shape that validates clean but cannot be edited is
+    /// caught here, not three steps later.
+    ///
+    /// `validate_workflow` accepts an API export and calls it `valid: true`
+    /// (MCP-SURFACE 29.1), so without this check the run would fail during the
+    /// slot audit with a message about inert slots -- which describes nothing
+    /// the user did. The fixture is a **real** API export: the executed graph
+    /// of the T-315 crash-path verification run.
+    #[tokio::test]
+    async fn test_an_api_format_workflow_is_refused_with_the_menu_item() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("exported-api.json");
+        std::fs::write(&source, named_fixture("minimax_music3.api-format.json"))
+            .expect("place the API export");
+        let workflow = dir.path().join("workflow.json");
+
+        let (comfy, calls) = client_and_log(happy_replies()).await;
+        let err = build_and_submit(&comfy, &workflow, &imported(&source), &spec())
+            .await
+            .expect_err("an API export cannot be edited");
+
+        assert!(err.contains("File > Save (As)"), "{err}");
+        assert!(
+            calls.lock().expect("calls lock").is_empty(),
+            "nothing is submitted for a graph we cannot edit"
+        );
+    }
+
+    /// Protects: a profile saying two contradictory things is refused rather
+    /// than silently generating from whichever field the code checks first.
+    /// T-313d's emitter must never produce one.
+    #[tokio::test]
+    async fn test_a_profile_declaring_both_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("mine.json");
+        std::fs::write(&source, fixture()).expect("place the user's workflow");
+        let mut profile = imported(&source);
+        profile.comfy.template = Some("audio_ace_step1_5_xl_turbo".to_string());
+
+        let (comfy, calls) = client_and_log(happy_replies()).await;
+        let err = build_and_submit(&comfy, &dir.path().join("workflow.json"), &profile, &spec())
+            .await
+            .expect_err("both sources is a profile bug");
+
+        assert!(err.contains("must declare one"), "{err}");
+        assert!(calls.lock().expect("calls lock").is_empty());
+    }
+
+    /// Protects: the replacement for the old refusal. It must no longer say
+    /// "not wired up yet", which stopped being true in T-313a.
+    #[tokio::test]
+    async fn test_a_profile_declaring_neither_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut profile = ace();
+        profile.comfy.template = None;
+
+        let (comfy, _calls) = client_and_log(happy_replies()).await;
+        let err = build_and_submit(&comfy, &dir.path().join("workflow.json"), &profile, &spec())
+            .await
+            .expect_err("a profile with no graph cannot run");
+
+        assert!(err.contains("neither"), "{err}");
+        assert!(!err.contains("not wired up yet"), "{err}");
+    }
+
+    /// Protects: someone who picks the wrong file entirely is told which of
+    /// **their** files is wrong.
+    ///
+    /// Found in review, not by a test failing: the check used to go through
+    /// `read_workflow`, which reports against the path it was handed -- the
+    /// working copy under `jobs/<id>/`. A user who picked a PNG would have got
+    /// an internal path and `expected value at line 1 column 1`.
+    #[tokio::test]
+    async fn test_a_file_that_is_not_json_names_the_users_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("cover-art.png");
+        std::fs::write(&source, b"not a workflow at all").expect("place a non-workflow");
+
+        let (comfy, _calls) = client_and_log(happy_replies()).await;
+        let err = build_and_submit(
+            &comfy,
+            &dir.path().join("workflow.json"),
+            &imported(&source),
+            &spec(),
+        )
+        .await
+        .expect_err("a PNG is not a workflow");
+
+        assert!(err.contains("cover-art.png"), "{err}");
+        assert!(
+            !err.contains("workflow.json"),
+            "names their file, not ours: {err}"
+        );
+        assert!(err.contains("File > Save (As)"), "{err}");
+    }
+
+    /// Protects: CONVENTIONS line 29 -- a user-facing error says what to do
+    /// next. A moved or deleted workflow is the ordinary way an imported
+    /// profile goes stale.
+    #[tokio::test]
+    async fn test_a_missing_imported_file_says_how_to_fix_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("gone.json");
+
+        let (comfy, _calls) = client_and_log(happy_replies()).await;
+        let err = build_and_submit(
+            &comfy,
+            &dir.path().join("workflow.json"),
+            &imported(&missing),
+            &spec(),
+        )
+        .await
+        .expect_err("a missing workflow cannot run");
+
+        assert!(err.contains("gone.json"), "{err}");
+        assert!(err.contains("Re-import it"), "{err}");
     }
 }

@@ -688,14 +688,55 @@ back-to-back completions ordinary, so its click-through is the first real eviden
 Fix is a mutex in `ComfyState` held around `ingest_outputs` only — never across the `fetch_outputs`
 await — plus a two-thread test. Write the brief on what the run shows, not on this paragraph.
 
-### T-313 — custom workflow import and input mapping
+### T-313 — custom workflow import and input mapping — **SPLIT 2026-08-30 into a … e**
 ARCHITECTURE 5b, and the pressure-release valve that stops the profile abstraction becoming a
 cage for users who already have working graphs — which is most serious ComfyUI users. Import
-an API-format workflow, `validate_workflow` it against the live registry, map node inputs to
-semantic roles (candidates pre-suggested by node class and input name), save as a user profile
-indistinguishable from a shipped one.
+a workflow, `validate_workflow` it against the live registry, map node inputs to semantic roles
+(candidates pre-suggested by node class and input name), save as a user profile indistinguishable
+from a shipped one.
 
-Largest task in the phase and the most likely to need splitting.
+**Scoped live 2026-08-30 before splitting** (MCP-SURFACE 29), which corrected the design in one
+important way: **the import takes the *frontend* format (`File > Save (As)`), not API format.**
+`list_workflow_slots` refuses an API export outright, and slots are the entire parameter mechanism
+— 5b's stated flow would have reached the mapping screen with zero mappable parameters.
+ARCHITECTURE 5b and the decisions log are corrected.
+
+Two things the scoping found already built, which is most of why this splits cleanly:
+
+- `ComfySpec.workflow: Option<String>` **already exists** in the profile schema.
+- `list_workflow_slots` **already reports each slot's node class and widget type**, already
+  modelled as `mcp_bridge::Slot`. 5b's "pre-suggested by node class and input name" needs no new
+  bridge work at all.
+
+**T-313a — the pipeline honours `comfy.workflow`. LANDED 2026-08-30**
+([brief](t-313a-brief.md), architect-direct). `place_working_copy` takes the working copy from a
+gallery template or a copy of an imported file, and refuses an API export up front by naming
+`File > Save (As)` — because `validate_workflow` accepts that shape and calls it valid, so the run
+would otherwise have failed three steps later talking about inert slots. src-tauri 87 → 93; three
+mutations, three killed. **Review found one defect the brief's own reference code carried**: the
+format check reported against the working copy under `jobs/`, not the user's file.
+**Click-through owed** — hand-write a user profile, generate, then repoint it at an API export.
+
+Below is the original entry; today `build_and_submit` refused outright:
+`"declares no gallery template; imported workflows are not wired up yet"`. Replace step 1 with
+"place this job's working copy", from either a gallery template or a copy of the imported file.
+**Deliberately first**: it is the smallest part, and because user profiles already load from
+`config_dir/profiles`, it makes a hand-written profile pointing at any workflow generate — the
+whole point of 5b — before a single screen exists. It is also the only part T-314's "an imported
+user workflow generates successfully" strictly needs.
+
+**T-313b — import and inspect.** Take a path; decide the format (frontend / API / neither);
+validate live; read the slots. A real API export is captured as
+`testdata/workflows/minimax_music3.api-format.json` so the negative case has a genuine fixture.
+Gate on `valid`/`errors` only — a working graph carries false `edge_type_mismatch` warnings (29.3).
+
+**T-313c — role suggestion.** Slots → ranked candidates per semantic role, by node class and input
+name. Entirely pure and offline, against two real captured slot lists.
+
+**T-313d — profile emission.** Mapping decisions → a `ModelProfile` written to the user profile
+dir, including save-node detection so the lossless swap still applies to an imported graph.
+
+**T-313e — the UI.** Import and mapping screens.
 
 ### T-315 — the crash path says what to do about it
 **LANDED 2026-08-29** ([brief](t-315-brief.md), architect-direct lane). `transport_reason` gives

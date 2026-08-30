@@ -2124,3 +2124,82 @@ The restart-and-requeue after it generated normally and wrote its FLAC, and the 
 clean -- 28.3 re-confirmed on a second occurrence rather than resting on one. **This is the
 `kill ComfyUI mid-job -> clean failed state + retry` line of the Phase 3 milestone**, observed
 twice: once as the defect, once as the fix.
+
+## 29. Workflow formats -- the two tools disagree, and 5b named the wrong one -- 2026-08-30
+
+Verified live against comfy-cli 1.16.0 / ComfyUI v0.34.2 while scoping T-313. ComfyUI exports
+two different JSON shapes and **comfy-mcp's tools do not accept the same one**.
+
+| shape | how a user makes it | top-level keys |
+|---|---|---|
+| **frontend** ("editing") | `File > Save (As)` | `nodes[]`, `links[]`, `groups`, `last_node_id` |
+| **API** | `File > Export (API)` | flat `{"<id>": {class_type, inputs, _meta}}` |
+
+### 29.1 Which tool takes which
+
+| tool | frontend | API |
+|---|---|---|
+| `list_workflow_slots` | **yes** -- 33 slots off a file at an arbitrary path | **refused**: `workflow_not_frontend_format` |
+| `list_workflow_notes` | yes | refused, same code (9.6) |
+| `validate_workflow` | yes, `converted_from_ui: true`, `converted_node_count: 11` | **yes**, `valid: true`, no conversion keys |
+| `run_workflow` | yes -- every generation this project has run | yes (10.2's hint names it) |
+
+Verbatim refusal from `list_workflow_slots` on an API export:
+
+```
+failed [workflow_not_frontend_format]: `comfy workflow` requires the frontend-format workflow
+(with `nodes[]` / `links[]`).
+hint: in ComfyUI, use `File > Save (As)` to export the editing format. The `File > Export (API)`
+output is for `comfy run`, not for editing.
+```
+
+### 29.2 The consequence: import must take the **frontend** format
+
+**ARCHITECTURE 5b said "pick an exported API-format workflow JSON". That is wrong** and would have
+produced an import screen with **zero** mappable parameters. Slots are the whole parameter
+mechanism (section 2) and slots require frontend format. Frontend is also the only shape that
+satisfies *both* halves of the flow -- it validates *and* it lists slots -- so this is not a
+trade-off, it is the only option. Corrected in ARCHITECTURE and the decisions log.
+
+The refusal above is the message to surface almost verbatim when a user picks the wrong export: it
+names the exact menu item that produces the right file, which is a better next step than anything
+this app could word itself.
+
+### 29.3 A real graph's `edge_type_mismatch` warnings are false alarms
+
+The API export used here is the **executed** graph of the T-315 verification run -- it demonstrably
+produced a playable FLAC. It still validates with three `edge_type_mismatch` warnings, all
+`COMFY_MATCHTYPE_V3` dynamic-matching noise around `ComfySwitchNode`:
+
+```
+input 'audio' expects AUDIO but ComfySwitchNode[0] produces COMFY_MATCHTYPE_V3
+```
+
+So an import screen must **gate on `valid`/`errors` and show warnings as advisory only**. Blocking
+on warnings would reject a graph that works, on this project's own reference model.
+
+### 29.4 Node ids differ between the shapes
+
+Subgraph interiors are `37:6` in the API export and `37/6` in slot addresses. Anything correlating
+the two must translate, and nothing should assume one id space.
+
+### 29.5 What the slot list gives an import screen for free
+
+Every slot carries `address`, `name`, `type` (`STRING`/`INT`/`FLOAT`/`COMBO`/`BOOLEAN`),
+`current_value`, `instance_id` **and `node_type`** (the node class) -- already modelled as
+`mcp_bridge::Slot`. 5b's "candidates pre-suggested by node class and input name" therefore needs
+**no new bridge work**; the signal is already typed and already captured as a fixture.
+
+The ACE-Step template also shows why a role maps to a **list** of slots, not one: it exposes two
+seeds (`3.seed`, `94.seed`) and two durations (`98.seconds`, `94.duration`) -- the same
+one-control-many-slots shape section 2 recorded, now confirmed as the normal case rather than an
+ACE-Step quirk.
+
+### 29.6 Hardware, for the record
+
+`server_info` reports the card as **17102733312 bytes = 15.93 GiB** (RTX 5060 Ti), RAM 63.9 GiB.
+This is the number `vram_gb_min: 8` is owed a decision against (T-314).
+
+**Fixture captured:** `testdata/workflows/minimax_music3.api-format.json` -- a real API export
+(the executed T-315 graph), so the format-detection code has a genuine negative to test against
+rather than a hand-made one.

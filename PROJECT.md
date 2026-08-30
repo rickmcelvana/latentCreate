@@ -44,6 +44,7 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
 - **The loop, as it actually settled in Phase 0:** architect writes the brief with full reference code → producer runs Aider with `--no-auto-commits` → producer runs `npm run gate` → architect reviews the working tree against the brief → **architect commits** `T-NNN: title` → push. Executors never commit; the architect does, on a green gate, without waiting to be asked. Architect-only work (briefs, docs, verification) follows the same rule minus the Aider step.
 
 ## Key decisions log
+- **2026-08-30 — Workflow import takes the *frontend* format, not API format** (ARCHITECTURE §5b corrected, evidence [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §29). Verified live while scoping T-313: `list_workflow_slots` **refuses** an API export (`workflow_not_frontend_format`), and slots are the whole parameter mechanism — so 5b's stated flow would have reached the mapping screen with zero mappable parameters. Frontend format is the only shape that both validates and lists slots, so this is not a trade-off. Two consequences for briefs: **gate imports on `valid`/`errors` only** — a real, working graph (this project's own executed MiniMax run) validates with three false `edge_type_mismatch` warnings, so blocking on warnings rejects graphs that work (29.3); and **a semantic role maps to a list of slots**, confirmed as the normal case rather than an ACE-Step quirk (29.5). The mapping screen needs no new bridge work: `list_workflow_slots` already reports each slot's node class and widget type, already modelled as `mcp_bridge::Slot`.
 - **2026-08-23 — MCP-first Comfy integration.** App embeds an MCP *client* (rmcp, stdio to local `comfy-mcp`; HTTP to Comfy Cloud) rather than ComfyUI's raw HTTP API. Rationale: model search/download, templates, validation, and job tools come free; local/cloud is one trait, two transports (ARCHITECTURE §1, §3). Raw API fallback deliberately deferred (OQ-3). ⚠ *The local/cloud half of this was disproved the same day — see the verification entry below; MCP-first itself stands and was strengthened (slots).*
 - **2026-08-23 — Model capability profiles as JSON data** (ARCHITECTURE §5). Supporting a new music model = a profile file, not code. Default model: ACE-Step 1.5 (Apache-2.0, lyrics+vocals, consumer-GPU fast). Also profiled: Stable Audio Open, MusicGen, YuE (advanced), DiffRhythm.
 - **2026-08-23 — Prompt optimization is consent-gated.** Optimizer output always shown as a diff; user accepts/edits/reverts; provenance records the flag. Never silently rewrite user text (owner requirement).
@@ -3752,3 +3753,64 @@ mcp-bridge 96, llm-bridge 35, src-tauri 87, frontend 299.
 
 **Next: T-313** (custom workflow import + input mapping), the largest task in the phase and the one
 most likely to need splitting.
+
+### 2026-08-30 -- T-313 scoped live, split five ways, and T-313a landed
+
+**The scoping changed the design before a line was written**, which is the whole reason this phase
+verifies surfaces before briefing. ARCHITECTURE 5b has said "pick an exported **API-format**
+workflow JSON" since 2026-08-23. It is wrong: `list_workflow_slots` **refuses** an API export
+(`workflow_not_frontend_format`), and slots are the entire parameter mechanism -- so 5b's stated
+flow would have reached the mapping screen with **zero** mappable parameters and nothing to map.
+Import takes the **frontend** format (`File > Save (As)`). Full evidence MCP-SURFACE 29;
+ARCHITECTURE 5b and the decisions log both corrected.
+
+The trap is that this is not a mistake `validate_workflow` would have caught for us: it is the one
+tool that accepts **both** formats, and it reports an API export as `valid: true`. A brief written
+from the architecture doc alone would have produced an import screen that validated the user's file,
+declared it good, and then offered nothing to map.
+
+Three more things the scoping settled, each of which shrank the task:
+
+- **`ComfySpec.workflow` already exists** in the profile schema, unread since T-107.
+- **`list_workflow_slots` already reports each slot's node class and widget type**, already modelled
+  as `mcp_bridge::Slot`. 5b's "candidates pre-suggested by node class and input name" needs **no new
+  bridge work at all** -- the signal is typed and already captured as a fixture.
+- **A real, working graph validates with false warnings.** The executed MiniMax graph from the T-315
+  run -- which produced a playable FLAC -- carries three `edge_type_mismatch` warnings from
+  `COMFY_MATCHTYPE_V3` dynamic matching. So the import gate reads `valid`/`errors` only; blocking on
+  warnings would reject this project's own reference model (29.3).
+
+**Split five ways** (phase file): a the pipeline seam, b import and inspect, c role suggestion,
+d profile emission, e the UI.
+
+**T-313a landed** ([brief](tasks/t-313a-brief.md), architect-direct). `place_working_copy` replaces
+`build_and_submit`'s opening refusal -- *"declares no gallery template; imported workflows are not
+wired up yet"* -- with a working copy from either source. Every step after it is unchanged, which is
+what made the seam worth putting there. Declaring both sources is an **error** rather than a
+precedence rule; declaring neither has a message that no longer promises the feature is coming.
+src-tauri 87 -> **93**, three mutations, three killed.
+
+**Deliberately first, and not the UI.** User profiles already load from `config_dir/profiles` and
+the T-303 picker already lists what it finds, so this alone lets a person hand-write a profile
+pointing at any workflow on disk and generate from it -- 5b's actual purpose, three tasks before
+5b has a screen. It is also the only part T-314's "an imported user workflow generates successfully"
+strictly needs.
+
+**Review found one defect the brief's own reference code carried.** The format check ran through
+`read_workflow`, which reports against the path it is given -- the working copy under `jobs/<id>/`.
+Someone who picked a PNG would have been shown an internal path and `expected value at line 1
+column 1`: not their file, and no next step, which is the exact CONVENTIONS rule the task exists to
+satisfy for the *format* mistake. Now parsed inline, naming the user's file and pointing at
+`File > Save (As)`. That is twice in two tasks that reviewing my own reference code as if someone
+else wrote it has caught something -- the practice is earning its place.
+
+**Click-through owed** (foot of the brief): hand-write a user profile with `comfy.workflow`,
+generate from it, then repoint it at a `File > Export (API)` export and confirm the refusal names
+the right menu item. Step 5 is the one to watch -- it is the mistake a real user will make.
+
+**Counts:** create-core 154, library 55, mcp-bridge 96, llm-bridge 35, **src-tauri 93**,
+frontend 299.
+
+**Next: T-313b** (import and inspect) -- take a path, decide the format, validate live, read the
+slots. The negative case has a real fixture now: `testdata/workflows/minimax_music3.api-format.json`
+is a genuine API export, the executed T-315 graph, rather than something hand-made.
