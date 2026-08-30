@@ -755,7 +755,15 @@ back through `library::profiles::load` rather than by a struct round trip. Bound
 node registry and a numeric role without them is **refused rather than guessed**; lyrics never get a
 default and tags do. create-core 164 -> 173, src-tauri 101 -> 104; three mutations, three killed.
 
-**T-313e — the UI.** Import and mapping screens.
+**T-313e — the import data path and store. LANDED 2026-08-30** ([brief](t-313e-brief.md),
+architect-direct). `ImportReport` now carries ranked suggestions, and `state/import.ts` holds every
+decision: the pre-tick rule, the row model, the save condition. **The rule it exists to carry is
+that a `possible` candidate is never pre-ticked** — otherwise T-313c's confidence field is
+decoration and the app silently accepts its own graph-shape guess as the user's seed mapping, with
+nothing erroring. Frontend 299 -> 310; two mutations, two killed.
+
+**T-313f — the view.** `<ImportWorkflow>`, the file picker, and the entry point. Carries the
+click-throughs deferred from T-313b, T-313d and T-313e, none of which have had a caller.
 
 ### T-315 — the crash path says what to do about it
 **LANDED 2026-08-29** ([brief](t-315-brief.md), architect-direct lane). `transport_reason` gives

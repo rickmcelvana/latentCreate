@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use create_core::emit::{build_profile, Bounds, MappedSlot};
-use create_core::roles::Role;
+use create_core::roles::{suggest_roles, Role, RoleSuggestion, SlotInfo};
 use create_core::workflow::{detect_format, WorkflowFormat};
 use mcp_bridge::{Finding, LocalComfy, NodeOptions, NodeSchema, Slot, SlotList, Verdict};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,12 @@ pub struct ImportReport {
     /// widget type (MCP-SURFACE 29.5). This is what T-313c ranks into role
     /// suggestions.
     pub slots: Vec<Slot>,
+    /// What each semantic role could map to, ranked (T-313c).
+    ///
+    /// Built here rather than behind a second command: `import_into` already
+    /// holds both the graph and the slots at this moment, so it costs no extra
+    /// round trip and no second read of the stored file.
+    pub suggestions: Vec<RoleSuggestion>,
     /// Advisory findings from validation.
     ///
     /// **Never a reason to refuse.** The executed MiniMax graph from the T-315
@@ -135,10 +141,13 @@ pub(crate) async fn import_into(
         format!("{}: {e}", stored.display())
     })?;
 
+    let suggestions = suggest_roles(&graph, &slot_infos(&slots));
+
     Ok(ImportReport {
         workflow_id,
         stored_path: stored.display().to_string(),
         slots,
+        suggestions,
         warnings,
     })
 }
@@ -350,6 +359,23 @@ fn free_profile_id(root: &Path, display_name: &str) -> Result<String, String> {
         }
     }
     Err(format!("too many profiles named {base}"))
+}
+
+/// `mcp_bridge::Slot` to the shape `create-core` ranks over.
+///
+/// The two are deliberately separate types: `create-core` does not depend on
+/// the transport crate for a pure ranking pass, so one mapping lives here.
+fn slot_infos(slots: &[Slot]) -> Vec<SlotInfo> {
+    slots
+        .iter()
+        .map(|s| SlotInfo {
+            address: s.address.clone(),
+            name: s.name.clone(),
+            widget_type: s.ty.clone(),
+            instance_id: s.instance_id.clone(),
+            node_type: s.node_type.clone(),
+        })
+        .collect()
 }
 
 /// First unused id for `source`'s filename in `dir`.

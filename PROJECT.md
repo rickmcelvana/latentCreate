@@ -3986,3 +3986,43 @@ distinguishing: "no test failed" looks identical in both cases, and only one of 
 
 **Next: T-313e** -- the UI, and the last part of T-313. It also carries the click-throughs deferred
 from T-313b and T-313d, which have no caller until it exists.
+
+### 2026-08-30 -- T-313e: the import data path and its store
+
+**Landed** ([brief](tasks/t-313e-brief.md), architect-direct). `ImportReport` now carries ranked
+suggestions -- built inside `import_into`, which already holds both the graph and the slots, so it
+costs no extra round trip -- plus `bridge/import.ts` and `state/import.ts`. Frontend 299 -> **310**.
+
+**Split from the view deliberately** (T-313f), the same way every UI task this phase has split, for
+the reason the phase file gives: every Phase 2 milestone defect was correct logic derived inline in
+a view, invisible to `tsc`, oxlint and the whole suite.
+
+**The rule this task exists to carry.** T-313c labels a link-followed candidate `possible` rather
+than `strong`, because nothing about `109.value` says "seed" -- it is right because of the graph's
+shape. `create-core` can only *label*; the store is where that label becomes behaviour or is quietly
+lost. If `initialSelection` pre-ticked everything, T-313c's confidence field would be decoration,
+and the failure would be **silent and total**: the user saves, the profile is written, generation
+works, and the seed they believe they set is the one the app guessed. Nothing errors.
+
+So `initialSelection` ticks every `strong` and no `possible`, and a role whose only candidates are
+`possible` starts **empty** -- the honest state: we found something and we are not claiming it. The
+mutation that pre-selects everything fails **two** tests, which is the right shape for an invariant
+this load-bearing.
+
+Two smaller decisions worth keeping: **`canSave` takes no warnings argument at all**, which turns
+"warnings never block saving" (MCP-SURFACE 29.3, already enforced in Rust by T-313b) from a rule
+someone must remember into a change someone would have to make deliberately; and a role the app
+found **nothing** for is still a row, so a person can see what was not matched rather than wondering
+whether it was even looked for.
+
+`suggest_roles` now returns `Vec<RoleSuggestion>` rather than tuples -- a tuple serializes as a
+positional array, which is a poor wire type. That meant editing T-313c's tests, which is the right
+trade.
+
+**Counts:** create-core 173, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 104,
+frontend **310**.
+
+**Next: T-313f** -- the view, and the last part of T-313. It carries the click-throughs deferred
+from T-313b, T-313d and T-313e, none of which have ever had a caller. After it, **T-314**, the live
+milestone, whose "an imported user workflow generates successfully" line this whole task chain
+exists to satisfy.

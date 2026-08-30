@@ -122,13 +122,24 @@ pub struct SlotInfo {
     pub node_type: String,
 }
 
+/// One role and everything offered for it.
+///
+/// A named struct rather than a tuple because this crosses the wire to the
+/// import screen: a tuple serializes as a positional array, which is a poor
+/// wire type and a worse one to read on the other side.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RoleSuggestion {
+    pub role: Role,
+    pub candidates: Vec<Candidate>,
+}
+
 /// Rank each role's candidates over `slots`, using `workflow` to discard the
 /// ones the engine would ignore.
 ///
 /// Roles with nothing plausible are **absent** rather than present and empty:
 /// ACE-Step has no negative prompt at all, and a low-confidence guess at
 /// `94.tags` would be worse than silence.
-pub fn suggest_roles(workflow: &Value, slots: &[SlotInfo]) -> Vec<(Role, Vec<Candidate>)> {
+pub fn suggest_roles(workflow: &Value, slots: &[SlotInfo]) -> Vec<RoleSuggestion> {
     let addresses: Vec<String> = slots.iter().map(|s| s.address.clone()).collect();
     let audit = audit_slots(workflow, &addresses);
     let inert: Vec<&str> = audit
@@ -201,7 +212,7 @@ pub fn suggest_roles(workflow: &Value, slots: &[SlotInfo]) -> Vec<(Role, Vec<Can
             (Confidence::Possible, Confidence::Strong) => std::cmp::Ordering::Greater,
             _ => a.address.cmp(&b.address),
         });
-        out.push((role, candidates));
+        out.push(RoleSuggestion { role, candidates });
     }
     out
 }
@@ -254,11 +265,11 @@ mod tests {
         )
     }
 
-    fn for_role(suggestions: &[(Role, Vec<Candidate>)], role: Role) -> Vec<Candidate> {
+    fn for_role(suggestions: &[RoleSuggestion], role: Role) -> Vec<Candidate> {
         suggestions
             .iter()
-            .find(|(r, _)| *r == role)
-            .map(|(_, c)| c.clone())
+            .find(|s| s.role == role)
+            .map(|s| s.candidates.clone())
             .unwrap_or_default()
     }
 
@@ -406,7 +417,7 @@ mod tests {
     #[test]
     fn test_strong_candidates_come_first() {
         let (graph, slots) = ace();
-        for (_, candidates) in suggest_roles(&graph, &slots) {
+        for RoleSuggestion { candidates, .. } in suggest_roles(&graph, &slots) {
             let first_possible = candidates
                 .iter()
                 .position(|c| c.confidence == Confidence::Possible);
