@@ -806,7 +806,19 @@ pump has retired (28.1), so do not build the mapping around it.
 
 Small, and it is the last thing between a crash and a queue row a person can act on.
 
-### T-314 — Phase 3 milestone verification (live)
+### T-314 — Phase 3 milestone verification (live) — **BRIEFED 2026-08-30** ([brief](t-314-brief.md))
+**All five ROADMAP milestone lines are already discharged**, each by its own dated click-through
+(the brief tabulates them with evidence). What remains is the two extras below, plus one gap the
+table cannot show: **T-313a changed `build_and_submit`'s first step for every profile**, and the
+only live generation since then used the *imported* path — so a shipped profile has not been
+generated from since the shared code under it moved. That is run 1.
+
+VRAM baseline captured 2026-08-30 before any run: **15.93 GiB total, 14.37 GiB free idle**, so
+~1.56 GiB is resident before the app asks for anything. `system_stats` is read-only and safe to
+poll, so the peak is measured during the full-length run rather than guessed.
+
+The original entry follows.
+
 The ROADMAP's checklist, run by a person: tags + lyrics → queued job → track in the library
 with a complete sidecar; a two-LoRA ACE-Step run reproduces from its sidecar alone; **the
 output is lossless, not MP3**; an imported user workflow generates; kill ComfyUI mid-job →

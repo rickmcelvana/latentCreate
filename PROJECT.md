@@ -4119,3 +4119,36 @@ frontend **313**.
 **Next: T-314**, the live milestone. Its imported-workflow line is now discharged, and the crash
 line was discharged by T-315. What remains is the **full-length run** and settling `vram_gb_min: 8`
 against the 15.93 GiB card (MCP-SURFACE 29.6).
+
+### 2026-08-30 -- T-314 briefed: the milestone is mostly already met
+
+Writing the brief established something the phase file did not say: **all five ROADMAP milestone
+lines are already discharged**, each by its own dated click-through, and the brief tabulates them
+with the evidence rather than asserting it. The two-LoRA line is the strongest -- MCP-SURFACE 27
+records that it was *"checked against the engine rather than against our own tests"*.
+
+So T-314 is **not** the checklist. It is the two extras the phase file named -- a full-length run
+and settling `vram_gb_min` -- plus one gap that a table of dated evidence actively hides:
+
+**T-313a changed the first step of `build_and_submit` for every profile, not just imported ones.**
+The gallery arm now goes through `place_working_copy`. Its tests were unchanged and pass, but the
+only live generation since that refactor used the **imported** path (T-313f step 5). A shipped
+profile has not been generated from since the shared code under it moved. Every line in the table is
+true, and none of them was run against today's code. That is run 1, and it is cheap.
+
+**VRAM baseline, captured before any run** (`system_stats`, read-only and safe to poll):
+`vram_total` 17,102,733,312 = **15.93 GiB**, `vram_free` 15,429,016,404 = **14.37 GiB idle** -- so
+about **1.56 GiB is already resident** before this app asks for anything.
+
+Two limits on whatever number comes back, written into the brief because they decide how it is used:
+**polling can miss the true peak**, so the figure is a *lower bound* and a minimum-VRAM requirement
+derived from it must be rounded up; and `vram_free` reflects the caching allocator's reservations
+under `cudaMallocAsync`, so it answers "how much of the card was unavailable" rather than "how much
+the model needs". The first is the right question for a floor; neither is an exact figure.
+
+`vram_gb_min: 8` is the oldest open question in the repo -- the XL turbo DiT alone is 9.3 GiB. It
+gets set from the measurement, or stays at 8 with a recorded reason. What must not happen is the
+number changing on argument rather than measurement, which is how it got here.
+
+**Ready for the producer.** The runs are: a shipped profile still generates (regression check on
+T-313a), a full-length run at 180 s or more, and the VRAM poll during it.
