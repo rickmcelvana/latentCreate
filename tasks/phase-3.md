@@ -766,8 +766,16 @@ nothing erroring. Frontend 299 -> 310; two mutations, two killed.
 `<ImportWorkflow>` in the Audio view's profile-picker section: pick a file, map the roles the app
 suggested, name it, save. Renders the store and derives nothing -- frontend **stays at 310**, which
 is the proof. `@tauri-apps/plugin-dialog` needed no plumbing; it was already wired end to end.
-**Its click-through is owed and carries three others** (T-313b, T-313d, T-313e), and step 5 of it is
-the Phase 3 milestone line *"an imported user workflow generates successfully"*.
+**Click-through passed 2026-08-30, all seven steps**, carrying the three deferred ones -- including
+step 5, the Phase 3 milestone line *"an imported user workflow generates successfully"*.
+
+**T-313g — two defects the first emitted profile showed. LANDED 2026-08-30**
+([brief](t-313g-brief.md)). Reading the emitted profile, which no click-through step asked about,
+found both: `cfg_scale` was treated as a synonym for `cfg`, so one control drove the sampler's CFG
+*and* the LM planner's scale; and a profile with no seed makes T-312's "variations" queue N runs
+varying nothing, silently. Fixed by dropping the synonym and by an advisory `saveNotes` line -- not
+by pre-ticking the seed, which would re-introduce the silent guess T-313e prevents.
+create-core 173 -> 174, frontend 310 -> 313.
 
 ### T-315 — the crash path says what to do about it
 **LANDED 2026-08-29** ([brief](t-315-brief.md), architect-direct lane). `transport_reason` gives

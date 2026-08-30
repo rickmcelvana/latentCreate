@@ -4072,3 +4072,50 @@ generate from it.
 whose step 5 *is* the Phase 3 milestone line "an imported user workflow generates successfully".
 Then **T-314**, whose remaining live work is the full-length run and settling `vram_gb_min: 8`
 against the 15.93 GiB card (MCP-SURFACE 29.6).
+
+### 2026-08-30 -- T-313f click-through passed, and reading the artifact found two more
+
+**All seven steps passed.** The seed row was **offered but not ticked** showing "drives 3.seed,
+94.seed"; duration showed two ticked slots; naming and saving put the profile in the picker without
+a reload; **it generated and a track landed in the Library** -- the Phase 3 milestone line *"an
+imported user workflow generates successfully"*. An API export was refused naming the right menu
+item, and the copy and the profile are both on disk.
+
+Step 7 read at first as a failure -- the producer saw only two files in `profiles/` -- but the
+emitted profile **was** there (`ace-turbo-test-workflow-1.json`, 02:50); the other two were leftovers
+from T-313a's hand-written click-through (`my-import.json` and a copied `ace-step-1.5-turbo.json`),
+not the shipped pair. Checking the directory rather than accepting the report is what settled it.
+
+**Then reading the emitted profile -- the first this app has ever produced -- found two defects no
+step asked about.** Both wrong *by default*, which is what matters for a flow whose whole job is a
+good default. Fixed as **T-313g** ([brief](tasks/t-313g-brief.md)); create-core 173 -> 174,
+frontend 310 -> 313.
+
+**1. `cfg_scale` is not `cfg`.** The profile mapped one control to `["3.cfg", "94.cfg_scale"]` --
+the KSampler's diffusion CFG *and* the LM planner's sampling scale, two different knobs on two
+different nodes. The shipped profile settles it beyond argument: `cfg_scale` lives in its advanced
+`planner` group beside temperature and top_p, and top-level `cfg` is not mapped at all. T-313c's
+name table had them as synonyms. Dropped.
+
+**2. A profile with no seed makes "variations" meaningless.** The producer correctly left the seed
+unticked -- on an ACE-Step-shaped graph the seed is *always* the `possible` hop, and T-313e is
+deliberate that a `possible` candidate is never ticked for someone. The consequence was not thought
+through: **no seed input means no seed control, and T-312's "queue N variations by seed" then queues
+N runs varying nothing.** It does not error, and ACE-Step's output differs run-to-run anyway
+(17.3), so nothing on screen would ever reveal it.
+
+The fix is **not** to pre-tick the seed -- that re-introduces exactly the silent-guess failure the
+pre-tick rule exists to prevent. It is to say what the choice costs: `saveNotes` puts an advisory
+line above Save, which never disables it.
+
+**What this pair says about the practice.** Every automated check passed, twice, and both defects
+were sitting in a 90-line JSON file nobody had opened. The click-through steps did not catch them
+either -- the steps verified the *flow*. **Looking at the artifact the flow produced is a distinct
+check**, and worth making explicit in future briefs that emit a file.
+
+**Counts:** create-core 174, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 104,
+frontend **313**.
+
+**Next: T-314**, the live milestone. Its imported-workflow line is now discharged, and the crash
+line was discharged by T-315. What remains is the **full-length run** and settling `vram_gb_min: 8`
+against the 15.93 GiB card (MCP-SURFACE 29.6).

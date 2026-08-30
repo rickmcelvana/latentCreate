@@ -140,6 +140,30 @@ export function canSave(name: string, selected: Selection): boolean {
   return name.trim() !== '' && Object.keys(selected).length > 0
 }
 
+/**
+ * Advisory lines shown above Save. **Never** disable it.
+ *
+ * An imported profile with no seed input has no seed control, and T-312's
+ * "queue N variations by seed" then queues N runs varying nothing. It does not
+ * error, and on ACE-Step the tracks differ anyway because the model is not
+ * reproducible run-to-run (MCP-SURFACE 17.3) -- so nothing on screen would ever
+ * reveal it.
+ *
+ * That is the default path, not an edge case: on an ACE-Step-shaped graph the
+ * seed is always the `possible` hop, which is never pre-ticked. The answer is
+ * to say what the choice costs, **not** to tick it for someone -- that would
+ * re-introduce the silent-guess failure the pre-tick rule exists to prevent.
+ */
+export function saveNotes(selected: Selection): string[] {
+  const notes: string[] = []
+  if ((selected.seed ?? []).length === 0) {
+    notes.push(
+      'No seed mapped, so Variations will queue identical settings. Tick a seed row to change that.',
+    )
+  }
+  return notes
+}
+
 /** The mappings, in the shape the command takes. */
 export function mappingsOf(selected: Selection): RoleMapping[] {
   return ROLES.filter((role) => (selected[role] ?? []).length > 0).map((role) => ({

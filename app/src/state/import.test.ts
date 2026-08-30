@@ -5,6 +5,7 @@ import {
   initialSelection,
   mappingsOf,
   roleRows,
+  saveNotes,
   toggleAddress,
   type Selection,
 } from './import'
@@ -156,5 +157,34 @@ describe('mappingsOf', () => {
       { role: 'tags', addresses: ['94.tags'] },
       { role: 'steps', addresses: ['3.steps'] },
     ])
+  })
+})
+
+describe('saveNotes', () => {
+  /**
+   * Protects: the cost of the default path is stated.
+   *
+   * On an ACE-Step-shaped graph the seed is always the `possible` hop, so it
+   * is never pre-ticked -- which means the default import has no seed, no seed
+   * control, and a Variations button that queues N runs varying nothing.
+   * Nothing errors, and the tracks differ anyway because ACE-Step is not
+   * reproducible run-to-run, so nothing on screen would reveal it.
+   */
+  it('calls out an unmapped seed', () => {
+    const notes = saveNotes({ tags: ['94.tags'] })
+
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toContain('Variations')
+  })
+
+  it('says nothing when the seed is mapped', () => {
+    expect(saveNotes({ seed: ['109.value'] })).toEqual([])
+  })
+
+  /** Protects: advisory means advisory. Same rule as warnings. */
+  it('never blocks saving', () => {
+    const selected: Selection = { tags: ['94.tags'] }
+    expect(saveNotes(selected)).not.toEqual([])
+    expect(canSave('My Import', selected)).toBe(true)
   })
 })

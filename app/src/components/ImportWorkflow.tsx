@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useModelsStore } from '../state/models'
-import { canSave, roleRows, useImportStore } from '../state/import'
+import { canSave, roleRows, saveNotes, useImportStore } from '../state/import'
 
 /**
  * Import a ComfyUI workflow and map its inputs to the app's semantic roles.
@@ -140,6 +140,12 @@ export function ImportWorkflow() {
           </li>
         ))}
       </ul>
+
+      {saveNotes(selected).map((note) => (
+        <p className="import-warning" key={note}>
+          {note}
+        </p>
+      ))}
 
       <div className="import-actions">
         <button

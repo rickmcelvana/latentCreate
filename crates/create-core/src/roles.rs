@@ -67,7 +67,14 @@ impl Role {
             Role::DurationSeconds => &["duration", "seconds", "length", "max_duration"],
             Role::Seed => &["seed", "noise_seed"],
             Role::Steps => &["steps"],
-            Role::Cfg => &["cfg", "cfg_scale", "guidance"],
+            // **`cfg_scale` is deliberately absent.** On ACE-Step it is the
+            // LM planner's sampling scale, not the sampler's CFG -- the
+            // shipped profile puts it in an advanced `planner` group beside
+            // temperature and top_p and never maps top-level `cfg` at all.
+            // Treating them as synonyms made one control silently drive two
+            // unrelated knobs, which is what the first emitted profile showed
+            // (T-313g).
+            Role::Cfg => &["cfg", "guidance"],
         }
     }
 
@@ -378,6 +385,22 @@ mod tests {
 
         let seed = for_role(&suggestions, Role::Seed);
         assert!(!seed.is_empty(), "MiniMax's seed must be offered");
+    }
+
+    /// Protects: one control never silently drives two unrelated parameters.
+    ///
+    /// `3.cfg` is the KSampler's diffusion CFG; `94.cfg_scale` is the LM
+    /// planner's sampling scale. The shipped profile settles it -- `cfg_scale`
+    /// lives in its advanced `planner` group and top-level `cfg` is not mapped
+    /// at all. The first emitted profile had both under one slider.
+    #[test]
+    fn test_cfg_does_not_claim_the_planner_scale() {
+        let (graph, slots) = ace();
+        let cfg = for_role(&suggest_roles(&graph, &slots), Role::Cfg);
+        let addresses: Vec<&str> = cfg.iter().map(|c| c.address.as_str()).collect();
+
+        assert!(addresses.contains(&"3.cfg"), "{addresses:?}");
+        assert!(!addresses.contains(&"94.cfg_scale"), "{addresses:?}");
     }
 
     /// Protects: silence beats a guess.
