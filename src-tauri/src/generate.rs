@@ -209,8 +209,8 @@ fn ensure_frontend_format(graph: &Value, profile_id: &str) -> Result<(), String>
     }
     Err(format!(
         "{profile_id}'s workflow is not the format latentCreate can edit. \
-         In ComfyUI use File > Save (As) to export the editing format -- \
-         the File > Export (API) output cannot be used here."
+         In ComfyUI use File > Save (As) to export the editing format. \
+         The File > Export (API) output cannot be used here."
     ))
 }
 

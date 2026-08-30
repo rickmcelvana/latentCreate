@@ -3814,3 +3814,33 @@ frontend 299.
 **Next: T-313b** (import and inspect) -- take a path, decide the format, validate live, read the
 slots. The negative case has a real fixture now: `testdata/workflows/minimax_music3.api-format.json`
 is a genuine API export, the executed T-315 graph, rather than something hand-made.
+
+### 2026-08-30 (later) -- T-313a click-through passed, and the copy defect it found
+
+Both halves passed. A hand-written `my-import.json` pointing at a `File > Save (As)` export
+**generated fine** -- the first time this app has run a graph it did not fetch, and the whole point
+of ARCHITECTURE 5b, reached before 5b has a single screen. Repointing the same profile at a
+`File > Export (API)` export produced the refusal naming the right menu item.
+
+**The click-through found one defect, in the copy rather than the behaviour.** Seeing the message
+rendered rather than read as a string literal:
+
+```
+ace-turbo-workflow's workflow is not the format latentCreate can edit. In ComfyUI use
+File > Save (As) to export the editing format -- the File > Export (API) output cannot be used here.
+```
+
+The `--` is this repo's convention for an em dash **in comments and docs**, and it leaked into
+user-facing copy. Grepping settled it rather than taste: every other `--` in `state/` and
+`src-tauri/src/` is inside a comment, and every user-facing string in the app uses a sentence break
+(`"ComfyUI is not running. Start it, then Retry."`). This one string was the only exception in the
+codebase. Now three sentences.
+
+Small, but this is the second time in three tasks that a producer *looking* at a string caught
+something no test could: a test asserting `err.contains("File > Save (As)")` passes just as happily
+either way. T-315 was an entire task created the same way.
+
+**Counts unchanged:** create-core 154, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 93,
+frontend 299.
+
+**T-313a is complete. Next: T-313b** (import and inspect).

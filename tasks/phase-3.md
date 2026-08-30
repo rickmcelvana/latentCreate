@@ -715,7 +715,10 @@ gallery template or a copy of an imported file, and refuses an API export up fro
 would otherwise have failed three steps later talking about inert slots. src-tauri 87 → 93; three
 mutations, three killed. **Review found one defect the brief's own reference code carried**: the
 format check reported against the working copy under `jobs/`, not the user's file.
-**Click-through owed** — hand-write a user profile, generate, then repoint it at an API export.
+**Click-through passed 2026-08-30**: a hand-written `my-import.json` pointing at a
+`File > Save (As)` export generated fine, and repointing it at an API export gave the refusal
+naming the right menu item. It also found one copy defect — the message rendered a literal `--`
+to the user, the only user-facing string in the app that did.
 
 Below is the original entry; today `build_and_submit` refused outright:
 `"declares no gallery template; imported workflows are not wired up yet"`. Replace step 1 with

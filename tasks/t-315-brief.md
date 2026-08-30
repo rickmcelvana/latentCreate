@@ -196,11 +196,18 @@ below. Say so rather than adding a test that asserts nothing.
 The one path that matters, and the same gesture that found the defect:
 
 1. Queue a generation on either profile, and **close ComfyUI while it runs**.
+
 2. The row settles to Failed within seconds and reads **one sentence** ending in a next step. No
    prompt id, no timestamps, no `comfy jobs ls`.
+
+
 3. `%APPDATA%\com.latentbeats.create\session.log` has the full original diagnostic on a
    `job_status` line — the detail is moved, not lost.
+
+
 4. Restart ComfyUI and queue again: it generates. The failed row is history, not a stuck state.
+
+
 5. Library unchanged — no partial track, `next_track_seq` unmoved. (This passed on 2026-08-29,
    MCP-SURFACE 28.3; re-checking it costs one glance and it is the thing a regression here would
    break.)

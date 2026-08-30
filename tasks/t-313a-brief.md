@@ -167,14 +167,18 @@ This is the part worth doing by hand, because it is the first time the app runs 
 fetch. **No UI exists yet — the profile is hand-written on purpose.**
 
 1. In ComfyUI, open any working workflow and `File > Save (As)` it somewhere.
+
 2. Copy `profiles/ace-step-1.5-turbo.json` to
    `%APPDATA%\com.latentbeats.create\profiles\my-import.json`. Change `id` to something new, change
    `display_name`, **delete `comfy.template`**, and add `"workflow": "<the path from step 1>"`.
    (Its `inputs` addresses will only resolve if the graph is ACE-Step-shaped — for a different
    graph expect a slot-resolution refusal, which is T-313c/d's job to fix and **is a pass here**:
    it means the file was read.)
+
 3. Restart the app. The new profile appears in the picker.
+
 4. Generate. It should queue and produce a track exactly as a shipped profile does.
+
 5. Now point the same profile at a `File > Export (API)` export and generate: the refusal should
    name `File > Save (As)`.
 
@@ -208,3 +212,14 @@ which the new test catches.
 The wrong-file case is worth this much attention because it is the *only* failure here a user
 reaches by doing something reasonable. Both other refusals (declaring both sources, declaring
 neither) are profile bugs that only T-313d's emitter can cause.
+
+## Click-through result — passed 2026-08-30
+
+Both halves. A hand-written `my-import.json` pointing at a `File > Save (As)` export **generated**,
+and repointing it at an API export gave the refusal naming the right menu item.
+
+**It found one copy defect a test could not.** The message carried a literal `--` — this repo's
+em-dash convention for comments and docs, leaked into user-facing copy. It is the only user-facing
+string in the codebase that did; every other one uses a sentence break. Now three sentences. Note
+that `assert!(err.contains("File > Save (As)"))` passes identically either way, which is exactly
+why this needed a person to look at it.

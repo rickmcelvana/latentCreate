@@ -1,0 +1,169 @@
+{
+  "3": {
+    "inputs": {
+      "seed": [
+        "109",
+        0
+      ],
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "78",
+        0
+      ],
+      "positive": [
+        "94",
+        0
+      ],
+      "negative": [
+        "47",
+        0
+      ],
+      "latent_image": [
+        "98",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "18": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "106",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode Audio"
+    }
+  },
+  "47": {
+    "inputs": {
+      "conditioning": [
+        "94",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "Conditioning Zero Out"
+    }
+  },
+  "78": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "104",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "94": {
+    "inputs": {
+      "tags": "pop, hip-hop, punchy, 808 drums, dark synth pads, driving bass, seductive female vocals, fast-paced, high-fidelity, 125 bpm",
+      "lyrics": "[intro]\n[instrumental: heavy darbuka percussion, digital synth arpeggio, creating a hypnotic and contemplative loop]\n[vocal: low growling]\n\n[verse 1]\n[vocal: staccato, rhythmic whisper-rap style]\nten years back at the dusty crossroads\nsigned with a kiss, my wish bestowed\nsilver coin for a golden throne\nbuilt my empire on a borrowed loan\nsigils carved in the basement floor\nnow the shadow knocks at the iron door\nblood moon rising, the clock strikes thin\ntime for the collector to let himself in\n\n[pre-chorus]\n[vocal: staccato, rhythmic whisper-rap style]\nthe runes are glowing red\nthe blood pact wants me dead\nthere's no way out\nthere's no more doubt\n\n[chorus]\n[vocal: spoken-word, fast whispered pacing, building pressure]\noh the hellhound is howling my name\nburning white in a violent flame\ndrag me down to the glowing deep\nwhere the ancient promises keep\nmy soul is the price for the gold I hold\nthe story of a demon’s bargain sold\n\n[verse 2]\n[vocal: low register, detached, cold precision]\nhex on the mirror, blood on the lace\ni see the hunger in a demon's face\ncemetery wind blowing cold through the hall\ni built the tower just to watch it fall\nmanifested power, intoxicating greed\nnow the beast is coming for the only seed\npossession is a heavy chain\nwashing my legacy down the drain\n\n[pre-chorus]\n[vocal: staccato, rhythmic whisper-rap style]\nsilver turns to rust\ndiamonds turn to dust\nhe is here\nthe end is near\n\n[chorus]\n[vocal: spoken-word, fast whispered pacing, building pressure]\noh the hellhound is howling my name\nburning white in a violent flame\ndrag me down to the glowing deep\nwhere the ancient promises keep\nmy soul is the price for the gold I hold\nthe story of a demon’s bargain sold\n\n[bridge]\n[vocal: spoken-word, fast whispered pacing, building pressure]\ni hear the claws on the hardwood floor\ni hear the scratching at the basement door\nthe scent of sulfur, the heat of the pit\ni signed the line and this is it\n\n[chorus]\n[vocal: spoken-word, fast whispered pacing, building pressure]\noh the hellhound is howling my name\nburning white in a violent flame\ndrag me down to the glowing deep\nwhere the ancient promises keep\nmy soul is the price for the gold I hold\nthe story of a demon’s bargain sold\n\n[outro]\n[vocal: haunting melody fading out]\ndown to the hollow\nwhere the shadows follow\n[vocal: whispering]\ncollect... the... debt.\n[instrumental fade out]",
+      "seed": [
+        "109",
+        0
+      ],
+      "bpm": 125,
+      "duration": 155,
+      "timesignature": "4",
+      "language": "en",
+      "keyscale": "E major",
+      "generate_audio_codes": true,
+      "cfg_scale": 2,
+      "temperature": 0.85,
+      "top_p": 0.9,
+      "top_k": 0,
+      "min_p": 0,
+      "clip": [
+        "105",
+        0
+      ]
+    },
+    "class_type": "TextEncodeAceStepAudio1.5",
+    "_meta": {
+      "title": "TextEncodeAceStepAudio1.5"
+    }
+  },
+  "98": {
+    "inputs": {
+      "seconds": 155,
+      "batch_size": 1
+    },
+    "class_type": "EmptyAceStep1.5LatentAudio",
+    "_meta": {
+      "title": "Empty Ace Step 1.5 Latent Audio"
+    }
+  },
+  "104": {
+    "inputs": {
+      "unet_name": "acestep_v1.5_xl_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "105": {
+    "inputs": {
+      "clip_name1": "qwen_0.6b_ace15.safetensors",
+      "clip_name2": "qwen_4b_ace15.safetensors",
+      "type": "ace",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "Load CLIP (Dual)"
+    }
+  },
+  "106": {
+    "inputs": {
+      "vae_name": "ace_1.5_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "109": {
+    "inputs": {
+      "value": 88888888
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int (Seed)"
+    }
+  },
+  "111": {
+    "inputs": {
+      "filename_prefix": "audio/the-hunt",
+      "format": "flac",
+      "audio": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "SaveAudioAdvanced",
+    "_meta": {
+      "title": "Save Audio (Advanced)"
+    }
+  }
+}
