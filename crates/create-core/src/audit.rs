@@ -142,6 +142,35 @@ pub fn audit_slots(workflow: &Value, addresses: &[String]) -> SlotAudit {
     audit
 }
 
+/// The id of the node driving `address`, when a top-level link drives it.
+///
+/// Exists for role suggestion (T-313c), which needs to turn an **inert**
+/// candidate into a usable one: writing `3.seed` is ignored because
+/// `PrimitiveInt` 109 drives it, and the slot that actually carries ACE-Step's
+/// seed is that node's own `109.value`. Finding it means walking from the fed
+/// input back to its origin, which is graph knowledge and belongs here beside
+/// the rest of it rather than in a second walker.
+///
+/// **Top level only**, and deliberately: a subgraph interior resolves to
+/// [`LinkSource::Boundary`], which is not inert, so nothing there ever needs
+/// the hop.
+pub fn link_origin(workflow: &Value, address: &str) -> Option<String> {
+    let nodes = workflow.get("nodes").and_then(Value::as_array)?;
+    let (instance, field) = split_address(address)?;
+    if instance.contains('/') {
+        return None;
+    }
+    let link = link_on(node_with_id(nodes, instance)?, field)?;
+    let origin = workflow
+        .get("links")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|l| l.get(0).and_then(Value::as_i64) == Some(link))
+        .and_then(|l| l.get(1))
+        .and_then(Value::as_i64)?;
+    Some(origin.to_string())
+}
+
 /// Resolve `"94.duration"` against the top-level graph.
 fn resolve_top_level(workflow: &Value, nodes: &[Value], instance: &str, field: &str) -> Resolution {
     let Some(node) = node_with_id(nodes, instance) else {

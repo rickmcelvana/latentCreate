@@ -3891,3 +3891,56 @@ T-313e's, noted at the foot of the brief so it is not lost.
 
 **Next: T-313c** -- role suggestion, ranking these slots into candidates per semantic role. Entirely
 pure and offline, against two real captured slot lists.
+
+### 2026-08-30 -- T-313c: role suggestion, and the mapping that would not have run
+
+**Landed** ([brief](tasks/t-313c-brief.md), architect-direct): `create_core::roles::suggest_roles`.
+create-core 157 -> **164**.
+
+**Scoping it found the rule that decides the whole design, and it is not the obvious one.** Reading
+the shipped ACE-Step profile raised a question -- why is `seed` mapped to `109.value`, a slot named
+`value` on a `PrimitiveInt`, when the graph has two slots literally named `seed`? The answer is that
+both of those are **inert**:
+
+| slot | driven by | writing it |
+|---|---|---|
+| `3.seed`, `94.seed` | `PrimitiveInt` 109 | accepted, persisted, **never read** |
+| `109.value` | -- | **this is the seed** |
+
+`build_and_submit` *refuses to generate* on an inert address, so a name-matching suggester would
+have confidently produced a profile that **cannot run** -- on this project's own reference model,
+for its most important single input.
+
+And the trap is sharper than "skip link-fed slots", because duration goes the other way: `94.duration`
+and `98.seconds` are both link-fed and both **land**, because their driver is a `PrimitiveNode` --
+frontend-only, link dropped on conversion. **`PrimitiveNode` and `PrimitiveInt`: same idea, opposite
+behaviour, one word apart.** `create_core::audit` already encodes exactly this, which is why
+suggestion delegates to it rather than re-deriving a rule that is this easy to get backwards.
+
+So `suggest_roles` reads the graph as well as the slot list, drops what the audit calls inert, and
+**hops to the driver** -- which is what turns `3.seed` into `109.value`, an answer no name-based
+rule could ever reach.
+
+**The hop is offered as `Possible`, never `Strong`**, and the distinction is load-bearing rather
+than decorative: confidence is the UI's pre-tick rule. Nothing about `109.value` says "seed" -- it
+is right because of the graph's shape -- so it goes top of the list with the reason "drives 3.seed,
+94.seed" for a person to confirm, rather than being ticked on their behalf.
+
+**Which the brief's third mutation caught me not testing.** Promoting the hop to `Strong` passed
+all 164 tests. The seed test asserted the address, the class and the reason, and never the one
+field that decides whether the app selects it for you. Now asserted.
+
+That is **two tasks running** where the mutation list found tests agreeing with the code rather
+than checking it (T-313b's staging path was the other). Both times the gap was in the invariant the
+task existed to protect, not in an edge case.
+
+Two smaller notes, both in the brief: `audit::link_origin` was added so the graph walk stays in one
+module, and `SlotInfo` restates `mcp_bridge::Slot` so `create-core` stays free of the transport
+crate for a pure ranking pass. The ACE-Step slot fixture is the live 33-slot payload with the
+900-character demo lyric trimmed -- recorded so nobody later reads it as byte-exact.
+
+**Counts:** create-core 164, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 101, frontend 299.
+
+**Next: T-313d** -- profile emission. Accepted candidates become a `ModelProfile` with
+`comfy.workflow` set, written to the user profile dir. It must not emit a profile declaring both a
+template and a workflow; T-313a already refuses that, and the test naming T-313d is already written.

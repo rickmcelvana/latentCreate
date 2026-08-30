@@ -24,6 +24,7 @@ pub mod profile;
 pub mod project;
 pub mod provenance;
 pub mod readiness;
+pub mod roles;
 pub mod workflow;
 
 pub use audio::*;

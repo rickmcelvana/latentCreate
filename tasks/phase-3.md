@@ -738,8 +738,15 @@ three killed **after the first was made killable** — validating the source ins
 copy passed all 101 tests until the happy path was made to assert which file ComfyUI was asked
 about. Click-through deferred to T-313e, when there is a button.
 
-**T-313c — role suggestion.** Slots → ranked candidates per semantic role, by node class and input
-name. Entirely pure and offline, against two real captured slot lists.
+**T-313c — role suggestion. LANDED 2026-08-30** ([brief](t-313c-brief.md), architect-direct).
+`create_core::roles::suggest_roles` ranks candidates per semantic role over two real captured slot
+lists. Scoping it found the rule that decides the design: **name matching alone produces a mapping
+the pipeline refuses.** ACE-Step's `3.seed` and `94.seed` are both named `seed`, both `INT` and both
+**inert** — driven by `PrimitiveInt` 109, so `build_and_submit` would refuse to generate. The seed
+lives on `109.value`, whose name and class match nothing. So suggestion reads the graph, drops what
+`audit` calls inert, and hops to the driver. The duration role goes the *other* way: both its slots
+are link-fed and both land, because `PrimitiveNode` is frontend-only. create-core 157 → 164; three
+mutations, three killed.
 
 **T-313d — profile emission.** Mapping decisions → a `ModelProfile` written to the user profile
 dir, including save-node detection so the lossless swap still applies to an imported graph.
