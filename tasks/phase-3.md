@@ -806,7 +806,24 @@ pump has retired (28.1), so do not build the mapping around it.
 
 Small, and it is the last thing between a crash and a queue row a person can act on.
 
-### T-314 — Phase 3 milestone verification (live) — **BRIEFED 2026-08-30** ([brief](t-314-brief.md))
+### T-314 — Phase 3 milestone verification (live) — **COMPLETE 2026-08-30** ([brief](t-314-brief.md))
+**All three runs done, results in the brief and [MCP-SURFACE 30](../docs/MCP-SURFACE.md).** Run 1
+(shipped profile after T-313a) **passed**. Run 2 (full-length) **passed**: the project's first
+recorded full-length generations — **185 s and 200 s of audio in 36-40 s wall clock**, ~5x
+realtime, with every sidecar's `duration_s` exactly equal to its FLAC's STREAMINFO duration.
+Run 3 measured VRAM at 1 Hz: **peak 15.49 GiB of 15.93 GiB**, the card at 97% full.
+
+**`vram_gb_min` stays at 8, deliberately.** A third honesty limit the brief did not anticipate
+breaks the direction of its other two: ComfyUI runs `DynamicVRAM` + `NORMAL_VRAM` + async weight
+offloading and **expands to fill free VRAM**, so an unconstrained run measures the card, not the
+model. The peak neither justifies raising the number nor refutes 8. Settling it needs a
+**constrained** run — **T-317**.
+
+Two findings outside the runs: `get_logs` served a three-day-old log while reporting both of its
+own trust signals as good (30.5), and an unchanged resubmission is cached and filed as a new
+track (30.6, **T-316**). Three stale doc comments corrected with the entry.
+
+The original entry follows.
 **All five ROADMAP milestone lines are already discharged**, each by its own dated click-through
 (the brief tabulates them with evidence). What remains is the two extras below, plus one gap the
 table cannot show: **T-313a changed `build_and_submit`'s first step for every profile**, and the
@@ -832,3 +849,33 @@ some.
 Two extras to capture while a real generation is running, since nothing else in the repo can:
 **the actual VRAM behaviour** on the 15.9 GiB card, which is the only way to settle
 `vram_gb_min`; and a **full-length** run, since every generation so far has been 10 seconds.
+
+
+### T-316 — a fresh Generate re-rolls the seed (or says why it does not) — **BRIEFED 2026-08-30** ([brief](t-316-brief.md))
+Found by T-314's producer: clicking Generate twice with nothing changed returns
+`execution_cached` in **0 s** and files the re-served output as a new Library track. The two
+tracks are **byte-identical** (`6bc4fbef…`) and their sidecars differ in exactly two fields,
+`created_at` and `prompt_id`.
+
+**Not a provenance defect** — same inputs, same waveform is what the sidecar promises — and **not a
+contradiction of 17.3**, since nothing re-executed. It is that **a fresh submission does not re-roll
+the seed**; T-312 covered seeds *within a batch*, never two separate clicks.
+
+Owner decision first (re-roll unless pinned / refuse the duplicate / ingest and label it), then a
+small frontend change. Recommendation is re-roll, because the seed control already exists for
+anyone wanting determinism.
+
+### T-317 — settle `vram_gb_min` by starving the card — **BRIEFED 2026-08-30** ([brief](t-317-brief.md))
+The oldest open question in the repo, still open after one honest attempt. T-314 measured a peak of
+**15.49 GiB of 15.93 GiB**, which **cannot** become the floor: ComfyUI expands to fill free VRAM, so
+an unconstrained run measures the card rather than the model.
+
+The measurement that works is a constrained bisect — relaunch with `--reserve-vram`, run a 200 s
+generation at each budget, and take the tightest budget that still completes (rounded **up**).
+Record the wall clock at that budget too: "runs, but takes eleven minutes" is a different answer
+from "will not run".
+
+Also settles `minimax-music-3.json`, which declares **16** on a 15.93 GiB card it has generated on
+repeatedly — so at least one declared number is already known to be wrong. Note before adding any
+gate: after a job releases, `vram_free` has been observed **larger than `vram_total`** (30.4), so
+`vram_total - vram_free` unsigned underflows.

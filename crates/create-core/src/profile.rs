@@ -220,11 +220,17 @@ pub struct ComfySpec {
     /// Gallery template name, e.g. `"audio_ace_step1_5_xl_turbo"`.
     #[serde(default)]
     pub template: Option<String>,
-    /// Path to a user-imported API-format workflow (ARCHITECTURE section 5b), when the
-    /// profile does not use a gallery template.
+    /// Path to a user-imported **frontend-format** workflow, when the profile does not
+    /// use a gallery template. Not API format: `list_workflow_slots` refuses an API
+    /// export, and slots are the whole parameter mechanism, so an API-format import
+    /// would offer nothing to map (MCP-SURFACE 29, which corrected ARCHITECTURE 5b).
     #[serde(default)]
     pub workflow: Option<String>,
-    /// Rough VRAM floor in gibibytes, for warning before a doomed run.
+    /// Rough VRAM floor in gibibytes. **Advisory only -- nothing compares it to the
+    /// card.** It reaches the UI as the display string "Profile states N GB VRAM" and
+    /// gates no run. The declared numbers are also unmeasured: T-314 could not settle
+    /// ACE-Step's because ComfyUI expands to fill free VRAM, so an unconstrained run
+    /// measures the card rather than the model (MCP-SURFACE 30.3).
     #[serde(default)]
     pub vram_gb_min: Option<u32>,
     /// Slot values pinned by the profile, applied to the fetched template before

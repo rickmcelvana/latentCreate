@@ -2203,3 +2203,152 @@ This is the number `vram_gb_min: 8` is owed a decision against (T-314).
 **Fixture captured:** `testdata/workflows/minimax_music3.api-format.json` -- a real API export
 (the executed T-315 graph), so the format-detection code has a genuine negative to test against
 rather than a hand-made one.
+
+## 30. The full-length run: VRAM measured, and two tools that misreported -- 2026-08-30
+
+The T-314 producer runs, against comfy-cli 1.16.0 / ComfyUI **v0.34.2** on the RTX 5060 Ti
+(15.93 GiB). The first full-length generations this project has recorded: **185 s and 200 s**
+of audio, where every run in the session log before this was seconds.
+
+### 30.1 What ran, from `GET /history`
+
+`get_logs` could not answer this (30.5), so the run record is `/history` -- section 17.2's rule
+holding again.
+
+| prompt_id | wall clock | asked | delivered | track |
+|---|---|---|---|---|
+| `504652c6` 16:38:45 | **0 s** | 185 s | -- | `execution_cached`, never executed (30.6) |
+| `1609b9a5` 16:39:33 | **36 s** | 185 s | 185.00 s | `tr-0019` |
+| `1e9ca8a5` 16:43:51 | **40 s** | 200 s | 200.00 s | `tr-0020`, polled |
+| `6c02fb79` 16:45:07 | **39 s** | 200 s | 200.00 s | `tr-0021`, polled |
+
+**A 200 s song costs ~39 s wall clock** -- roughly 5x faster than realtime. Nothing in the repo
+knew this number before.
+
+**Duration is exact, not approximate.** Every sidecar's `duration_s` equals the STREAMINFO
+duration of its own FLAC, read independently of the app: 185.00, 185.00, 185.00, 200.00, 200.00,
+all 48 kHz / 16-bit / stereo. The request reaches the encode intact at full length, and the
+lossless swap (20, 16.3) holds on today's post-T-313a code.
+
+### 30.2 VRAM, measured at 1 Hz
+
+Sampled `GET /system_stats` -- the endpoint `system_stats` wraps -- once per second across both
+200 s runs: **139 valid samples over 165 s, no gap wider than 2 s.**
+
+| | idle | plateau | peak |
+|---|---|---|---|
+| `vram_free` | 14.37 GiB | 4.68 GiB | **0.44 GiB** |
+| used | 1.56 GiB | 11.25 GiB | **15.49 GiB** |
+
+Both runs trace the same curve: a ~3 s load ramp to **11.25 GiB used**, a ~22 s plateau there
+(the sampler), then a ~5 s spike to peak (the decode), then full release. The two 200 s runs
+peaked 0.33 GiB apart (15.16 and 15.49) -- allocator variation at identical settings, not a
+signal.
+
+**Peak observed: 15.49 GiB of 15.93 GiB. The run took the card to 97% full.**
+
+### 30.3 Why that number is *not* `vram_gb_min` -- a third honesty limit
+
+The T-314 brief carried two limits on the measurement, both of which say the figure is a
+**conservative lower bound** on the floor: polling can miss the true peak, and `vram_free` under
+`cudaMallocAsync` counts allocator reservations. A third limit, found by reading what this
+ComfyUI reports about itself, **breaks the direction of the other two**:
+
+```
+Set vram state to: NORMAL_VRAM
+Using async weight offloading with 2 streams
+DynamicVRAM support detected and enabled
+comfy-aimdo NVML pressure enabled
+Model ACE15TEModel_ prepared for dynamic VRAM loading. 9126MB Staged.
+Model ACEStep15  prepared for dynamic VRAM loading. 9510MB Staged.
+```
+
+ComfyUI **stages models and expands to fill whatever VRAM is free**, offloading to host RAM when
+it is not. So an unconstrained run measures **the card, not the model**. 15.49 GiB is a
+high-water mark on a 15.93 GiB card; on a 12 GiB card the same run would very likely report a
+peak near 12.
+
+**Consequence: `vram_gb_min` cannot be settled by watching a run that was never starved**, in
+either direction. This run neither supports raising the number nor refutes the existing 8. The
+measurement that *would* settle it is a **constrained** one -- relaunch with `--reserve-vram` to
+starve the process to a candidate figure and see whether a 200 s run still completes. Recorded as
+T-317.
+
+Two supporting facts found while looking:
+
+- **`vram_gb_min` gates nothing.** It reaches the UI only as display text, `Profile states 8 GB
+  VRAM` (`app/src/state/profiles.ts:77`, `AudioStudio.tsx:129`). No code compares it to
+  `vram_bytes`. Three doc comments said otherwise and were corrected with this entry.
+- **The declared numbers already fail as floors.** `minimax-music-3.json` declares
+  `vram_gb_min: 16`; this card is 15.93 GiB -- *below* it -- and MiniMax has generated on it
+  repeatedly (20, 22).
+
+### 30.4 `vram_free` can exceed `vram_total`
+
+At the moment a job releases, one sample read:
+
+```
+vram_free   17,104,398,164     <-- 1,664,852 bytes MORE than the card has
+vram_total  17,102,733,312
+torch_vram_total  16.31 GiB    <-- larger than the 15.93 GiB card
+```
+
+Both are `cudaMallocAsync` pool accounting, not physical memory. **Any readiness check that
+computes `vram_total - vram_free` in unsigned arithmetic will underflow here** -- a Rust debug
+panic, a wrap in release -- and any "percent used" gauge can go negative. Nothing in the app does
+this today (it reads only `vram_bytes` from `server_info`), so this is a landmine note for
+whoever writes the first VRAM gate, not a live bug.
+
+### 30.5 `get_logs` served a stale log while reporting both trust signals as good
+
+Called with an explicit `port=8188` against the running server, `get_logs` returned a log file
+**three days old**, describing a different ComfyUI:
+
+| | `get_logs` said | the live server is |
+|---|---|---|
+| ComfyUI version | 0.34.1 | **0.34.2** |
+| templates | 0.11.48 | **0.11.50** |
+| file mtime | **2026-08-27T00:28Z** | run was 2026-08-30 |
+
+It reported `source: "explicit_port"` and `port_mismatch: false` -- the two fields the tool's own
+docs call trustworthy. The cause: the running ComfyUI is the **Desktop** instance (its `argv`
+carries `--extra-model-paths-config ...\Comfy Desktop\instance-model-paths\...`), which logs
+outside the comfy-cli workspace, while `comfy logs` reads
+`C:\Comfy-Installs\comfyUI\ComfyUI\user\comfyui_8188.log` from a previous CLI-launched install
+on the same port.
+
+**Rule: `source` and `port_mismatch` are not sufficient. Check `mtime` against the run, and
+cross-check `comfyui_version` against `system_stats`, before trusting a line of it.** For "what
+actually ran", `/history` remains the only surface (17.2).
+
+### 30.6 An unchanged resubmission is served from cache, and the app files it as a new track
+
+Prompt `504652c6` returned `execution_cached` with `execution_start == execution_success ==
+16:38:45` -- **0 s, nothing executed** -- because the graph was byte-identical to the previous
+submission. ComfyUI re-served the earlier output. The app ingested it as a new track.
+
+The two library entries are **byte-identical audio**:
+
+```
+tr-0017.flac  6bc4fbef34d752ab27231f652557a1ca
+tr-0018.flac  6bc4fbef34d752ab27231f652557a1ca
+```
+
+and their sidecars differ in **exactly two fields**:
+
+```
+created_at:  2026-08-30T21:35:51Z  ->  2026-08-30T21:38:52Z
+prompt_id:   d37a6575-...          ->  504652c6-...
+```
+
+Same inputs, same lyrics, same seed, same resolved slots.
+
+**This does not contradict 17.3.** Two ACE-Step runs still differ in 98.1% of bytes; here there
+was no second run to differ from. Identical bytes are in fact the *proof* the cache path was
+taken -- under 17.3 a real re-execution could not have produced them.
+
+**Provenance is not lying either**: it records the inputs, those inputs were identical, and
+reproducing from either sidecar gives this waveform. The finding is a product one -- **a fresh
+Generate does not re-roll the seed**, so clicking it twice yields a duplicate Library entry for
+zero GPU time. T-312 gave each *batched* track its own seed; two separate submissions were never
+covered. Recorded as T-316.

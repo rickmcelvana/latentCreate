@@ -29,9 +29,13 @@ pub struct GpuInfo {
     /// Marketing name, e.g. `NVIDIA GeForce RTX 5060 Ti`.
     #[serde(default)]
     pub model: Option<String>,
-    /// Total VRAM in bytes. This is the number a profile's `vram_gb_min` is
-    /// checked against, so it is kept in bytes and converted at the edge --
-    /// 17102733312 bytes is a "16 GB" card, which is 15.9 GiB.
+    /// Total VRAM in bytes, kept in bytes and converted at the edge --
+    /// 17102733312 bytes is a "16 GB" card, which is 15.9 GiB. A profile's
+    /// `vram_gb_min` is **not** currently checked against this; it is displayed
+    /// as a claim and gates nothing (MCP-SURFACE 30.3). Anything that does start
+    /// comparing them must not compute `vram_total - vram_free` unsigned: after a
+    /// job releases, `vram_free` has been observed *larger* than the card's total
+    /// (MCP-SURFACE 30.4).
     #[serde(default)]
     pub vram_bytes: Option<u64>,
     #[serde(default)]
