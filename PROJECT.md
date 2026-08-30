@@ -44,6 +44,7 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
 - **The loop, as it actually settled in Phase 0:** architect writes the brief with full reference code → producer runs Aider with `--no-auto-commits` → producer runs `npm run gate` → architect reviews the working tree against the brief → **architect commits** `T-NNN: title` → push. Executors never commit; the architect does, on a green gate, without waiting to be asked. Architect-only work (briefs, docs, verification) follows the same rule minus the Aider step.
 
 ## Key decisions log
+- **2026-08-30 — An imported workflow is *copied* into app storage, not referenced in place** (owner decision, raised while closing T-313a). Import takes a snapshot; the profile owns it thereafter. Rationale: a profile that silently changes behaviour when the user edits the source graph in ComfyUI would make **provenance sidecars lie** — the sidecar records the inputs, and reproducing a track means the graph those inputs were resolved against must still be the same graph. The cost is deliberate: editing the workflow in ComfyUI does **not** flow through to the profile, and re-importing is the way to pick up changes. This also removes the stale-path failure T-313a had to write an error for. Consequence for T-313b: the file is stored under the app dir, and the copy is the artifact of record — so validation must describe the bytes that were **stored**, not the bytes that were picked.
 - **2026-08-30 — Workflow import takes the *frontend* format, not API format** (ARCHITECTURE §5b corrected, evidence [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) §29). Verified live while scoping T-313: `list_workflow_slots` **refuses** an API export (`workflow_not_frontend_format`), and slots are the whole parameter mechanism — so 5b's stated flow would have reached the mapping screen with zero mappable parameters. Frontend format is the only shape that both validates and lists slots, so this is not a trade-off. Two consequences for briefs: **gate imports on `valid`/`errors` only** — a real, working graph (this project's own executed MiniMax run) validates with three false `edge_type_mismatch` warnings, so blocking on warnings rejects graphs that work (29.3); and **a semantic role maps to a list of slots**, confirmed as the normal case rather than an ACE-Step quirk (29.5). The mapping screen needs no new bridge work: `list_workflow_slots` already reports each slot's node class and widget type, already modelled as `mcp_bridge::Slot`.
 - **2026-08-23 — MCP-first Comfy integration.** App embeds an MCP *client* (rmcp, stdio to local `comfy-mcp`; HTTP to Comfy Cloud) rather than ComfyUI's raw HTTP API. Rationale: model search/download, templates, validation, and job tools come free; local/cloud is one trait, two transports (ARCHITECTURE §1, §3). Raw API fallback deliberately deferred (OQ-3). ⚠ *The local/cloud half of this was disproved the same day — see the verification entry below; MCP-first itself stands and was strengthened (slots).*
 - **2026-08-23 — Model capability profiles as JSON data** (ARCHITECTURE §5). Supporting a new music model = a profile file, not code. Default model: ACE-Step 1.5 (Apache-2.0, lyrics+vocals, consumer-GPU fast). Also profiled: Stable Audio Open, MusicGen, YuE (advanced), DiffRhythm.
@@ -3844,3 +3845,49 @@ either way. T-315 was an entire task created the same way.
 frontend 299.
 
 **T-313a is complete. Next: T-313b** (import and inspect).
+
+### 2026-08-30 (later still) -- T-313b: import and inspect
+
+**Owner decision taken first** (decisions log): an imported workflow is **copied** into app storage,
+not referenced in place. The reason is provenance rather than tidiness -- a profile pointing at a
+live file in the user's ComfyUI folder would silently change behaviour when they edited it there,
+and every sidecar written before that edit would quietly become a lie. The cost is explicit and the
+UI will have to say it: editing in ComfyUI does not flow through, re-importing is how you pick up
+changes.
+
+**Landed** ([brief](tasks/t-313b-brief.md), architect-direct): `create_core::workflow::detect_format`
+plus `import_workflow`. create-core 154 -> **157**, src-tauri 93 -> **101**.
+
+`detect_format` recognises the API shape **positively** rather than as "not frontend", because the
+three outcomes are three different messages -- proceed, "use File > Save (As)", and "this is not a
+ComfyUI workflow". Collapsing the last two would tell someone who picked their tax return to
+re-export it from ComfyUI.
+
+The import order is the design: parse -> decide the shape -> **stage** a copy -> validate and read
+slots **on the staged copy** -> commit, deleting the staging file on any refusal. Validating the
+source and copying after would describe bytes we did not keep; copying into place and validating
+after would leave rubbish behind on refusal.
+
+**The finding worth recording: the brief's own mutation list caught a decorative test suite.**
+Swapping `inspect(comfy, &staged)` for `inspect(comfy, source)` -- validating the file the user
+picked instead of the copy that was kept -- **passed all 101 tests**. Every test compared the stored
+copy against its own source, which is equal either way, so nothing ever observed *which* file
+ComfyUI was asked about. The single guarantee the whole stage-then-commit order exists to provide
+was unasserted. Fixed by having the happy path assert every recorded call names a `.staging-` path.
+
+That is the third time this phase a mutation has exposed a test that reads as though it covers
+something because the code around it happens to be right (T-310a and T-311d were the others).
+Running the mutations the brief asks for is not ceremony.
+
+Two smaller deviations from the brief, both recorded in it: the `is_safe_slug` guard was **dropped**
+rather than made public, because `slugify` guarantees a safe slug by construction and its own test
+pins that; and `generate.rs`'s T-313a format check now delegates to the shared `detect_format`,
+since two copies of that rule could drift.
+
+**No click-through**: a Tauri command with no caller is not worth a hand-run. It is folded into
+T-313e's, noted at the foot of the brief so it is not lost.
+
+**Counts:** create-core 157, library 55, mcp-bridge 96, llm-bridge 35, src-tauri 101, frontend 299.
+
+**Next: T-313c** -- role suggestion, ranking these slots into candidates per semantic role. Entirely
+pure and offline, against two real captured slot lists.

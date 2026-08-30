@@ -35,6 +35,7 @@ use create_core::generation::{GenerationSpec, ResolvedSlots};
 use create_core::graph::{ensure_lossless_output, splice_loras, GraphError, LoraChoice};
 use create_core::profile::ModelProfile;
 use create_core::provenance::ComfyServerInfo;
+use create_core::workflow::{detect_format, WorkflowFormat};
 use mcp_bridge::{Finding, LocalComfy, ServerInfo, SlotOverride, Validation, Verdict};
 use serde::Serialize;
 use serde_json::Value;
@@ -204,7 +205,10 @@ async fn place_working_copy(
 /// The remedy names the menu item, taken from comfy-cli's own refusal, which
 /// words it better than this app could.
 fn ensure_frontend_format(graph: &Value, profile_id: &str) -> Result<(), String> {
-    if graph.get("nodes").and_then(Value::as_array).is_some() {
+    // Shares `detect_format` with the import path (T-313b) rather than keeping
+    // a second copy of the rule. Two format checks that could disagree is a bug
+    // waiting for a fixture; this one predates the shared home by one task.
+    if detect_format(graph) == Some(WorkflowFormat::Frontend) {
         return Ok(());
     }
     Err(format!(

@@ -9,6 +9,7 @@ use tauri::Manager;
 
 mod comfy;
 mod generate;
+mod import;
 mod ingest;
 mod install;
 mod jobs;
@@ -71,6 +72,7 @@ pub fn run() {
             profile::profile_inputs,
             profile::enum_choices,
             loras::lora_panel,
+            import::import_workflow,
             install::models_install,
             install::models_progress,
             jobs::connect_comfy,

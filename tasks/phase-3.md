@@ -728,10 +728,15 @@ Below is the original entry; today `build_and_submit` refused outright:
 whole point of 5b — before a single screen exists. It is also the only part T-314's "an imported
 user workflow generates successfully" strictly needs.
 
-**T-313b — import and inspect.** Take a path; decide the format (frontend / API / neither);
-validate live; read the slots. A real API export is captured as
-`testdata/workflows/minimax_music3.api-format.json` so the negative case has a genuine fixture.
-Gate on `valid`/`errors` only — a working graph carries false `edge_type_mismatch` warnings (29.3).
+**T-313b — import and inspect. LANDED 2026-08-30** ([brief](t-313b-brief.md), architect-direct).
+`create_core::workflow::detect_format` tells the three shapes apart (frontend / API / neither) and
+`import_workflow` stages a copy, validates and reads slots **on the copy**, then commits — so a
+refused import leaves nothing behind and the report describes the bytes that were kept. Copying
+rather than referencing is an owner decision (decisions log): a profile pointing at a live file
+would make every earlier sidecar a lie. create-core 154 → 157, src-tauri 93 → 101; three mutations,
+three killed **after the first was made killable** — validating the source instead of the staged
+copy passed all 101 tests until the happy path was made to assert which file ComfyUI was asked
+about. Click-through deferred to T-313e, when there is a button.
 
 **T-313c — role suggestion.** Slots → ranked candidates per semantic role, by node class and input
 name. Entirely pure and offline, against two real captured slot lists.
