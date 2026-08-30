@@ -698,6 +698,15 @@ indistinguishable from a shipped one.
 Largest task in the phase and the most likely to need splitting.
 
 ### T-315 — the crash path says what to do about it
+**LANDED 2026-08-29** ([brief](t-315-brief.md), architect-direct lane). `transport_reason` gives
+the poll-failure path the vocabulary `failure_reason` already had for node failures: ~400
+characters of tool diagnostics became one sentence ending in a next step, and the diagnostic moved
+to `session.log` rather than being deleted. Two codes mapped, both verified — `server_not_running`
+and `prompt_not_found` — and `server_died` deliberately absent, because the app never sees it.
+src-tauri 83 → 87; four mutations, four killed, including the call-site unwiring that only the
+updated wiring test catches. **Click-through owed** (close ComfyUI mid-generation; the list is at
+the foot of the brief).
+
 **Found 2026-08-29** by the producer closing ComfyUI mid-generation -- the check T-314 owed,
 done early and out of order. Full evidence: MCP-SURFACE 28.
 

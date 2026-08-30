@@ -259,6 +259,16 @@ async fn monitor_job(
             let _ = app.emit("job://cancelled", JobCancelled { id: id.clone() });
         }
         TerminalOutcome::Failed { error } => {
+            // The row now gets a sentence, so the tool's own diagnostic -- a
+            // prompt id, two timestamps and a CLI hint -- goes where detail
+            // belongs. Moved, not deleted (MCP-SURFACE 28.2). Only the `Err`
+            // path: a node failure's detail is already in the row via
+            // `failure_reason`.
+            if let Err(e) = &result {
+                if let Ok(log) = SessionLog::open(root.join("session.log")) {
+                    log.log_result("job_status", false, &e.to_string());
+                }
+            }
             let _ = app.emit(
                 "job://failed",
                 JobFailed {
@@ -397,7 +407,7 @@ fn terminal_outcome(result: &Result<JobStatus, ComfyError>) -> TerminalOutcome {
             error: failure_reason(status),
         },
         Err(e) => TerminalOutcome::Failed {
-            error: e.to_string(),
+            error: transport_reason(e),
         },
     }
 }
@@ -452,6 +462,62 @@ fn failure_reason(status: &JobStatus) -> String {
     match field("node_type") {
         Some(node) => format!("{node} failed: {detail}"),
         None => detail,
+    }
+}
+
+/// The sentence a row shows when *polling* a job failed, as opposed to the job
+/// itself failing.
+///
+/// [`failure_reason`] is the equivalent for a node failure. This path had no
+/// vocabulary at all until 2026-08-29 and rendered `ComfyError::to_string()`
+/// verbatim, which put ~400 characters of tool diagnostics into a row sized for
+/// a short sentence, with the error code and the word "failed" each appearing
+/// twice (MCP-SURFACE 28.2). The doubling is structural: `ComfyError::Tool`'s
+/// Display is `"{tool} failed [{code}]: {message}"` and comfy-mcp's own message
+/// already opens with `"... comfy jobs status <id> failed [server_not_running]:
+/// ..."`. The fallback below therefore reads `message`, never `to_string()`.
+///
+/// **`server_died` is deliberately absent.** That code names exactly this event
+/// and never reaches the app: it exists only in comfy-cli's state file once the
+/// server is back, by which time this pump has retired, having emitted the
+/// transport failure instead (MCP-SURFACE 28.1). An arm for it would be dead
+/// code for the one situation it describes.
+///
+/// Only two codes are mapped and both are verified: `server_not_running` is the
+/// observed crash (28.2), `prompt_not_found` is what `job(action="status")`
+/// returns for an id the server does not know (MCP-SURFACE 437, 462). Guessing
+/// a third would guess a remedy -- `parse_error_code` already records why a
+/// wrong slug is worse than none.
+///
+/// Nothing is lost: `monitor_job` writes the full diagnostic to `session.log`
+/// before this string reaches the row.
+fn transport_reason(error: &ComfyError) -> String {
+    match error {
+        ComfyError::Tool { code, message, .. } => match code.as_deref() {
+            Some("server_not_running") => {
+                "ComfyUI stopped while this was generating. Start ComfyUI, then queue it again."
+                    .to_string()
+            }
+            // No cause is offered. A restart is the likely one, but this
+            // project has not observed *why* an id goes missing, and a row is
+            // the wrong place to publish a guess. What to do next is known.
+            Some("prompt_not_found") => {
+                "ComfyUI has no record of this job. Queue the generation again.".to_string()
+            }
+            // Un-truncated on purpose: the actionable half of an unknown
+            // message could sit anywhere in it, and a cut diagnostic is both a
+            // worse row and a worse bug report. Dropping the wrapper is what
+            // fixes the doubling.
+            _ => message.clone(),
+        },
+        ComfyError::Transport(_) => {
+            "Lost the connection to ComfyUI. Start ComfyUI, then queue this generation again."
+                .to_string()
+        }
+        // `NotInstalled` already ends in a next step; `Spawn` and `Payload`
+        // cannot be reached by a pump polling an already-submitted job, and
+        // copy for them would be written against nothing.
+        other => other.to_string(),
     }
 }
 
@@ -778,12 +844,87 @@ mod tests {
         );
     }
 
+    /// Protects: a poll error is a terminal ending, not a hang.
+    ///
+    /// **Updated by T-315, not replaced.** It used to assert the row contained
+    /// `"closed"` -- the raw transport string -- which is exactly the
+    /// behaviour T-315 removes. What it has always really protected is that
+    /// `Err` reaches `Failed` at all, and that is still worth a test.
     #[test]
     fn test_terminal_outcome_maps_poll_error_to_failed() {
         let outcome = terminal_outcome(&Err(ComfyError::Transport("closed".to_string())));
         assert!(matches!(
             outcome,
-            TerminalOutcome::Failed { error } if error.contains("closed")
+            TerminalOutcome::Failed { error } if error.contains("Start ComfyUI")
         ));
+    }
+
+    /// The message a real crash actually produced, as recorded in MCP-SURFACE
+    /// 28.2. A short stand-in here is how `failure_reason` shipped a bug that
+    /// every one of its tests passed.
+    const CRASH_MESSAGE: &str = "Error executing tool job: comfy jobs status \
+d3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe failed [server_not_running]: ComfyUI not running on \
+127.0.0.1:8188 - job d3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe was 'running' when the server was \
+last seen (submitted 2026-08-29T07:49:09+00:00, last update 2026-08-29T07:49:27+00:00). The \
+server may have died while executing it (e.g. killed by the OS on an out-of-memory \
+allocation). hint: run: comfy launch - then check `comfy jobs ls` for the job's last recorded \
+state";
+
+    fn tool_error(code: &str, message: &str) -> ComfyError {
+        ComfyError::Tool {
+            tool: "job".to_string(),
+            code: Some(code.to_string()),
+            message: message.to_string(),
+        }
+    }
+
+    /// Protects: the row a person reads after a crash is a sentence, not the
+    /// tool's diagnostics.
+    ///
+    /// The producer closed ComfyUI mid-generation on 2026-08-29 and got ~400
+    /// characters with the code and the word "failed" doubled. CONVENTIONS
+    /// requires a user-facing error to say what to do next.
+    #[test]
+    fn test_a_crash_mid_job_says_what_to_do() {
+        let reason = transport_reason(&tool_error("server_not_running", CRASH_MESSAGE));
+
+        assert!(reason.contains("Start ComfyUI"), "{reason}");
+        assert!(!reason.contains("server_not_running"), "{reason}");
+        assert!(!reason.contains("comfy jobs status"), "{reason}");
+    }
+
+    /// Protects: even for a code we do not map, the wrapper never repeats what
+    /// the payload already said. comfy-mcp's message opens with the code and
+    /// `ComfyError::Tool`'s Display prepends it again.
+    #[test]
+    fn test_an_unknown_tool_code_shows_the_message_without_the_wrapper() {
+        let reason = transport_reason(&tool_error("something_new", "the engine said no"));
+
+        assert_eq!(reason, "the engine said no");
+    }
+
+    /// Protects: the second verified failure of this poll is mapped too, and
+    /// no job id leaks into the row.
+    #[test]
+    fn test_prompt_not_found_says_to_queue_it_again() {
+        let reason = transport_reason(&tool_error(
+            "prompt_not_found",
+            "No prompt with id 'd3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe' on 127.0.0.1:8188",
+        ));
+
+        assert!(reason.contains("Queue the generation again"), "{reason}");
+        assert!(!reason.contains("d3715c6b"), "{reason}");
+    }
+
+    /// Protects: the MCP session dying is a user-facing error too, not an
+    /// rmcp string.
+    #[test]
+    fn test_a_lost_connection_says_what_to_do() {
+        let reason = transport_reason(&ComfyError::Transport(
+            "service cancelled: transport closed".to_string(),
+        ));
+
+        assert!(reason.contains("Start ComfyUI"), "{reason}");
+        assert!(!reason.contains("transport closed"), "{reason}");
     }
 }
