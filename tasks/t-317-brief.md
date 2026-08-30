@@ -41,7 +41,10 @@ much, so the effective budget is roughly `15.93 - reserve`.
 4. The last budget that **completes a 200 s run** is the measured floor. Round **up** to the next
    whole GiB.
 
-Poll `GET /system_stats` at 1 Hz throughout, as T-314 did, and keep the CSV.
+Poll `GET /system_stats` at 1 Hz throughout, as T-314 did, and keep the CSV in
+`docs/measurements/`. T-314's is already there --
+[`t-314-vram-1hz.csv`](../docs/measurements/t-314-vram-1hz.csv), the unconstrained baseline this
+run is compared against.
 
 ## What to write down
 

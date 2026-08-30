@@ -4279,32 +4279,47 @@ through the app.** Struck through in the brief rather than deleted.
 
 ### 2026-08-30 (session close) -- handoff, after T-314
 
-**First action next session:** the ritual -- PROJECT.md, then check it and ARCHITECTURE.md against
-`git log` since this entry.
+**Read this first. Everything below is short on purpose.**
 
-**Phase 3 runs T-301 ... T-317. Two tasks are open, both briefed, both from T-314:**
+**State:** working tree clean, `npm run gate` green, all committed. `origin/master` is at `3ab5b0d`;
+two commits after it are **local and unpushed** (the T-314 write-up and this one). Pushing is the
+producer's call.
 
-- **[T-316](tasks/t-316-brief.md)** -- a fresh Generate does not re-roll the seed, so clicking twice
-  yields a duplicate Library track for zero GPU time. **Needs an owner decision before any code**:
-  re-roll unless pinned (recommended), refuse the duplicate, or ingest and label it.
-- **[T-317](tasks/t-317-brief.md)** -- settle `vram_gb_min` by a **constrained** run
-  (`--reserve-vram`, bisect, take the tightest budget that completes a 200 s generation, round up).
-  Producer lane. Also settles `minimax-music-3.json`'s **16** on a 15.93 GiB card that has generated
-  on it repeatedly.
+**Counts, verified against a real run:** create-core 174, library 55, mcp-bridge 96, llm-bridge 35,
+src-tauri 104, frontend 313. The 13 `#[ignore]` harnesses still count 8 + 1 + 4.
 
-**Still awaiting owner confirmation, unchanged from the last session:** **OQ-3**, the raw ComfyUI API
-fallback, recorded in the decisions log as *recommend no for v1*.
+**Phase 3 is T-301 ... T-317. All five ROADMAP milestone lines are discharged. T-314 is done.**
 
-**Two standing notes carried forward, both reinforced today:**
+#### The three open items
 
-- **Look at the artifact, not just the flow.** This is the third session running where reading an
-  emitted file found what clicking through did not -- T-313g's profile defects, and today both the
-  duplicate-track hashes and the exact-duration confirmation, which came from parsing FLAC
-  STREAMINFO rather than trusting the app's own field.
-- **Verify a third-party surface before briefing against it.** `get_logs` was the fourth tool this
-  project has caught misreporting, and the first to do so while its documented trust signals both
-  read clean.
+| | what | who decides | blocked on |
+|---|---|---|---|
+| **T-316** | A fresh Generate does not re-roll the seed, so clicking twice makes a duplicate track for zero GPU time. | **Owner** | Pick one: re-roll unless pinned (recommended), refuse the duplicate, or ingest and label it. Then a small frontend change. [brief](tasks/t-316-brief.md) |
+| **T-317** | `vram_gb_min` is still unmeasured. | Producer run | Relaunch ComfyUI with `--reserve-vram`, bisect, take the tightest budget that completes a 200 s run, round up. [brief](tasks/t-317-brief.md) |
+| **OQ-3** | Raw ComfyUI API fallback. | **Owner** | Recorded as *recommend no for v1*. Just needs a yes/no. |
 
-**If you add a VRAM gate, read MCP-SURFACE 30.4 first:** after a job releases, `vram_free` has been
-observed **larger** than `vram_total` (by 1,664,852 bytes), and `torch_vram_total` reported 16.31 GiB
-on a 15.93 GiB card. `vram_total - vram_free` in unsigned arithmetic underflows there.
+#### The one thing to understand about T-314
+
+VRAM was measured: **peak 15.49 GiB of 15.93 GiB.** `vram_gb_min` was **left at 8 anyway**, on
+purpose.
+
+Why: ComfyUI expands to fill whatever VRAM is free. So the run measured **the card, not the model** —
+on a 12 GiB card the same generation would have peaked near 12. The number says nothing about the
+floor in either direction. Getting a real answer needs a run where the card is deliberately starved,
+which is T-317.
+
+Raw data kept at [docs/measurements/t-314-vram-1hz.csv](docs/measurements/t-314-vram-1hz.csv) so
+T-317 can compare instead of re-arguing.
+
+#### Two habits that keep paying off
+
+- **Look at the file, not just the app.** Today: the exact durations came from parsing FLAC headers,
+  and the duplicate-track finding came from hashing two files. Neither needed the producer.
+- **Check a third-party tool before trusting it.** `get_logs` served a three-day-old log while
+  reporting both of its own "trustworthy" signals as clean (MCP-SURFACE 30.5). `/history` is still
+  the only surface that shows what actually ran.
+
+#### One trap, if you add a VRAM check
+
+After a job releases, `vram_free` has been seen **larger than `vram_total`**. `vram_total -
+vram_free` unsigned will underflow. MCP-SURFACE 30.4.
