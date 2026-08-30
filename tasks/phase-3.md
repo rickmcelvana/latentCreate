@@ -704,8 +704,11 @@ characters of tool diagnostics became one sentence ending in a next step, and th
 to `session.log` rather than being deleted. Two codes mapped, both verified — `server_not_running`
 and `prompt_not_found` — and `server_died` deliberately absent, because the app never sees it.
 src-tauri 83 → 87; four mutations, four killed, including the call-site unwiring that only the
-updated wiring test catches. **Click-through owed** (close ComfyUI mid-generation; the list is at
-the foot of the brief).
+updated wiring test catches. **Click-through passed 2026-08-29, all five steps** — a killed
+ComfyUI gave a row reading exactly the mapped sentence at 6s, the full diagnostic was in
+`session.log` under `job_status` with `ok:false`, the next run generated and wrote its FLAC, and
+the library was clean. **This also discharges T-314's "kill ComfyUI mid-job → clean failed state +
+retry"**, which is now observed twice: once as the defect (28.2) and once as the fix.
 
 **Found 2026-08-29** by the producer closing ComfyUI mid-generation -- the check T-314 owed,
 done early and out of order. Full evidence: MCP-SURFACE 28.

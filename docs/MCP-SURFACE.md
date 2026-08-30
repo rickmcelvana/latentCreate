@@ -2095,3 +2095,32 @@ live rather than by reading the match arm.
 
 The row also settled correctly rather than hanging -- the pump retired within seconds of the server
 going away, which is the behaviour section 21 was written to protect.
+
+### 28.4 The same gesture, after T-315 -- 2026-08-29
+
+Re-run: generation queued, ComfyUI closed mid-run. The row now reads, in full:
+
+```
+Failed
+MiniMax Music 3
+6s
+ComfyUI stopped while this was generating. Start ComfyUI, then queue it again.
+```
+
+and the diagnostic 28.2 quoted is in `session.log` rather than gone:
+
+```json
+{"kind":"result","ok":false,"tool":"job_status","text":"job failed [server_not_running]: Error
+executing tool job: comfy jobs status 61e00986-... failed [server_not_running]: ComfyUI not
+running on 127.0.0.1:8188 - job 61e00986-... was 'running' when the server was last seen ...
+hint: run: comfy launch - then check `comfy jobs ls` ..."}
+```
+
+Worth keeping as a surface fact rather than only a changelog line: the app's *record* of a crash
+and the app's *display* of one are now different strings on purpose, and the log entry is the one
+to ask for when a user reports a failed generation. The row is deliberately not a bug report.
+
+The restart-and-requeue after it generated normally and wrote its FLAC, and the library stayed
+clean -- 28.3 re-confirmed on a second occurrence rather than resting on one. **This is the
+`kill ComfyUI mid-job -> clean failed state + retry` line of the Phase 3 milestone**, observed
+twice: once as the defect, once as the fix.
