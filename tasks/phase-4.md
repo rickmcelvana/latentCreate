@@ -46,9 +46,9 @@ handoff protocol is still owned by those repos and does not exist yet.
   `slugify`, `project_dir`. **No delete, no rename.**
 - **`AlbumList`** exists in the schema (`create_core::project::Project.albums`) with `name` +
   `tracks: Vec<TrackId>`. **No library functions, no commands, no UI.**
-- **`projectctx::default_project`** is the single-project seam: every command (`generate`,
-  `ingest`, `lyricdoc`, `tracks`) resolves to "first project in slug order, or create
-  `My First Song`". This is what T-401 replaces.
+- **`projectctx::default_project`** (renamed `selected_project` by T-401a) is the single-project
+  seam: every command (`generate`, `ingest`, `lyricdoc`, `tracks`) resolves to "first project in
+  slug order, or create `My First Song`". This is what T-401 replaces.
 - **`Track.file` is relative** (`tracks/tr-0001.flac`); nothing resolves it to an absolute path
   the webview can play. Playback needs a command that does.
 - **`tauri-plugin-opener`** (2.5.4) is already a dependency and registered; its JS surface is
@@ -74,9 +74,14 @@ that can be tested without a running ComfyUI comes first, and the player/visuali
 part that needs a real audio file.
 
 ### T-401 — projects become first-class — **the foundation**
-The single-project seam (`projectctx::default_project`) becomes a selected-project seam. This is
-the cross-cutting refactor every later task builds on, and it is the one task that touches every
-command.
+The single-project seam (`projectctx::default_project`, renamed `selected_project` by T-401a)
+becomes a selected-project seam. This is the cross-cutting refactor every later task builds on,
+and it is the one task that touches every command.
+
+**Split 2026-08-30 (briefed):** [T-401a](t-401a-brief.md) is the backend seam — the config field,
+`projectctx` resolution, `projects_list`/`projects_create`, and all four call sites — and
+[T-401b](t-401b-brief.md) is the frontend picker. Split so each run stays under the ~400-line rule
+(T-401a ≈ 120 lines of diff, T-401b ≈ 400).
 
 Scope:
 - **Config** gains `default_project_slug: Option<String>` (persisted like `default_profile_id`).
@@ -84,8 +89,10 @@ Scope:
   first project, else create `My First Song` — and the selection is what `generate`, `ingest`,
   `lyricdoc` and `tracks` all target. The "first project or create" fallback stays as the
   bootstrap, but the selection is now explicit and persisted.
-- **New commands**: `projects_list` (the `ProjectSet`), `projects_create(name)`, and
-  `projects_select(slug)` (persists the selection). `library_tracks` and the lyric commands
+- **New commands**: `projects_list` (the `ProjectSet`) and `projects_create(name)`.
+  **`projects_select` is deliberately not built** — the selection persists through the existing
+  `save_config` path exactly like `default_profile_id` (T-303), so the config store stays the
+  single writer of config (decision log 2026-08-30). `library_tracks` and the lyric commands
   already resolve through `projectctx`, so they follow the selection for free once it is
   persisted.
 - **Frontend**: a project picker in the Library view (list + create + select), a
