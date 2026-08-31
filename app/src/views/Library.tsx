@@ -7,6 +7,8 @@ import {
   type ProjectRow,
 } from '../state/projects'
 import { EMPTY_LIBRARY, useLibraryStore, type TrackRow } from '../state/library'
+import { Player } from '../components/Player'
+import { usePlayerStore } from '../state/player'
 
 export function Library() {
   const tracks = useLibraryStore((state) => state.tracks)
@@ -88,6 +90,8 @@ export function Library() {
           ))}
         </ul>
       )}
+
+      <Player />
     </>
   )
 }
@@ -148,11 +152,21 @@ function ProjectCreate() {
 }
 
 function TrackCard({ row }: { row: TrackRow }) {
+  const play = usePlayerStore((state) => state.play)
   return (
     <li className="panel track-row">
       <div className="track-head">
         <span className="track-name">{row.name}</span>
-        <span className="track-duration">{row.duration}</span>
+        <div className="track-head-actions">
+          <button
+            type="button"
+            className="track-play"
+            onClick={() => void play(row.id, row.name)}
+          >
+            Play
+          </button>
+          <span className="track-duration">{row.duration}</span>
+        </div>
       </div>
 
       <dl className="track-recipe">

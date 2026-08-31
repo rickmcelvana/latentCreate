@@ -18,7 +18,10 @@ landed 2026-08-30**: the asset protocol is enabled (`$APPCONFIG/projects/**` sco
 `track_audio_path` resolves a track id to an absolute path inside its project's `tracks/`.
 **T-402b landed 2026-08-30**: the `trackAudioUrl` bridge wrapper and `state/player.ts`'s pure
 `applyPlayerEvent`/`togglePlayer` fold -- 19 new tests, the player state machine is complete.
-T-402c pending.
+**T-402c landed 2026-08-30**: the `Player` + `Visualizer` components, the Library play button and
+the player bar. **T-402 is code-complete across all three parts**; the playback + visualizer
+milestone line still needs its producer click-through on a **built** app (the asset protocol, the
+CSP and the visualizer's drawing cannot be verified by the gate).
 T-403 … T-406 planned, not briefed.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
 - **Landed in Phase 3 so far** (all 2026-08-27): the phase-start surface re-verification (docs/MCP-SURFACE.md §16), then **T-301** (no lyric model is recommended), **T-301b** (endpoint + API-key fields, so any OpenAI-compatible provider works -- verified live against QwenCloud), **T-302** (measured the cost of the conservative `reasoning_effort` rule: 11.8x billed tokens), **T-302b** (the app discovers acceptance per endpoint instead of inferring it -- 33 s became 1-2 s), **T-303** (`default_profile_id` persists; profile picker), **T-304** (`resolve_slots`: semantic inputs fanned out to slot addresses), **T-305a** (`ensure_lossless_output`), **T-305b** (`splice_loras`), **T-306a** (`to_slot_value` + `audit_slots`, and the ACE-Step seed fix), **T-306b** (the pipeline command, and the `test-support` mock feature that lets its call sequence be asserted offline). `create-core` is 126 tests, `app` 52.
@@ -4658,3 +4661,30 @@ frontend 336 -> **355**. The brief is corrected to say so.
 
 **Still pending:** T-402c (the `Player` + `Visualizer` components, the Library play button, CSS)
 -- the last piece before playback is click-through-able on a built app.
+
+### 2026-08-30 (later still) -- T-402c landed: the Player and Visualizer components
+
+Aider transcribed the brief faithfully: both new files (`Player.tsx`, `Visualizer.tsx`) match the
+reference verbatim, and the Library edits match the brief's anchors. The gate's build output grew
+from 72 to **76 modules** -- the two new components are actually in the bundle.
+
+**One review finding, the executor's own and fixed directly** (WORKFLOW section 2): the run
+changed an **existing** `theme.css` rule -- `.generate-button:disabled` had `border-color:
+var(--border)` rewritten as the `border: 1px solid var(--border)` shorthand, functionally
+identical under the base rule but a violation of the brief's explicit "no existing theme.css rule
+may change". Same shape as the T-107a executor-edits-lines-it-transcribes-past defect. Reverted;
+the theme.css diff is now purely additive (113 insertions, 0 deletions).
+
+**Review checklist:** `invoke`/`listen`/`convertFileSrc` absent from `components/` and `views/`
+(grep); the audio element is held in state (not a ref) and handed to the Visualizer as a prop;
+`analyser.connect(context.destination)` is present (the silent-audio trap); every new className
+has a rule and no existing rule changed. **Gate green** (`npm run gate`): frontend stays **355**
+(no new tests -- this brief is wiring), create-core 174, library 58, mcp-bridge 96, llm-bridge 35,
+src-tauri 107.
+
+**T-402 is code-complete across a, b and c.** What remains is the producer click-through on a
+**built** app (`tauri build`, not `tauri dev` -- the CSP is only injected into the HTML Tauri
+serves), from the checklist at the bottom of `tasks/t-402c-brief.md`: play audibly, spectrum +
+waveform move, pause/resume, replay-from-zero after end, seek follows, and a missing audio file
+surfaces the player's error text. That click-through discharges the first ROADMAP Phase 4
+milestone line (generate -> play with visualizer -> ...).
