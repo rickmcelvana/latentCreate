@@ -9,6 +9,8 @@ import {
 import { EMPTY_LIBRARY, useLibraryStore, type TrackRow } from '../state/library'
 import { Player } from '../components/Player'
 import { usePlayerStore } from '../state/player'
+import { AlbumPanel } from '../components/AlbumPanel'
+import { useAlbumsStore } from '../state/albums'
 
 export function Library() {
   const tracks = useLibraryStore((state) => state.tracks)
@@ -23,6 +25,7 @@ export function Library() {
   const projectWarnings = useProjectsStore((state) => state.warnings)
   const loadProjects = useProjectsStore((state) => state.load)
   const selectProject = useProjectsStore((state) => state.select)
+  const albumsLoad = useAlbumsStore((state) => state.load)
 
   useEffect(() => {
     void load()
@@ -38,6 +41,10 @@ export function Library() {
 
   const selected = effectiveProjectSlug(config, projects)
   const rows = projects.map(projectRow)
+
+  useEffect(() => {
+    void albumsLoad()
+  }, [albumsLoad, selected])
 
   return (
     <>
@@ -90,6 +97,8 @@ export function Library() {
           ))}
         </ul>
       )}
+
+      <AlbumPanel />
 
       <Player />
     </>

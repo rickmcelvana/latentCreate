@@ -3,6 +3,7 @@
 //! JSON files under the app data dir, no database (ARCHITECTURE.md section 8).
 //! Secrets live in the OS keychain, never in config. Populated by T-004.
 
+pub mod albums;
 mod atomic;
 pub mod config;
 pub mod lyrics;
@@ -71,6 +72,12 @@ pub enum LibraryError {
     /// frontend, or a base name with a thousand collisions.
     #[error("unusable name: {0}")]
     UnusableName(String),
+    /// A name another album in the same project already holds.
+    #[error("an album named {0} already exists; choose another name")]
+    DuplicateName(String),
+    /// A reorder that is not the album's current tracks rearranged.
+    #[error("the new order must be the same tracks, in a different order")]
+    ReorderMismatch,
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod albums;
 mod comfy;
 mod generate;
 mod import;
@@ -84,6 +85,12 @@ pub fn run() {
             tracks::track_audio_path,
             projects::projects_list,
             projects::projects_create,
+            albums::albums_list,
+            albums::album_create,
+            albums::album_rename,
+            albums::album_add_track,
+            albums::album_remove_track,
+            albums::album_reorder,
             lyrics::lyrics_generate,
             lyrics::lyrics_cancel,
             optimize::lyrics_optimize,

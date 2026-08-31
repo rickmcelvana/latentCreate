@@ -276,9 +276,9 @@ vi.mock('../bridge/albums', () => ({
   listAlbums: () => mockListAlbums(),
   createAlbum: (name: string) => mockCreateAlbum(name),
   renameAlbum: (from: string, to: string) => mockRenameAlbum(from, to),
-  addAlbumTrack: (album: string, trackId: string) => mockAddAlbumTrack(album, trackId),
-  removeAlbumTrack: (album: string, trackId: string) => mockRemoveAlbumTrack(album, trackId),
-  reorderAlbum: (album: string, trackIds: string[]) => mockReorderAlbum(album, trackIds),
+  addAlbumTrack: (albumName: string, trackId: string) => mockAddAlbumTrack(albumName, trackId),
+  removeAlbumTrack: (albumName: string, trackId: string) => mockRemoveAlbumTrack(albumName, trackId),
+  reorderAlbum: (albumName: string, trackIds: string[]) => mockReorderAlbum(albumName, trackIds),
 }))
 
 function album(name: string, tracks: string[] = []): AlbumList {

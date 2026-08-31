@@ -19,7 +19,10 @@ mixing/mastering repos are web-first; Send-to stays the v1 link-out) and two own
 (projects become first-class; milestone-first ordering). **T-401 (projects become first-class) is complete** — T-401a (backend seam) and T-401b (the
 picker) landed 2026-08-30 and the click-through passed: a track generated with a second project
 selected lands in `projects/<slug>/tracks/` and the Library shows it under that project. **T-402
-(playback + visualizer) is next** — planned, not briefed. Briefs are written one at a time, each
+(playback + visualizer) is complete** — click-through passed, the first Phase 4 milestone line
+discharged. **T-403 (album lists) has landed** — `library::albums`, the six `albums_*` commands,
+the `state/albums` store (18 tests) and the Library album panel; the producer click-through is the
+next checkpoint and will discharge the second milestone line. Briefs are written one at a time, each
 after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
