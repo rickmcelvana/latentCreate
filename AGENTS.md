@@ -20,9 +20,9 @@ mixing/mastering repos are web-first; Send-to stays the v1 link-out) and two own
 picker) landed 2026-08-30 and the click-through passed: a track generated with a second project
 selected lands in `projects/<slug>/tracks/` and the Library shows it under that project. **T-402
 (playback + visualizer) is complete** — click-through passed, the first Phase 4 milestone line
-discharged. **T-403 (album lists) has landed** — `library::albums`, the six `albums_*` commands,
-the `state/albums` store (18 tests) and the Library album panel; the producer click-through is the
-next checkpoint and will discharge the second milestone line. Briefs are written one at a time, each
+discharged. **T-403 (album lists) is complete** — `library::albums`, the six `albums_*` commands,
+the `state/albums` store (18 tests) and the Library album panel; **the producer click-through
+passed 2026-08-31 and the second Phase 4 milestone line ("album list") is discharged.** Briefs are written one at a time, each
 after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**

@@ -140,13 +140,13 @@ never silently assumed. The player's *state machine* (play/pause/seek/end) is pu
 ### T-403 — album lists — **milestone line**
 `AlbumList` (already in the schema) becomes real: create, rename, add/remove tracks, reorder.
 
-**Landed 2026-08-31 (a/b/c).** Split three ways to stay under the ~400-line rule (the T-402
-pattern): [T-403a](t-403a-brief.md) (backend: `library::albums` + the six
-`albums_*`/`album_*` commands), [T-403b](t-403b-brief.md) (the frontend store: `bridge/albums.ts`,
-`state/albums.ts` and its pure `albumRows`/`moveTrackId`), and [T-403c](t-403c-brief.md) (the
-Library album panel + CSS), executed one at a time, in that order. library 58 -> 74 tests,
-frontend 355 -> 373. Producer click-through pending (six steps at the bottom of the c brief); it
-discharges the milestone line.
+**Complete 2026-08-31 (a/b/c); click-through passed.** Split three ways to stay under the
+~400-line rule (the T-402 pattern): [T-403a](t-403a-brief.md) (backend: `library::albums` + the
+six `albums_*`/`album_*` commands), [T-403b](t-403b-brief.md) (the frontend store:
+`bridge/albums.ts`, `state/albums.ts` and its pure `albumRows`/`moveTrackId`), and
+[T-403c](t-403c-brief.md) (the Library album panel + CSS), executed one at a time, in that order.
+library 58 -> 74 tests, frontend 355 -> 373. The producer ran the six click-through steps on a
+built app, all passed, and **this milestone line is discharged.**
 
 Scope:
 - **`library::albums`**: functions over `Project.albums` — create, rename, add track, remove
