@@ -1,4 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { useConfigStore } from '../state/config'
+import {
+  effectiveProjectSlug,
+  projectRow,
+  useProjectsStore,
+  type ProjectRow,
+} from '../state/projects'
 import { EMPTY_LIBRARY, useLibraryStore, type TrackRow } from '../state/library'
 
 export function Library() {
@@ -8,6 +15,13 @@ export function Library() {
   const load = useLibraryStore((state) => state.load)
   const startListening = useLibraryStore((state) => state.startListening)
 
+  const config = useConfigStore((state) => state.config)
+  const projects = useProjectsStore((state) => state.projects)
+  const projectError = useProjectsStore((state) => state.error)
+  const projectWarnings = useProjectsStore((state) => state.warnings)
+  const loadProjects = useProjectsStore((state) => state.load)
+  const selectProject = useProjectsStore((state) => state.select)
+
   useEffect(() => {
     void load()
   }, [load])
@@ -16,12 +30,39 @@ export function Library() {
     void startListening()
   }, [startListening])
 
+  useEffect(() => {
+    void loadProjects()
+  }, [loadProjects])
+
+  const selected = effectiveProjectSlug(config, projects)
+  const rows = projects.map(projectRow)
+
   return (
     <>
       <h1 className="view-title">Library</h1>
       <p className="view-subtitle">
         Everything you have made, with the recipe that made it.
       </p>
+
+      <section className="panel project-picker">
+        <h2 className="project-picker-title">Project</h2>
+
+        {projectError !== null ? <p className="library-error">{projectError}</p> : null}
+        {projectWarnings !== null ? <p className="library-warning">{projectWarnings}</p> : null}
+
+        <ul className="project-list">
+          {rows.map((row) => (
+            <ProjectRow
+              key={row.slug}
+              row={row}
+              selected={row.slug === selected}
+              onSelect={() => void selectProject(row.slug)}
+            />
+          ))}
+        </ul>
+
+        <ProjectCreate />
+      </section>
 
       {error !== null ? (
         <p className="library-error">
@@ -48,6 +89,61 @@ export function Library() {
         </ul>
       )}
     </>
+  )
+}
+
+function ProjectRow({
+  row,
+  selected,
+  onSelect,
+}: {
+  row: ProjectRow
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <li className={`project-row ${selected ? 'project-row-selected' : ''}`}>
+      <label className="project-row-pick">
+        <input
+          type="radio"
+          name="project"
+          checked={selected}
+          onChange={onSelect}
+        />
+        <span className="project-row-name">{row.name}</span>
+      </label>
+
+      <div className="project-row-meta">
+        <span className="project-row-created">{row.created}</span>
+      </div>
+    </li>
+  )
+}
+
+function ProjectCreate() {
+  const [name, setName] = useState('')
+  const create = useProjectsStore((state) => state.create)
+  return (
+    <form
+      className="project-create"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void create(name).then((ok) => {
+          if (ok) setName('')
+        })
+      }}
+    >
+      <input
+        className="project-create-input"
+        type="text"
+        value={name}
+        placeholder="New project name"
+        onChange={(event) => setName(event.target.value)}
+      />
+      <button type="submit" className="project-create-button" disabled={name.trim() === ''}>
+        Create
+      </button>
+    </form>
   )
 }
 
