@@ -140,6 +140,12 @@ never silently assumed. The player's *state machine* (play/pause/seek/end) is pu
 ### T-403 — album lists — **milestone line**
 `AlbumList` (already in the schema) becomes real: create, rename, add/remove tracks, reorder.
 
+**Briefed 2026-08-31.** Split three ways to stay under the ~400-line rule (the T-402 pattern):
+[T-403a](t-403a-brief.md) (backend: `library::albums` + the six `albums_*`/`album_*` commands),
+[T-403b](t-403b-brief.md) (the frontend store: `bridge/albums.ts`, `state/albums.ts` and its pure
+`albumRows`/`moveTrackId`), and [T-403c](t-403c-brief.md) (the Library album panel + CSS). Executed
+one at a time, in that order.
+
 Scope:
 - **`library::albums`**: functions over `Project.albums` — create, rename, add track, remove
   track, reorder. All operate on the project record, which already holds `albums`; no new files.
@@ -148,10 +154,25 @@ Scope:
 - **Frontend**: an album view in the Library — list albums, open one, see its tracks in order,
   add/remove/reorder. A `state/albums.ts` store.
 
+**Three design decisions, recorded rather than guessed (T-403a):**
+1. **Albums are name-addressed; names are unique within a project.** The schema has no album id
+   and gets none: albums never map to a path, so the name is a safe handle the way a slug is not.
+   A duplicate name is refused at create and rename ("choose another name"), so "open this album"
+   is never ambiguous.
+2. **A reorder is a full-order replace, validated as a permutation.** The frontend computes the
+   new order after an up/down move and sends the whole list; the backend refuses any list that is
+   not exactly the album's current tracks rearranged. A stale frontend can never silently wipe
+   part of an album, and there is no move-one-off-by-one arithmetic to get wrong on the wire.
+3. **`add_track` refuses an id the project does not own.** Adding is the one moment a dangling id
+   can be prevented; deleting is the only legitimate source of one, and the frontend renders those
+   as "Missing track" rather than dropping them (the trap below).
+
 **The trap to design against:** `AlbumList.tracks` holds `TrackId`s, and a deleted track's id
 must not be handed to a later one (the `mint_track_id` invariant). An album still holding a
 deleted id must render as "missing" rather than silently dropping the entry — the same
-absent-versus-empty discipline that has produced four bugs in this repo.
+absent-versus-empty discipline that has produced four bugs in this repo. The join lives in
+`state/albums.ts` `albumRows`, where a test guards it (the `?? null` fallback is the mutation
+check).
 
 ### T-404 — Send-to — **milestone line**
 The v1 link-out: open the mixing/mastering site and reveal the file for drag-in.
