@@ -395,7 +395,7 @@ describe('togglePlayer', () => {
 
 ## Acceptance criteria
 
-- [ ] `tsc -b`, `oxlint src`, `vitest run` and `vite build` green; frontend goes 336 -> **351** tests (15 new).
+- [ ] `tsc -b`, `oxlint src`, `vitest run` and `vite build` green; frontend goes 336 -> **355** tests (19 new). *(The brief originally said 15 new -- a miscount; the reference test file below carries 19 `it` blocks.)*
 - [ ] Every public pure function (`formatTime`, `clampPosition`, `statusLabel`, `applyPlayerEvent`, `togglePlayer`) is exported and tested; no store action touches `convertFileSrc` or `invoke` directly.
 - [ ] `invoke` and `convertFileSrc` appear only in `app/src/bridge/player.ts` (grep `convertFileSrc` and `invoke('track_audio_path'` across `app/src`).
 - [ ] The `play` action's `catch` narrows `unknown` to a string without `any`.
