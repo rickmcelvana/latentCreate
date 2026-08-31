@@ -3,6 +3,7 @@
 **Depends:** T-401 (landed) | **Crate/dir:** src-tauri, crates/library
 **Files to create/modify:**
 - `src-tauri/tauri.conf.json` (modify: enable the asset protocol, set a CSP)
+- `src-tauri/Cargo.toml` (modify: add the `protocol-asset` feature the asset protocol requires)
 - `crates/library/src/tracks.rs` (modify: add `resolve_track_file` + tests)
 - `src-tauri/src/tracks.rs` (modify: add the `track_audio_path` command)
 - `src-tauri/src/lib.rs` (modify: register `tracks::track_audio_path`)
@@ -61,6 +62,20 @@ Rationale, for the review:
   CSP is applied in a built app, and a future inline style must not ship as a blank screen.
 - The scope is `$APPCONFIG/projects/**`, not `$APPCONFIG/**`: only project files (tracks now, art
   later) should be reachable through a URL, never `config.json` or `session.log`.
+
+### `src-tauri/Cargo.toml`
+
+The `tauri` dependency must carry the `protocol-asset` feature, or the build fails at the
+`tauri-build` step with "the `tauri` dependency features ... does not match the allowlist ...
+add the `protocol-asset` feature". Change:
+
+```toml
+tauri = { version = "2.11.3", features = ["protocol-asset"] }
+```
+
+*(Added to this brief after the first Aider run: the gate's build step caught that the original
+brief omitted this, because `npm run gate` compiles `src-tauri` and the asset-protocol config is
+validated at build time -- the one part of the config change the gate **can** see.)*
 
 ### `library::tracks::resolve_track_file`
 
@@ -188,7 +203,7 @@ tests, each with the invariant it protects:
 - [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test --workspace` green; `library` goes 55 -> **58** tests.
 - [ ] `resolve_track_file` is the only new logic; the command is thin glue over it.
 - [ ] The three tests above each fail when their guard is removed (mutation check: deleting the `rel.is_absolute()` check fails `test_resolve_track_file_refuses_an_absolute_path` only; deleting the `ParentDir` check fails `test_resolve_track_file_refuses_a_parent_escape` only).
-- [ ] No changes outside the four listed files.
+- [ ] No changes outside the five listed files.
 - [ ] No non-ASCII characters anywhere in the diff.
 
 ## Out of scope
@@ -205,5 +220,5 @@ Do not guess. Output a numbered list of questions and stop.
 ## Aider launch
 
 ```bash
-aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read src-tauri/src/projectctx.rs --read src-tauri/src/lib.rs --read crates/library/src/projects.rs --read crates/library/src/lib.rs --read crates/create-core/src/provenance.rs --file src-tauri/tauri.conf.json --file crates/library/src/tracks.rs --file src-tauri/src/tracks.rs --file src-tauri/src/lib.rs
+aider --no-auto-commits --model ollama_chat/kimi-k2.7-code:cloud --read WORKFLOW.md --read CONVENTIONS.md --read ARCHITECTURE.md --read src-tauri/src/projectctx.rs --read src-tauri/src/lib.rs --read crates/library/src/projects.rs --read crates/library/src/lib.rs --read crates/create-core/src/provenance.rs --file src-tauri/tauri.conf.json --file src-tauri/Cargo.toml --file crates/library/src/tracks.rs --file src-tauri/src/tracks.rs --file src-tauri/src/lib.rs
 ```

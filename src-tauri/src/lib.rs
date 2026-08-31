@@ -81,6 +81,7 @@ pub fn run() {
             jobs::run_workflow,
             jobs::cancel_job,
             tracks::library_tracks,
+            tracks::track_audio_path,
             projects::projects_list,
             projects::projects_create,
             lyrics::lyrics_generate,

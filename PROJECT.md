@@ -10,9 +10,13 @@
 `projects_list`/`projects_create`, all four call sites; src-tauri 104 → 107 tests) and T-401b (the
 Library picker + `state/projects.ts`; frontend 322 → 336 tests) landed, and the **click-through
 passed** — a track generated with a second project selected lands in `projects/<slug>/tracks/`
-and the Library shows it under that project. **T-402 (playback + visualizer) is briefed** --
-split three ways ([a](tasks/t-402a-brief.md) backend+config, [b](tasks/t-402b-brief.md) player
-state machine, [c](tasks/t-402c-brief.md) components) for the ~400-line rule, not yet run.
+and the Library shows it under that project. **T-402 (playback + visualizer) is underway** --
+briefed and split three ways ([a](tasks/t-402a-brief.md) backend+config, [b](tasks/t-402b-brief.md)
+player state machine, [c](tasks/t-402c-brief.md) components) for the ~400-line rule. **T-402a
+landed 2026-08-30**: the asset protocol is enabled (`$APPCONFIG/projects/**` scope, a CSP
+`media-src asset: http://asset.localhost`), the `tauri` dep gained `protocol-asset`, and
+`track_audio_path` resolves a track id to an absolute path inside its project's `tracks/`.
+T-402b and T-402c pending.
 T-403 … T-406 planned, not briefed.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
 - **Landed in Phase 3 so far** (all 2026-08-27): the phase-start surface re-verification (docs/MCP-SURFACE.md §16), then **T-301** (no lyric model is recommended), **T-301b** (endpoint + API-key fields, so any OpenAI-compatible provider works -- verified live against QwenCloud), **T-302** (measured the cost of the conservative `reasoning_effort` rule: 11.8x billed tokens), **T-302b** (the app discovers acceptance per endpoint instead of inferring it -- 33 s became 1-2 s), **T-303** (`default_profile_id` persists; profile picker), **T-304** (`resolve_slots`: semantic inputs fanned out to slot addresses), **T-305a** (`ensure_lossless_output`), **T-305b** (`splice_loras`), **T-306a** (`to_slot_value` + `audit_slots`, and the ACE-Step seed fix), **T-306b** (the pipeline command, and the `test-support` mock feature that lets its call sequence be asserted offline). `create-core` is 126 tests, `app` 52.
@@ -4607,3 +4611,27 @@ runs `vite build`, never `tauri build`.
 
 **Counts unchanged** (docs only this session): create-core 174, library 55, mcp-bridge 96,
 llm-bridge 35, src-tauri 107, frontend 336.
+
+### 2026-08-30 (later still) -- T-402a landed: the asset protocol and the audio path
+
+Aider transcribed the brief faithfully -- the diff touched only the four listed files and matched
+the reference byte for byte. The gate then found **one defect in the brief's own reference**,
+fixed directly (WORKFLOW section 2): enabling `assetProtocol` requires the `tauri` crate's
+`protocol-asset` feature, which the brief omitted. `tauri-build` refuses the mismatch at compile
+time ("add the `protocol-asset` feature"), so the gate **did** catch this half of the config
+change -- the one part of T-402a `npm run gate` can see, because it compiles `src-tauri`. The fix
+is one Cargo.toml line and its `http-range 0.1.5` transitive dep (MIT, permissive). The brief is
+corrected to list `src-tauri/Cargo.toml` and note the feature.
+
+**Review pass (against the brief):** the four files match the reference verbatim; the two
+mutation checks from the acceptance criteria were run for real -- deleting the `rel.is_absolute()`
+check fails `test_resolve_track_file_refuses_an_absolute_path` only, and deleting the `ParentDir`
+check fails `test_resolve_track_file_refuses_a_parent_escape` only. **Gate green** (`npm run
+gate`, full access required for vitest's esbuild spawn).
+
+**Counts:** library 55 -> **58** (three new `resolve_track_file` tests); everything else
+unchanged: create-core 174, mcp-bridge 96, llm-bridge 35, src-tauri 107, frontend 336.
+
+**Still pending:** T-402b (the player state machine) then T-402c (the components). The
+asset-protocol + CSP half of T-402a remains a producer click-through item on a **built** app --
+playback cannot be verified until T-402c exists, but the scope and CSP are now in place.

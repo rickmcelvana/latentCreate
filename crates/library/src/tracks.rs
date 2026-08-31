@@ -99,6 +99,26 @@ pub fn audio_path(
     Ok(tracks_dir(root, slug)?.join(format!("{}.{}", id.0, ext_lower)))
 }
 
+/// Resolves a track's stored `file` -- relative to the project directory, e.g.
+/// `"tracks/tr-0001.flac"` -- to an absolute path the webview can play.
+///
+/// `Track.file` is written by this app, but it lives in a JSON sidecar the user
+/// can open and edit: a hand-edited sidecar could name any file. An absolute
+/// path, or one whose `..` walks out of the project, is refused rather than
+/// handed to the webview as a path to serve. The asset protocol's own scope is
+/// the second gate; this is the first.
+pub fn resolve_track_file(root: &Path, slug: &str, file: &str) -> Result<PathBuf, LibraryError> {
+    let rel = Path::new(file);
+    let escapes = rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir));
+    if escapes {
+        return Err(LibraryError::UnusableName(file.to_string()));
+    }
+    Ok(project_dir(root, slug)?.join(rel))
+}
+
 /// Takes the next track id for `project` and advances its counter.
 ///
 /// The counter is the only source of ids. Deriving one from the files present
@@ -303,6 +323,51 @@ mod tests {
         let second = mint_track_id(&mut proj);
         assert_ne!(second.0, first.0);
         assert_eq!(second.0, "tr-0002");
+    }
+
+    /// Invariant: a track's stored path resolves to an absolute file under the
+    /// project. It must be absolute or `convertFileSrc` cannot turn it into an
+    /// asset URL.
+    #[test]
+    fn test_resolve_track_file_returns_an_absolute_path() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        std::fs::create_dir_all(tracks_dir(root.path(), &proj.slug).unwrap()).unwrap();
+
+        let resolved = resolve_track_file(root.path(), &proj.slug, "tracks/tr-0001.flac").unwrap();
+        assert!(resolved.is_absolute());
+        assert!(resolved.ends_with(Path::new("tracks").join("tr-0001.flac")));
+    }
+
+    /// Invariant: a sidecar edited to name an absolute path is refused, not
+    /// served. `Path::join` replaces its base with an absolute right-hand side,
+    /// so this must be caught before the join.
+    #[test]
+    fn test_resolve_track_file_refuses_an_absolute_path() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        let abs = std::env::temp_dir().join("outside.flac");
+
+        let err = resolve_track_file(root.path(), &proj.slug, abs.to_str().unwrap()).unwrap_err();
+        assert!(matches!(err, LibraryError::UnusableName(_)));
+    }
+
+    /// Invariant: a `..` in a hand-edited sidecar cannot walk out of the
+    /// project, wherever it appears in the path.
+    #[test]
+    fn test_resolve_track_file_refuses_a_parent_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        std::fs::create_dir_all(tracks_dir(root.path(), &proj.slug).unwrap()).unwrap();
+
+        let leading = Path::new("..").join("config.json");
+        for file in ["tracks/../outside.flac", leading.to_str().unwrap()] {
+            let err = resolve_track_file(root.path(), &proj.slug, file).unwrap_err();
+            assert!(
+                matches!(err, LibraryError::UnusableName(_)),
+                "file {file:?} should be refused"
+            );
+        }
     }
 
     /// Invariant: a track sidecar round-trips, including a two-LoRA spec.
