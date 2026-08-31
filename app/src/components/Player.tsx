@@ -45,7 +45,7 @@ export function Player() {
         onTimeUpdate={(event) => reportTime(event.currentTarget.currentTime)}
         onLoadedMetadata={(event) => reportDuration(event.currentTarget.duration)}
         onEnded={ended}
-        onError={() => fail('This track could not be played.')}
+        onError={() => fail('This track could not be played: its audio file is missing or unreadable. Re-generate the track to play it again.')}
       />
 
       <div className="player-now-playing">
