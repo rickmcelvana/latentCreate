@@ -109,6 +109,13 @@ selection, not just that each resolves to *a* project.
 The player: `<audio>`/Web Audio → `AnalyserNode` FFT → canvas spectrum + waveform. Read-only
 visualizer, zero custom DSP (ARCHITECTURE 9).
 
+**Briefed 2026-08-30.** Split three ways to stay under the ~400-line rule (the T-401 pattern):
+[T-402a](t-402a-brief.md) (backend + config: the asset protocol, the CSP, `resolve_track_file`,
+and the `track_audio_path` command), [T-402b](t-402b-brief.md) (the player state machine: the
+`trackAudioUrl` bridge wrapper, `state/player.ts` and its pure fold), and [T-402c](t-402c-brief.md)
+(the `Player` + `Visualizer` components, the Library play button, and the CSS). Executed one at a
+time, in that order.
+
 Scope:
 - **Enable the asset protocol** in `tauri.conf.json` (`assetProtocol.enable` + scope over the app
   config dir) and a CSP `media-src asset: http://asset.localhost`. This is the one change the
