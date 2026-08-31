@@ -78,10 +78,11 @@ The single-project seam (`projectctx::default_project`, renamed `selected_projec
 becomes a selected-project seam. This is the cross-cutting refactor every later task builds on,
 and it is the one task that touches every command.
 
-**Split 2026-08-30 (briefed):** [T-401a](t-401a-brief.md) is the backend seam — the config field,
-`projectctx` resolution, `projects_list`/`projects_create`, and all four call sites — and
-[T-401b](t-401b-brief.md) is the frontend picker. Split so each run stays under the ~400-line rule
-(T-401a ≈ 120 lines of diff, T-401b ≈ 400).
+**Complete 2026-08-30.** Split into [T-401a](t-401a-brief.md) (backend seam: the config field,
+`projectctx` resolution, `projects_list`/`projects_create`, the four call sites — landed) and
+[T-401b](t-401b-brief.md) (frontend picker — landed); split so each run stayed under the ~400-line
+rule. **Click-through passed 2026-08-30:** a track generated with a second project selected lands
+in `projects/<slug>/tracks/` and the Library shows it under that project.
 
 Scope:
 - **Config** gains `default_project_slug: Option<String>` (persisted like `default_profile_id`).

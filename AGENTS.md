@@ -16,10 +16,11 @@ queues N variations by seed, and a fresh Generate re-rolls the seed unless the u
 ComfyUI offloads rather than fails (MCP-SURFACE 31). **Phase 4 (Library & Player) is in progress**
 — [tasks/phase-4.md](tasks/phase-4.md) opened 2026-08-30 with its phase-start check done (the
 mixing/mastering repos are web-first; Send-to stays the v1 link-out) and two owner decisions
-(projects become first-class; milestone-first ordering). **T-401 (projects become first-class) is
-briefed** as [t-401a-brief.md](tasks/t-401a-brief.md) (backend seam) and
-[t-401b-brief.md](tasks/t-401b-brief.md) (frontend picker); T-402 … T-406 are planned, not
-briefed. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+(projects become first-class; milestone-first ordering). **T-401 (projects become first-class) is complete** — T-401a (backend seam) and T-401b (the
+picker) landed 2026-08-30 and the click-through passed: a track generated with a second project
+selected lands in `projects/<slug>/tracks/` and the Library shows it under that project. **T-402
+(playback + visualizer) is next** — planned, not briefed. Briefs are written one at a time, each
+after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.
