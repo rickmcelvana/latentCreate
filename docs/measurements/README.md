@@ -26,3 +26,23 @@ card, not the model — see [MCP-SURFACE 30.3](../MCP-SURFACE.md). T-317 re-runs
 Two rows read `vram_free` **greater** than `vram_total` (17,104,398,164 vs 17,102,733,312), and
 `torch_vram_total` reads 16.31 GiB on a 15.93 GiB card. Allocator accounting, not physical memory —
 subtracting these unsigned will underflow (MCP-SURFACE 30.4).
+
+## `t317-vram-reserve{8,10,12,14,15}.csv`
+
+T-317's constrained bisect, 2026-08-30. Same card, same 200 s ACE-Step generation, but ComfyUI
+relaunched with `--reserve-vram N` at each step (effective budget ≈ 15.93 − N GiB). Columns are
+`t,status,vram_free,vram_total` — `t` is seconds since submit, `status` is the polled job status
+(empty where the poll's history lookup missed; the VRAM columns are the point).
+
+| reserve | effective budget | peak used | wall clock | completed |
+|---|---|---|---|---|
+| 8 | ~8 GiB | 9.03 GiB | 259 s | yes |
+| 10 | ~6 GiB | 7.03 GiB | 443 s | yes |
+| 12 | ~4 GiB | 5.00 GiB | 546 s | yes |
+| 14 | ~2 GiB | 4.64 GiB | 698 s | yes |
+| 15 | ~1 GiB | 2.94 GiB | 702 s | yes |
+
+**The finding: ACE-Step never fails — it offloads and slows down.** Every budget down to ~1 GiB
+completed a full 200 s run; the wall clock climbs monotonically (259 → 702 s) as the card is
+starved, but there is no hard floor. `vram_gb_min` is therefore a *comfort* floor, not a "will it
+run" gate — see [MCP-SURFACE 31](../MCP-SURFACE.md).

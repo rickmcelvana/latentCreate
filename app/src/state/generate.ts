@@ -42,7 +42,7 @@ function lyricsControl(model: PanelModel): string | null {
 }
 
 /** The seed control this profile declares, or `null` when it has none. */
-function seedControl(model: PanelModel): string | null {
+export function seedControl(model: PanelModel): string | null {
   const control = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
   return control?.name ?? null
 }
@@ -191,6 +191,14 @@ export function specFor(
  * The specs for one click: the first exactly as `specFor` builds it, the rest
  * identical but for a fresh seed.
  *
+ * `pinned` is whether the user deliberately chose the seed (typed it, or hit
+ * Reroll). When it is false the seed is the panel's auto-rolled default, and a
+ * fresh Generate must re-roll it -- otherwise two clicks with nothing changed
+ * submit the same seed, ComfyUI answers `execution_cached` in 0 s, and the app
+ * files a byte-identical duplicate track (MCP-SURFACE 30.6, T-316). When it is
+ * true the first spec keeps the seed on screen, and only the variations after
+ * it get fresh ones.
+ *
  * `nextSeed` is a parameter with no default. `freshSeed` lives in `paramPanel.ts`,
  * which imports zustand, and this module is pure -- importing a store here to get
  * a random number would pull the store graph into the one file that has none.
@@ -203,13 +211,14 @@ export function specsFor(
   doc: LyricDoc | null,
   count: number,
   nextSeed: () => number,
+  pinned: boolean,
 ): GenerationSpec[] {
   const name = seedControl(model)
-  const first = specFor(profileId, model, values, stack, doc)
   const total = effectiveCount(model, count)
-  if (name === null || total <= 1) return [first]
+  if (name === null) return [specFor(profileId, model, values, stack, doc)]
 
-  const specs = [first]
+  const firstValues = pinned ? values : { ...values, [name]: nextSeed() }
+  const specs = [specFor(profileId, model, firstValues, stack, doc)]
   for (let i = 1; i < total; i++) {
     specs.push(specFor(profileId, model, { ...values, [name]: nextSeed() }, stack, doc))
   }

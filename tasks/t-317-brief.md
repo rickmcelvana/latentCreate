@@ -67,3 +67,34 @@ repeatedly — so at least one declared number is already known to be wrong.
 
 - A second card. One machine's number, honestly labelled.
 - The seed/duplicate question — that is T-316.
+
+---
+
+# Results — 2026-08-30
+
+Full evidence: [docs/MCP-SURFACE.md](../docs/MCP-SURFACE.md) §31; CSVs in
+`docs/measurements/t317-vram-reserve{8,10,12,14,15}.csv`.
+
+| reserve | effective budget | peak used | wall clock | completed |
+|---|---|---|---|---|
+| 8 | ~8 GiB | 9.03 GiB | 259 s | yes |
+| 10 | ~6 GiB | 7.03 GiB | 443 s | yes |
+| 12 | ~4 GiB | 5.00 GiB | 546 s | yes |
+| 14 | ~2 GiB | 4.64 GiB | 698 s | yes |
+| 15 | ~1 GiB | 2.94 GiB | 702 s | yes |
+
+**The finding: ACE-Step never fails — it offloads and slows down.** Every budget down to an
+effective ~1 GiB completed a full 200 s run. The wall clock climbs monotonically (259 → 702 s,
+~2.7x) as the card is starved, but there is no hard floor: `DynamicVRAM` + async weight offloading
+mean the model streams weights from host RAM and keeps going. The peak *used* figure **falls** as
+the budget tightens (9.03 → 2.94 GiB), which is the allocator obeying the reserve, not the model
+needing less.
+
+**`vram_gb_min` stays at 8**, and its meaning is now measured rather than assumed: it is a
+**comfort floor** — below it the model still runs, but at a wall clock that climbs toward 12
+minutes for a 200 s song. The brief's own caveat ("runs, but takes eleven minutes" is a different
+answer from "will not run") turned out to be the whole answer.
+
+**`minimax-music-3.json` declares `vram_gb_min: 16` on a 15.93 GiB card it has generated on
+repeatedly** — so that number is already known to be wrong in the *other* direction, and this
+bisect does not touch it. Both fields remain display text only; nothing gates on them.

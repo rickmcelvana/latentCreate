@@ -64,12 +64,23 @@ interface ParamPanelState {
   model: PanelModel | null
   values: Record<string, ControlValue>
   showAdvanced: boolean
+  /**
+   * Whether the user deliberately chose the seed -- typed it, or hit Reroll.
+   *
+   * The panel auto-rolls a seed on load, and a fresh Generate re-rolls it
+   * unless this is true (T-316). A seed the app rolled is not a choice; a seed
+   * the user set is, and re-rolling it would put a seed in the sidecar they
+   * never saw.
+   */
+  seedPinned: boolean
   /** Why the panel is empty, when it is empty for a reason. */
   error: string | null
   busy: boolean
   load: (profileId: string) => Promise<void>
   setValue: (name: string, value: ControlValue) => void
   rerollSeed: () => void
+  /** Set the seed value without pinning it -- Generate's own re-roll. */
+  setSeed: (value: number) => void
   toggleAdvanced: () => void
   refreshChoices: () => Promise<void>
 }
@@ -79,6 +90,7 @@ export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
   model: null,
   values: {},
   showAdvanced: false,
+  seedPinned: false,
   error: null,
   busy: false,
 
@@ -106,7 +118,7 @@ export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
         return
       }
       const model = panelModel(inputs)
-      set({ profileId, model, values: initialValues(model), error: null })
+      set({ profileId, model, values: initialValues(model), seedPinned: false, error: null })
     } finally {
       set({ busy: false })
     }
@@ -134,7 +146,14 @@ export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
   },
 
   setValue: (name: string, value: ControlValue) => {
-    set({ values: { ...get().values, [name]: value } })
+    const model = get().model
+    const isSeed =
+      model !== null &&
+      [...model.basic, ...model.advanced].some((c) => c.kind === 'seed' && c.name === name)
+    set({
+      values: { ...get().values, [name]: value },
+      seedPinned: isSeed ? true : get().seedPinned,
+    })
   },
 
   /** Roll a new seed, leaving every other value alone. */
@@ -143,7 +162,16 @@ export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
     if (model === null) return
     const seed = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
     if (seed === undefined) return
-    set({ values: { ...get().values, [seed.name]: freshSeed() } })
+    set({ values: { ...get().values, [seed.name]: freshSeed() }, seedPinned: true })
+  },
+
+  /** Set the seed value without pinning it -- Generate's own re-roll. */
+  setSeed: (value: number) => {
+    const model = get().model
+    if (model === null) return
+    const seed = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
+    if (seed === undefined) return
+    set({ values: { ...get().values, [seed.name]: value } })
   },
 
   toggleAdvanced: () => set({ showAdvanced: !get().showAdvanced }),

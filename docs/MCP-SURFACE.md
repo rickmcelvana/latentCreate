@@ -2352,3 +2352,39 @@ reproducing from either sidecar gives this waveform. The finding is a product on
 Generate does not re-roll the seed**, so clicking it twice yields a duplicate Library entry for
 zero GPU time. T-312 gave each *batched* track its own seed; two separate submissions were never
 covered. Recorded as T-316.
+
+## 31. The constrained VRAM bisect -- `vram_gb_min` settled by starving the card -- 2026-08-30
+
+T-317, the measurement 30.3 said would settle the question. Same card (RTX 5060 Ti, 15.93 GiB),
+same 200 s ACE-Step generation, but ComfyUI relaunched with `--reserve-vram N` at each step, so
+the process is starved to an effective budget of roughly `15.93 - N` GiB. `--reserve-vram` sets
+`EXTRA_RESERVED_VRAM` in `model_management.py`, which makes the memory manager treat the card as
+that much smaller and offload to host RAM to stay under it -- it does **not** change the driver's
+reported `vram_total`, so the measurement is the *used* figure, not the free one.
+
+| reserve | effective budget | peak used | wall clock | completed |
+|---|---|---|---|---|
+| 8 | ~8 GiB | **9.03 GiB** | 259 s | yes |
+| 10 | ~6 GiB | **7.03 GiB** | 443 s | yes |
+| 12 | ~4 GiB | **5.00 GiB** | 546 s | yes |
+| 14 | ~2 GiB | **4.64 GiB** | 698 s | yes |
+| 15 | ~1 GiB | **2.94 GiB** | 702 s | yes |
+
+CSVs in `docs/measurements/t317-vram-reserve{8,10,12,14,15}.csv`.
+
+**The finding: ACE-Step never fails -- it offloads and slows down.** Every budget down to an
+effective ~1 GiB completed a full 200 s run. The wall clock climbs monotonically (259 -> 702 s,
+~2.7x) as the card is starved, but there is no hard floor: `DynamicVRAM` + async weight offloading
+(30.3) mean the model streams weights from host RAM and keeps going. The peak *used* figure
+**falls** as the budget tightens (9.03 -> 2.94 GiB), which is the allocator obeying the reserve,
+not the model needing less.
+
+**Consequence: `vram_gb_min` is not a "will it run" number for this model.** The honest statement
+is a *time* statement, not a *capacity* one. `vram_gb_min: 8` stays, and the field's meaning is
+now measured rather than assumed: it is a **comfort floor** -- below it the model still runs, but
+at a wall clock that climbs toward 12 minutes for a 200 s song. The brief's own caveat ("runs, but
+takes eleven minutes" is a different answer from "will not run") turned out to be the whole answer.
+
+**`minimax-music-3.json` declares `vram_gb_min: 16` on a 15.93 GiB card it has generated on
+repeatedly** (30.3) -- so that number is already known to be wrong in the *other* direction, and
+this bisect does not touch it. Both fields remain display text only (30.3); nothing gates on them.

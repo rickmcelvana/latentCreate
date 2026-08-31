@@ -74,12 +74,15 @@ beforeEach(() => {
     profileId: 'ace-step-1.5-turbo',
     model,
     values: { ...defaults(model), seed: 4242 },
+    seedPinned: false,
     error: null,
   })
 })
 
 describe('useGenerateStore.submit', () => {
   it('test_submit_sends_the_assembled_spec', async () => {
+    useParamPanelStore.setState({ seedPinned: true })
+
     await useGenerateStore.getState().submit()
 
     expect(sent?.profile_id).toBe('ace-step-1.5-turbo')
@@ -87,6 +90,39 @@ describe('useGenerateStore.submit', () => {
     expect(useGenerateStore.getState().last?.prompt_id).toBe('prompt-abc')
     expect(useGenerateStore.getState().lastProfileId).toBe('ace-step-1.5-turbo')
     expect(useGenerateStore.getState().error).toBeNull()
+  })
+
+  /**
+   * Protects: a fresh Generate re-rolls an unpinned seed, and the screen follows.
+   *
+   * This is the T-316 fix. Two clicks with nothing changed must not submit the
+   * same seed, or ComfyUI answers `execution_cached` in 0 s and the app files a
+   * byte-identical duplicate track (MCP-SURFACE 30.6). The panel's seed is also
+   * updated to the value that actually ran, so the screen stays the truth.
+   */
+  it('test_an_unpinned_seed_is_rerolled_and_the_screen_follows', async () => {
+    await useGenerateStore.getState().submit()
+
+    expect(sent?.inputs.seed).toEqual({ type: 'seed', value: useParamPanelStore.getState().values.seed })
+    expect(sent?.inputs.seed.value).not.toBe(4242)
+    expect(Number.isSafeInteger(sent?.inputs.seed.value)).toBe(true)
+  })
+
+  /**
+   * Protects: two consecutive submits with nothing changed produce two seeds.
+   *
+   * The brief's own acceptance test: nothing in the suite covered a second click
+   * before T-316, and the defect was that the second click re-served the first
+   * track from ComfyUI's cache.
+   */
+  it('test_two_consecutive_submits_reroll_the_seed', async () => {
+    await useGenerateStore.getState().submit()
+    const first = sent?.inputs.seed.value
+
+    await useGenerateStore.getState().submit()
+    const second = sent?.inputs.seed.value
+
+    expect(first).not.toBe(second)
   })
 
   /**

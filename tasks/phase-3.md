@@ -54,10 +54,12 @@ fix. Both shipped profiles are correct as written.
 
 **Two things this phase is expected to settle, on evidence rather than argument:**
 
-- **OQ-3 (raw ComfyUI API fallback).** First evidence is already in: `nodes(action="get")`
-  returns `choices: []` for a dynamic combo while a plain GET to `/object_info` returns the
-  whole option tree. One read-only lookup during verification is not a runtime dependency, so
-  this is a point in the column, not a decision. T-305 and T-306 are where it becomes one.
+- **OQ-3 (raw ComfyUI API fallback).** **RESOLVED 2026-08-30 -- NO for v1** (owner confirmed).
+  First evidence was already in: `nodes(action="get")` returns `choices: []` for a dynamic combo
+  while a plain GET to `/object_info` returns the whole option tree. One read-only lookup during
+  verification is not a runtime dependency, so this was a point in the column, not a decision.
+  The phase closed with no runtime requirement for a second backend -- `reqwest` appears only in
+  `llm-bridge`, and both raw endpoints were architect verification tools. See PROJECT.md.
 - **`ace-step-1.5-turbo`'s `vram_gb_min: 8`**, the oldest open question in the repo. The
   profile says 8 GiB; the XL turbo DiT alone is 9.3 GiB. It cannot be settled by argument and
   T-113 never required a generation. **T-314's full-length run is the first thing that can
@@ -851,7 +853,7 @@ Two extras to capture while a real generation is running, since nothing else in 
 `vram_gb_min`; and a **full-length** run, since every generation so far has been 10 seconds.
 
 
-### T-316 — a fresh Generate re-rolls the seed (or says why it does not) — **BRIEFED 2026-08-30** ([brief](t-316-brief.md))
+### T-316 — a fresh Generate re-rolls the seed (or says why it does not) — **LANDED 2026-08-30** ([brief](t-316-brief.md))
 Found by T-314's producer: clicking Generate twice with nothing changed returns
 `execution_cached` in **0 s** and files the re-served output as a new Library track. The two
 tracks are **byte-identical** (`6bc4fbef…`) and their sidecars differ in exactly two fields,
@@ -861,11 +863,13 @@ tracks are **byte-identical** (`6bc4fbef…`) and their sidecars differ in exact
 contradiction of 17.3**, since nothing re-executed. It is that **a fresh submission does not re-roll
 the seed**; T-312 covered seeds *within a batch*, never two separate clicks.
 
-Owner decision first (re-roll unless pinned / refuse the duplicate / ingest and label it), then a
-small frontend change. Recommendation is re-roll, because the seed control already exists for
-anyone wanting determinism.
+**Owner chose re-roll unless pinned.** Landed architect-direct: a `seedPinned` flag on the
+param-panel store (typing a seed or Reroll sets it, loading a profile clears it), `specsFor`
+re-rolls the first spec's seed when it is false, and `setSeed` (Generate's own re-roll) does not
+pin. The screen is kept truthful — the panel's seed is updated to the value that ran. Frontend
+313 -> 322 tests.
 
-### T-317 — settle `vram_gb_min` by starving the card — **BRIEFED 2026-08-30** ([brief](t-317-brief.md))
+### T-317 — settle `vram_gb_min` by starving the card — **COMPLETE 2026-08-30** ([brief](t-317-brief.md))
 The oldest open question in the repo, still open after one honest attempt. T-314 measured a peak of
 **15.49 GiB of 15.93 GiB**, which **cannot** become the floor: ComfyUI expands to fill free VRAM, so
 an unconstrained run measures the card rather than the model.
@@ -875,7 +879,17 @@ generation at each budget, and take the tightest budget that still completes (ro
 Record the wall clock at that budget too: "runs, but takes eleven minutes" is a different answer
 from "will not run".
 
-Also settles `minimax-music-3.json`, which declares **16** on a 15.93 GiB card it has generated on
-repeatedly — so at least one declared number is already known to be wrong. Note before adding any
-gate: after a job releases, `vram_free` has been observed **larger than `vram_total`** (30.4), so
-`vram_total - vram_free` unsigned underflows.
+**Ran 2026-08-30** (MCP-SURFACE 31). Five budgets, reserve 8 → 15, all completed a 200 s run:
+
+| reserve | effective budget | peak used | wall clock |
+|---|---|---|---|
+| 8 | ~8 GiB | 9.03 GiB | 259 s |
+| 10 | ~6 GiB | 7.03 GiB | 443 s |
+| 12 | ~4 GiB | 5.00 GiB | 546 s |
+| 14 | ~2 GiB | 4.64 GiB | 698 s |
+| 15 | ~1 GiB | 2.94 GiB | 702 s |
+
+**ACE-Step never fails — it offloads and slows down.** There is no hard floor; the wall clock
+climbs monotonically as the card is starved. **`vram_gb_min` stays at 8**, now measured as a
+*comfort* floor rather than a "will it run" gate. `minimax-music-3.json`'s `16` is still wrong in
+the other direction and untouched. Both fields remain display text only.

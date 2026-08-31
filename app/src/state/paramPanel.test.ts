@@ -22,6 +22,7 @@ beforeEach(() => {
     model: null,
     values: {},
     showAdvanced: false,
+    seedPinned: false,
     error: null,
     busy: false,
   })
@@ -162,5 +163,66 @@ describe('useParamPanelStore', () => {
 
     expect(after.seed).not.toBe(before.seed)
     expect(after.bpm).toBe(90)
+  })
+
+  /**
+   * Protects: typing a seed pins it.
+   *
+   * The pin is what stops a fresh Generate from re-rolling the seed the user
+   * deliberately chose (T-316). A seed the app rolled is not a choice; a seed
+   * the user typed is.
+   */
+  it('test_typing_a_seed_pins_it', async () => {
+    await useParamPanelStore.getState().load('ace-step-1.5-turbo')
+    expect(useParamPanelStore.getState().seedPinned).toBe(false)
+
+    useParamPanelStore.getState().setValue('seed', '42')
+
+    expect(useParamPanelStore.getState().seedPinned).toBe(true)
+  })
+
+  /** Protects: setting a non-seed control does not pin the seed. */
+  it('test_setting_another_control_does_not_pin_the_seed', async () => {
+    await useParamPanelStore.getState().load('ace-step-1.5-turbo')
+
+    useParamPanelStore.getState().setValue('bpm', 90)
+
+    expect(useParamPanelStore.getState().seedPinned).toBe(false)
+  })
+
+  /** Protects: Reroll is a deliberate choice, so it pins. */
+  it('test_reroll_pins_the_seed', async () => {
+    await useParamPanelStore.getState().load('ace-step-1.5-turbo')
+
+    useParamPanelStore.getState().rerollSeed()
+
+    expect(useParamPanelStore.getState().seedPinned).toBe(true)
+  })
+
+  /**
+   * Protects: Generate's own re-roll sets the value without pinning it.
+   *
+   * `setSeed` is the screen-truth write after a fresh Generate re-rolls an
+   * unpinned seed. If it pinned, the next Generate would keep that seed and the
+   * duplicate-track defect would return one click later.
+   */
+  it('test_set_seed_does_not_pin', async () => {
+    await useParamPanelStore.getState().load('ace-step-1.5-turbo')
+
+    useParamPanelStore.getState().setSeed(7777)
+
+    expect(useParamPanelStore.getState().values.seed).toBe(7777)
+    expect(useParamPanelStore.getState().seedPinned).toBe(false)
+  })
+
+  /** Protects: loading a profile resets the pin. */
+  it('test_load_resets_the_pin', async () => {
+    await useParamPanelStore.getState().load('ace-step-1.5-turbo')
+    useParamPanelStore.getState().setValue('seed', '42')
+    expect(useParamPanelStore.getState().seedPinned).toBe(true)
+
+    await useParamPanelStore.getState().load('another-profile')
+
+    expect(useParamPanelStore.getState().seedPinned).toBe(false)
   })
 })

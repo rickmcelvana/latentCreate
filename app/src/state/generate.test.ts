@@ -230,8 +230,13 @@ describe('specFor', () => {
 })
 
 describe('specsFor', () => {
-  /** Protects: a count of one is exactly the single-spec path. */
-  it('test_a_count_of_one_is_exactly_the_single_spec', () => {
+  /**
+   * Protects: a pinned seed is kept, and a count of one is the single-spec path.
+   *
+   * The user typed this seed, so a fresh Generate must not replace it -- the
+   * whole point of the pin is that the seed on screen is the seed that runs.
+   */
+  it('test_a_pinned_seed_is_kept', () => {
     const nextSeed = vi.fn(() => 9999)
     const specs = specsFor(
       'ace-step-1.5-turbo',
@@ -241,6 +246,7 @@ describe('specsFor', () => {
       null,
       1,
       nextSeed,
+      true,
     )
 
     expect(specs).toHaveLength(1)
@@ -250,7 +256,32 @@ describe('specsFor', () => {
     expect(nextSeed).not.toHaveBeenCalled()
   })
 
-  /** Protects: every spec in a batch gets its own seed. */
+  /**
+   * Protects: an unpinned seed is re-rolled on a fresh Generate.
+   *
+   * This is the T-316 fix. Two clicks with nothing changed must not submit the
+   * same seed, or ComfyUI answers `execution_cached` and the app files a
+   * byte-identical duplicate track (MCP-SURFACE 30.6).
+   */
+  it('test_an_unpinned_seed_is_rerolled', () => {
+    const nextSeed = vi.fn(() => 9999)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      1,
+      nextSeed,
+      false,
+    )
+
+    expect(specs).toHaveLength(1)
+    expect(specs[0].inputs.seed).toEqual({ type: 'seed', value: 9999 })
+    expect(nextSeed).toHaveBeenCalledTimes(1)
+  })
+
+  /** Protects: every spec in a batch gets its own seed, the pinned one first. */
   it('test_each_spec_carries_its_own_seed', () => {
     const seeds = [1111, 2222, 3333]
     const nextSeed = vi.fn(() => seeds.shift()!)
@@ -262,6 +293,7 @@ describe('specsFor', () => {
       null,
       4,
       nextSeed,
+      true,
     )
 
     expect(specs).toHaveLength(4)
@@ -269,6 +301,28 @@ describe('specsFor', () => {
     expect(specs[1].inputs.seed).toEqual({ type: 'seed', value: 1111 })
     expect(specs[2].inputs.seed).toEqual({ type: 'seed', value: 2222 })
     expect(specs[3].inputs.seed).toEqual({ type: 'seed', value: 3333 })
+  })
+
+  /** Protects: an unpinned batch re-rolls every seed, the first included. */
+  it('test_an_unpinned_batch_rerolls_every_seed', () => {
+    const seeds = [1111, 2222, 3333, 4444]
+    const nextSeed = vi.fn(() => seeds.shift()!)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      4,
+      nextSeed,
+      false,
+    )
+
+    expect(specs).toHaveLength(4)
+    expect(specs[0].inputs.seed).toEqual({ type: 'seed', value: 1111 })
+    expect(specs[1].inputs.seed).toEqual({ type: 'seed', value: 2222 })
+    expect(specs[2].inputs.seed).toEqual({ type: 'seed', value: 3333 })
+    expect(specs[3].inputs.seed).toEqual({ type: 'seed', value: 4444 })
   })
 
   /** Protects: only the seed varies between specs. */
@@ -283,6 +337,7 @@ describe('specsFor', () => {
       null,
       4,
       nextSeed,
+      true,
     )
 
     const [first, ...rest] = specs
@@ -308,6 +363,7 @@ describe('specsFor', () => {
       null,
       4,
       nextSeed,
+      true,
     )
 
     specs[0].inputs.seed = { type: 'seed', value: 1111 }
@@ -332,6 +388,7 @@ describe('specsFor', () => {
       null,
       4,
       nextSeed,
+      false,
     )
     expect(specs).toHaveLength(1)
     expect(nextSeed).not.toHaveBeenCalled()
@@ -348,6 +405,7 @@ describe('specsFor', () => {
       null,
       99,
       nextSeed,
+      true,
     )
 
     expect(specs).toHaveLength(MAX_BATCH)

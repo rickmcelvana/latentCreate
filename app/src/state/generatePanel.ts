@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { isTauri } from '../bridge/comfy'
 import { generateAudio, type Submission } from '../bridge/generate'
-import { approvedFill, blockers, specsFor } from './generate'
+import { approvedFill, blockers, seedControl, specsFor } from './generate'
 import { useJobsStore } from './jobs'
 import { useLoraPanelStore } from './loraPanel'
 import { useLyricsStore } from './lyrics'
@@ -62,7 +62,7 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
   submit: async () => {
     if (!isTauri() || get().busy) return
 
-    const { profileId, model, values } = useParamPanelStore.getState()
+    const { profileId, model, values, seedPinned } = useParamPanelStore.getState()
     if (blockers(profileId, model, values).length > 0) return
     if (profileId === null || model === null) return
 
@@ -72,7 +72,18 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
 
     set({ busy: true, error: null, queued: 0 })
     try {
-      const specs = specsFor(profileId, model, values, stack, doc, count, freshSeed)
+      const specs = specsFor(profileId, model, values, stack, doc, count, freshSeed, seedPinned)
+      // Keep the screen truthful: the seed that ran is the seed shown. A fresh
+      // Generate re-rolls an unpinned seed, and the field must not keep showing
+      // the value that was replaced (MCP-SURFACE 20.2's "whatever runs is on
+      // screen").
+      const name = seedControl(model)
+      if (name !== null && specs.length > 0) {
+        const first = specs[0].inputs[name]
+        if (first !== undefined && first.type === 'seed') {
+          useParamPanelStore.getState().setSeed(first.value)
+        }
+      }
       for (const spec of specs) {
         const submission = await generateAudio(spec)
         useJobsStore.getState().register(submission.prompt_id, profileId)
