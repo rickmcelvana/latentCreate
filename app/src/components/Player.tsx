@@ -41,6 +41,7 @@ export function Player() {
       <audio
         ref={setAudioEl}
         src={track.url}
+        crossOrigin="anonymous"
         onTimeUpdate={(event) => reportTime(event.currentTarget.currentTime)}
         onLoadedMetadata={(event) => reportDuration(event.currentTarget.duration)}
         onEnded={ended}

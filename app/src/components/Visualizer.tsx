@@ -30,6 +30,12 @@ export function Visualizer({ audio }: { audio: HTMLAudioElement | null }) {
     source.connect(analyser)
     analyser.connect(context.destination)
 
+    // Autoplay policy may start the context suspended: it is created here, after
+    // the Play click's gesture, so resume it the moment the element plays. The
+    // element playing is user-initiated, which is what allows the resume.
+    const resume = () => void context.resume()
+    audio.addEventListener('play', resume)
+
     const ctx = canvas.getContext('2d')
     if (ctx === null) {
       void context.close()
@@ -76,6 +82,7 @@ export function Visualizer({ audio }: { audio: HTMLAudioElement | null }) {
     frame = requestAnimationFrame(draw)
 
     return () => {
+      audio.removeEventListener('play', resume)
       cancelAnimationFrame(frame)
       void context.close()
     }

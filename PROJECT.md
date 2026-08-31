@@ -19,9 +19,14 @@ landed 2026-08-30**: the asset protocol is enabled (`$APPCONFIG/projects/**` sco
 **T-402b landed 2026-08-30**: the `trackAudioUrl` bridge wrapper and `state/player.ts`'s pure
 `applyPlayerEvent`/`togglePlayer` fold -- 19 new tests, the player state machine is complete.
 **T-402c landed 2026-08-30**: the `Player` + `Visualizer` components, the Library play button and
-the player bar. **T-402 is code-complete across all three parts**; the playback + visualizer
-milestone line still needs its producer click-through on a **built** app (the asset protocol, the
-CSP and the visualizer's drawing cannot be verified by the gate).
+the player bar. **T-402d landed 2026-08-30**: the click-through on a built app found the track
+played silently (playhead advanced, no audio, flat spectrum) -- the asset protocol is cross-origin
+from the page, so `createMediaElementSource` emitted silence until the `<audio>` element went
+`crossOrigin="anonymous"` (the asset protocol already answers CORS), and the `AudioContext` now
+resumes on `play` for browsers whose autoplay policy starts it suspended. **T-402 is code-complete
+across a/b/c/d**; the playback + visualizer milestone line still needs its producer click-through
+on a **built** app (the asset protocol, the CSP and the visualizer's drawing cannot be verified by
+the gate).
 T-403 … T-406 planned, not briefed.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
 - **Landed in Phase 3 so far** (all 2026-08-27): the phase-start surface re-verification (docs/MCP-SURFACE.md §16), then **T-301** (no lyric model is recommended), **T-301b** (endpoint + API-key fields, so any OpenAI-compatible provider works -- verified live against QwenCloud), **T-302** (measured the cost of the conservative `reasoning_effort` rule: 11.8x billed tokens), **T-302b** (the app discovers acceptance per endpoint instead of inferring it -- 33 s became 1-2 s), **T-303** (`default_profile_id` persists; profile picker), **T-304** (`resolve_slots`: semantic inputs fanned out to slot addresses), **T-305a** (`ensure_lossless_output`), **T-305b** (`splice_loras`), **T-306a** (`to_slot_value` + `audit_slots`, and the ACE-Step seed fix), **T-306b** (the pipeline command, and the `test-support` mock feature that lets its call sequence be asserted offline). `create-core` is 126 tests, `app` 52.
@@ -4688,3 +4693,32 @@ serves), from the checklist at the bottom of `tasks/t-402c-brief.md`: play audib
 waveform move, pause/resume, replay-from-zero after end, seek follows, and a missing audio file
 surfaces the player's error text. That click-through discharges the first ROADMAP Phase 4
 milestone line (generate -> play with visualizer -> ...).
+
+### 2026-08-30 (later still) -- T-402d landed: the click-through found a silent player, fixed
+
+The producer ran the built app: the playhead advanced and pause stopped it, but the track was
+**not audible** and the spectrum was flat. That is the exact signature of `createMediaElementSource`
+over a cross-origin media element -- the element's `currentTime` still moves, but the audio
+re-routed into the Web Audio graph is silent, so nothing reaches `context.destination` and the
+analyser reads all zeros.
+
+**Root cause, verified against the tauri 2.11.5 source rather than assumed:** the asset protocol is
+cross-origin by construction. On Windows the frontend is `http://tauri.localhost` while
+`convertFileSrc` produces `http://asset.localhost/...`; the Web Audio spec silences a
+`MediaElementAudioSourceNode` whose element was not fetched CORS-clean. The fix is
+`crossOrigin="anonymous"` on the `<audio>` element, and it is *sufficient* on the response side
+because tauri's asset protocol already builds every response with
+`Access-Control-Allow-Origin: <window_origin>` (and `Access-Control-Expose-Headers: content-range`
+on range responses) -- so the CORS-approved request gets a CORS-approved answer. The second cause is
+latent, not observed, and was already flagged in the T-402c brief as a producer-confirm item: the
+`AudioContext` is created in the Visualizer's effect, after the Play click's gesture, so a strict
+autoplay policy can start it `suspended`; it now resumes on the element's `play` event and the
+listener is removed with the context.
+
+**Scope:** `Player.tsx` gains one attribute; `Visualizer.tsx` gains the resume-on-play listener and
+its cleanup. No new tests (browser wiring the gate cannot exercise). **Gate green** (`npm run
+gate`): frontend stays **355**, create-core 174, library 58, mcp-bridge 96, llm-bridge 35,
+src-tauri 107.
+
+**Still pending:** the producer click-through on a built app, now expected to pass (audible play +
+moving spectrum). That discharges the first ROADMAP Phase 4 milestone line.

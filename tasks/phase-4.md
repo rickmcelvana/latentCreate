@@ -114,7 +114,9 @@ visualizer, zero custom DSP (ARCHITECTURE 9).
 and the `track_audio_path` command), [T-402b](t-402b-brief.md) (the player state machine: the
 `trackAudioUrl` bridge wrapper, `state/player.ts` and its pure fold), and [T-402c](t-402c-brief.md)
 (the `Player` + `Visualizer` components, the Library play button, and the CSS). Executed one at a
-time, in that order.
+time, in that order. **T-402d** ([brief](t-402d-brief.md)) is the click-through fix: the asset
+protocol is cross-origin from the page, so `createMediaElementSource` emitted silence until the
+`<audio>` element went `crossOrigin="anonymous"`, and the `AudioContext` now resumes on `play`.
 
 Scope:
 - **Enable the asset protocol** in `tauri.conf.json` (`assetProtocol.enable` + scope over the app
