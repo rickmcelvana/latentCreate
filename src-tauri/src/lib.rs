@@ -21,6 +21,7 @@ mod models;
 mod optimize;
 mod profile;
 mod projectctx;
+mod projects;
 mod tracks;
 
 use jobs::ComfyState;
@@ -80,6 +81,8 @@ pub fn run() {
             jobs::run_workflow,
             jobs::cancel_job,
             tracks::library_tracks,
+            projects::projects_list,
+            projects::projects_create,
             lyrics::lyrics_generate,
             lyrics::lyrics_cancel,
             optimize::lyrics_optimize,

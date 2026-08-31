@@ -19,6 +19,6 @@ use crate::ConfigDir;
 /// surfaced as a warning inside `TrackSet` rather than hiding the library.
 #[tauri::command]
 pub fn library_tracks(config_dir: State<'_, ConfigDir>) -> Result<TrackSet, String> {
-    let project = crate::projectctx::default_project(&config_dir.0).map_err(|e| e.to_string())?;
+    let project = crate::projectctx::selected_project(&config_dir.0).map_err(|e| e.to_string())?;
     Ok(library::tracks::list_tracks(&config_dir.0, &project))
 }

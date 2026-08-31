@@ -438,6 +438,7 @@ describe('versioned document store', () => {
           accepts_reasoning_effort: null,
         },
         default_profile_id: null,
+        default_project_slug: null,
       },
     })
     useLyricsStore.setState({ doc: { ...openDoc, versions: [] }, draft: 'generated' })

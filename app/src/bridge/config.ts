@@ -33,6 +33,8 @@ export interface Config {
   comfy: ComfyConfig
   llm: LlmConfig | null
   default_profile_id: string | null
+  /** `Project::slug` last selected; `null` means the first project. */
+  default_project_slug: string | null
 }
 
 /** Something the user should be told about loading config; never fatal. */

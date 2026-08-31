@@ -75,6 +75,14 @@ pub struct Config {
     /// `ModelProfile::id` last used for audio.
     #[serde(default)]
     pub default_profile_id: Option<String>,
+    /// `Project::slug` the studios and the Library are working in.
+    ///
+    /// `None` means "first project, or a fresh one on an empty root" --
+    /// `projectctx::selected_project` owns that fallback chain; this field only
+    /// records an explicit choice. Same shape as `default_profile_id`: a
+    /// top-level `Option` field written through `save_config`.
+    #[serde(default)]
+    pub default_project_slug: Option<String>,
 }
 
 fn default_schema_version() -> u32 {
@@ -88,6 +96,7 @@ impl Default for Config {
             comfy: ComfyConfig::default(),
             llm: None,
             default_profile_id: None,
+            default_project_slug: None,
         }
     }
 }
@@ -207,6 +216,7 @@ mod tests {
                 accepts_reasoning_effort: None,
             }),
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
+            default_project_slug: Some("night-drive".to_string()),
         };
         save(dir.path(), &config).unwrap();
         let loaded = load(dir.path());
@@ -288,6 +298,7 @@ mod tests {
                 accepts_reasoning_effort: Some(true),
             }),
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
+            default_project_slug: None,
         };
         save(dir.path(), &config).unwrap();
         let raw = std::fs::read_to_string(dir.path().join(CONFIG_FILE)).unwrap();

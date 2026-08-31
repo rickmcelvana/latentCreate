@@ -11,7 +11,7 @@ use create_core::lyrics::LyricBrief;
 use create_core::project::LyricDoc;
 use tauri::State;
 
-use crate::projectctx::default_project;
+use crate::projectctx::selected_project;
 use crate::{ConfigDir, ProfilesDir};
 
 /// Open the working lyric document, creating it (and its project) on first use.
@@ -21,7 +21,7 @@ use crate::{ConfigDir, ProfilesDir};
 #[tauri::command]
 pub fn lyrics_open(config_dir: State<'_, ConfigDir>) -> Result<LyricDoc, String> {
     let root = &config_dir.0;
-    let mut project = default_project(root).map_err(|e| e.to_string())?;
+    let mut project = selected_project(root).map_err(|e| e.to_string())?;
     let doc = match project.lyrics.first() {
         Some(id) => {
             library::lyrics::load_doc(root, &project.slug, id).map_err(|e| e.to_string())?
@@ -38,7 +38,7 @@ pub fn lyrics_open(config_dir: State<'_, ConfigDir>) -> Result<LyricDoc, String>
 #[tauri::command]
 pub fn lyrics_save(config_dir: State<'_, ConfigDir>, doc: LyricDoc) -> Result<(), String> {
     let root = &config_dir.0;
-    let project = default_project(root).map_err(|e| e.to_string())?;
+    let project = selected_project(root).map_err(|e| e.to_string())?;
     library::lyrics::save_doc(root, &project.slug, &doc).map_err(|e| e.to_string())
 }
 

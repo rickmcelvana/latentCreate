@@ -44,7 +44,7 @@ use tauri::{AppHandle, State};
 use crate::comfy::{ensure_connected, EnsureError};
 use crate::ingest::PendingTrack;
 use crate::jobs::ComfyState;
-use crate::projectctx::default_project;
+use crate::projectctx::selected_project;
 use crate::{ConfigDir, ProfilesDir};
 
 /// What was queued, and what the app could not check while queueing it.
@@ -103,7 +103,7 @@ pub async fn generate_audio(
 
     let (submission, resolved) = build_and_submit(&comfy, &workflow, &profile, &spec).await?;
     let server_info = comfy.health().await.ok().as_ref().map(server_info_of);
-    let project = default_project(&config_dir.0).map_err(|e| e.to_string())?;
+    let project = selected_project(&config_dir.0).map_err(|e| e.to_string())?;
     let pending = PendingTrack {
         project_slug: project.slug,
         profile_id: profile.id.clone(),
