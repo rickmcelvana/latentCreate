@@ -23,9 +23,9 @@ Profile-driven param panel (slot-backed, incl. bpm/key/timesig and the advanced 
 **Milestone check (live):** tags+lyrics → queued job → track appears in library with complete sidecar; a two-LoRA ACE-Step run reproduces from its sidecar alone; output is **lossless, not MP3**; an imported user workflow generates successfully; kill ComfyUI mid-job → clean failed state + retry.
 **All five discharged by 2026-08-30**, each by its own dated click-through (T-311, MCP-SURFACE 27, MCP-SURFACE 20, T-313f, T-315/MCP-SURFACE 28.4). T-314 now carries only the full-length run, settling `vram_gb_min`, and one regression check on the gallery path T-313a refactored.
 
-## Phase 4 — Library & Player (T-401 …)
+## Phase 4 — Library & Player (T-401 …) — **IN PROGRESS** — [phase-4.md](phase-4.md)
 Library views (project/track lists, album lists), player with AnalyserNode spectrum+waveform visualizer, track actions (trash-delete, rename, export/reveal), Send-to links (v1: open app.latentmixer.com / app.latentmastering.com + reveal file), provenance inspector panel ("re-use these settings" action).
-**Phase-start check:** re-read the mixing/mastering repos — if their file-handoff protocol has landed by then, implement against it instead of the v1 link-out.
+**Phase-start check — done 2026-08-30:** the mixing/mastering repos are web-first with no landed file-handoff protocol, so Send-to stays the v1 link-out + reveal-file. Owner decisions: projects become first-class (multi-project), and milestone-first ordering.
 **Milestone check (live):** generate → play with visualizer → album list → send-to opens site with file revealed.
 
 ## Phase 5 — Cover art, polish, packaging (T-501 …)
