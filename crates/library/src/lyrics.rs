@@ -193,6 +193,32 @@ pub fn list_docs(root: &Path, project: &Project) -> LyricDocSet {
     LyricDocSet { docs, warnings }
 }
 
+/// Ids of tracks in `project` whose provenance references `doc_id`, in project
+/// order. `version` narrows it to one version; `None` matches any version of the
+/// document.
+///
+/// The single definition of "what points at these lyrics", shared by the version
+/// delete and the document delete so the two refusals cannot drift. Malformed or
+/// missing sidecars cannot be read to check and are surfaced as warnings
+/// elsewhere (T-311e); a track that will not load is already a degraded record,
+/// not a block applied here.
+fn tracks_referencing(
+    root: &Path,
+    project: &Project,
+    doc_id: &LyricDocId,
+    version: Option<u32>,
+) -> Vec<String> {
+    crate::tracks::list_tracks(root, project)
+        .tracks
+        .into_iter()
+        .filter(|t| match &t.provenance.spec.lyrics {
+            Some(l) => &l.doc_id == doc_id && version.is_none_or(|v| l.version == v),
+            None => false,
+        })
+        .map(|t| t.id.0)
+        .collect()
+}
+
 /// Delete one version from a document, refusing when a track's provenance points
 /// at it. Returns the updated document.
 ///
@@ -236,17 +262,7 @@ pub fn delete_version(
     }
 
     // Refuse before touching the document: a version any track references stays.
-    // Malformed or missing sidecars cannot be read to check, and are surfaced as
-    // warnings elsewhere (T-311e); a track that cannot be loaded is already a
-    // degraded record the user is not being blocked by here.
-    let referencing: Vec<String> = crate::tracks::list_tracks(root, project)
-        .tracks
-        .into_iter()
-        .filter(|t| {
-            matches!(&t.provenance.spec.lyrics, Some(l) if &l.doc_id == doc_id && l.version == version)
-        })
-        .map(|t| t.id.0)
-        .collect();
+    let referencing = tracks_referencing(root, project, doc_id, Some(version));
     if !referencing.is_empty() {
         return Err(LibraryError::VersionReferenced {
             doc_id: doc_id.0.clone(),
@@ -261,6 +277,58 @@ pub fn delete_version(
     }
     save_doc(root, &project.slug, &doc)?;
     Ok(doc)
+}
+
+/// Delete a whole lyric document -- file to OS trash, id unlisted -- refusing
+/// when any track's provenance references any of its versions. Returns the
+/// project's remaining documents.
+///
+/// **Same refusal as [`delete_version`], applied to the whole file:** a document
+/// is deletable only when nothing points at it, and the error names the tracks
+/// holding it so the refusal is never a dead end. `trash` is the injected trash
+/// operation (production passes [`trash_to_os`], tests a fake), the shape T-405
+/// established for the one destructive action a test must not really perform.
+///
+/// **Order: file first, record last, a missing file tolerated** -- the
+/// [`delete_track`](crate::tracks::delete_track) discipline. A crash after
+/// trashing but before the save leaves the project listing a document whose file
+/// is gone -- the "Missing" state [`list_docs`] already renders -- and a retry
+/// completes cleanly because the trash step skips a file already gone. The
+/// reverse order would strand a file nothing references with no id left to retry.
+/// `next_lyric_seq` is untouched, so the freed id is never reissued and a track's
+/// `LyricRef` can never come to mean a different document.
+pub fn delete_doc<F>(
+    root: &Path,
+    slug: &str,
+    doc_id: &LyricDocId,
+    trash: F,
+) -> Result<LyricDocSet, LibraryError>
+where
+    F: Fn(&Path) -> Result<(), LibraryError>,
+{
+    let mut project = crate::projects::load_project(root, slug)?;
+    if !project.lyrics.contains(doc_id) {
+        return Err(LibraryError::NotFound {
+            kind: "lyric document",
+            id: doc_id.0.clone(),
+        });
+    }
+
+    let referencing = tracks_referencing(root, &project, doc_id, None);
+    if !referencing.is_empty() {
+        return Err(LibraryError::DocumentReferenced {
+            doc_id: doc_id.0.clone(),
+            tracks: referencing,
+        });
+    }
+
+    let path = doc_path(root, slug, doc_id)?;
+    if path.exists() {
+        trash(&path)?;
+    }
+    project.lyrics.retain(|id| id != doc_id);
+    crate::projects::save_project(root, &project)?;
+    Ok(list_docs(root, &project))
 }
 
 #[cfg(test)]
@@ -503,6 +571,228 @@ mod tests {
             err,
             LibraryError::NotFound {
                 kind: "lyric version",
+                ..
+            }
+        ));
+    }
+
+    /// A fake trasher that records what it was asked to trash and moves it out of
+    /// the way, so a later `exists()` check sees it gone -- without touching the
+    /// real Recycle Bin. `RefCell` because the closure is `Fn`, not `FnMut`.
+    fn recording_trasher<'a>(
+        seen: &'a std::cell::RefCell<Vec<PathBuf>>,
+        graveyard: &Path,
+    ) -> impl Fn(&Path) -> Result<(), LibraryError> + 'a {
+        let graveyard = graveyard.to_path_buf();
+        move |path: &Path| {
+            seen.borrow_mut().push(path.to_path_buf());
+            let name = path.file_name().unwrap();
+            fs::rename(path, graveyard.join(name))?;
+            Ok(())
+        }
+    }
+
+    /// Invariant: delete_doc trashes the file via the injected trasher (never a
+    /// hard delete -- CONVENTIONS), unlists the id, and returns the remainder.
+    #[test]
+    fn test_delete_doc_trashes_the_file_and_unlists_the_id() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 1);
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let remaining = delete_doc(
+            root.path(),
+            &proj.slug,
+            &doc.id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let trashed = seen.into_inner();
+        assert_eq!(trashed.len(), 1, "the document file is trashed");
+        assert!(trashed[0].ends_with("ld-0001.json"));
+        // It really left the lyrics dir -- via the trasher, not a hard delete.
+        assert!(graveyard.join("ld-0001.json").exists());
+        assert!(remaining.docs.is_empty());
+
+        let reloaded = crate::projects::load_project(root.path(), &proj.slug).unwrap();
+        assert!(!reloaded.lyrics.contains(&doc.id));
+    }
+
+    /// Invariant: a document with any referenced version is refused, naming the
+    /// track -- the whole-file counterpart of the version refusal.
+    #[test]
+    fn test_delete_referenced_doc_is_refused_and_names_the_track() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 2);
+        let track = track_referencing(root.path(), &mut proj, &doc.id, 1);
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let err = delete_doc(
+            root.path(),
+            &proj.slug,
+            &doc.id,
+            recording_trasher(&seen, &root.path().join("nowhere")),
+        )
+        .unwrap_err();
+
+        match err {
+            LibraryError::DocumentReferenced { tracks, .. } => assert_eq!(tracks, vec![track.0]),
+            other => panic!("expected DocumentReferenced, got {other:?}"),
+        }
+        // A refused delete trashes nothing and leaves the id listed.
+        assert!(seen.into_inner().is_empty());
+        let reloaded = crate::projects::load_project(root.path(), &proj.slug).unwrap();
+        assert!(reloaded.lyrics.contains(&doc.id));
+    }
+
+    /// Invariant: a track referencing a *later* version of the document still
+    /// blocks the whole-document delete -- `None` matches any version.
+    #[test]
+    fn test_delete_doc_is_blocked_by_a_reference_to_any_version() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 3);
+        track_referencing(root.path(), &mut proj, &doc.id, 3);
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let err = delete_doc(
+            root.path(),
+            &proj.slug,
+            &doc.id,
+            recording_trasher(&seen, &root.path().join("nowhere")),
+        )
+        .unwrap_err();
+        assert!(matches!(err, LibraryError::DocumentReferenced { .. }));
+    }
+
+    /// Invariant: deleting a document does not free its id for reuse --
+    /// `next_lyric_seq` is untouched, so a later document's `LyricRef` can never
+    /// come to mean a deleted one.
+    #[test]
+    fn test_delete_doc_does_not_free_the_id_for_reuse() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let first = create_doc(root.path(), &mut proj, None).unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_doc(
+            root.path(),
+            &proj.slug,
+            &first.id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        // Reload so the minted-id counter reflects the delete, then create again.
+        let mut reloaded = crate::projects::load_project(root.path(), &proj.slug).unwrap();
+        let next = create_doc(root.path(), &mut reloaded, None).unwrap();
+        assert_eq!(next.id, LyricDocId("ld-0002".to_string()));
+        assert_ne!(next.id, first.id);
+    }
+
+    /// Invariant: a document listed with its file already gone is still unlisted
+    /// -- the trasher is skipped for the missing file, not run against it (it
+    /// would error), so a half-done prior delete self-heals on retry.
+    #[test]
+    fn test_delete_doc_tolerates_a_missing_file() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 1);
+        fs::remove_file(doc_path(root.path(), &proj.slug, &doc.id).unwrap()).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let remaining = delete_doc(
+            root.path(),
+            &proj.slug,
+            &doc.id,
+            recording_trasher(&seen, &root.path().join("nowhere")),
+        )
+        .unwrap();
+
+        assert!(seen.into_inner().is_empty(), "nothing to trash");
+        assert!(remaining.docs.is_empty());
+        let reloaded = crate::projects::load_project(root.path(), &proj.slug).unwrap();
+        assert!(!reloaded.lyrics.contains(&doc.id));
+    }
+
+    /// Invariant: a track referencing a *different* document does not block the
+    /// delete -- the scan matches on the document, so one doc's tracks never pin
+    /// another doc.
+    #[test]
+    fn test_delete_doc_ignores_a_reference_to_another_document() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc_a = doc_with_versions(root.path(), &mut proj, 1);
+        let doc_b = doc_with_versions(root.path(), &mut proj, 1);
+        track_referencing(root.path(), &mut proj, &doc_b.id, 1);
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        // doc A has no tracks; doc B's reference must not block it.
+        let remaining = delete_doc(
+            root.path(),
+            &proj.slug,
+            &doc_a.id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+        assert_eq!(remaining.docs.len(), 1);
+        assert_eq!(remaining.docs[0].id, doc_b.id);
+    }
+
+    /// Invariant: deleting one document leaves the others listed and on disk.
+    #[test]
+    fn test_delete_doc_leaves_the_other_documents() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let gone = doc_with_versions(root.path(), &mut proj, 1);
+        let kept = doc_with_versions(root.path(), &mut proj, 1);
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let remaining = delete_doc(
+            root.path(),
+            &proj.slug,
+            &gone.id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        assert_eq!(remaining.docs.len(), 1);
+        assert_eq!(remaining.docs[0].id, kept.id);
+        assert!(doc_path(root.path(), &proj.slug, &kept.id)
+            .unwrap()
+            .is_file());
+    }
+
+    /// Invariant: a document id the project does not list is Not Found, not a
+    /// silent no-op.
+    #[test]
+    fn test_delete_missing_doc_is_not_found() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let err = delete_doc(
+            root.path(),
+            &proj.slug,
+            &LyricDocId("ld-0042".to_string()),
+            recording_trasher(&seen, &root.path().join("nowhere")),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            LibraryError::NotFound {
+                kind: "lyric document",
                 ..
             }
         ));

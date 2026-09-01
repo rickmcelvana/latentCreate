@@ -2,27 +2,38 @@
 //!
 //! `library::lyrics` (T-201) persists one JSON file per lyric document, but
 //! nothing exposed it to Tauri. These commands are the seam: the frontend holds
-//! the `LyricDoc` (versions and approval) and asks the backend to open, save and
-//! lint it. Until Phase 4's Library view, there is exactly one project and one
-//! working document, both created on demand.
+//! the `LyricDoc` (versions and approval) and asks the backend to open, save,
+//! list, create and delete them. T-408b retired the Phase 2 one-document
+//! shortcut -- a project can now hold many documents, addressed by id.
 
 use create_core::generation::LyricDocId;
 use create_core::lyrics::lint::{lint_lyrics, LintFinding};
 use create_core::lyrics::LyricBrief;
 use create_core::project::LyricDoc;
+use library::LyricDocSet;
 use tauri::State;
 
 use crate::projectctx::selected_project;
 use crate::{ConfigDir, ProfilesDir};
 
-/// Open the working lyric document, creating it (and its project) on first use.
+/// Open a lyric document by id, or -- with no id -- the project's first
+/// document, creating one (and the project) when there is none.
 ///
-/// Returns the newest document the project already has, or a fresh empty one.
-/// Never fails for a service reason: there is no service here, only the disk.
+/// The `id` argument is what retires the Phase 2 one-document shortcut (T-408b):
+/// the picker passes the id it wants, while the no-id call stays as the
+/// first-open default. Never fails for a service reason: there is no service
+/// here, only the disk.
 #[tauri::command]
-pub fn lyrics_open(config_dir: State<'_, ConfigDir>) -> Result<LyricDoc, String> {
+pub fn lyrics_open(
+    config_dir: State<'_, ConfigDir>,
+    doc_id: Option<String>,
+) -> Result<LyricDoc, String> {
     let root = &config_dir.0;
     let mut project = selected_project(root).map_err(|e| e.to_string())?;
+    if let Some(id) = doc_id {
+        return library::lyrics::load_doc(root, &project.slug, &LyricDocId(id))
+            .map_err(|e| e.to_string());
+    }
     let doc = match project.lyrics.first() {
         Some(id) => {
             library::lyrics::load_doc(root, &project.slug, id).map_err(|e| e.to_string())?
@@ -30,6 +41,48 @@ pub fn lyrics_open(config_dir: State<'_, ConfigDir>) -> Result<LyricDoc, String>
         None => library::lyrics::create_doc(root, &mut project, None).map_err(|e| e.to_string())?,
     };
     Ok(doc)
+}
+
+/// Every lyric document in the selected project, in creation order, plus any
+/// warnings (an id listed with no file, an unreadable one). Drives the picker.
+#[tauri::command]
+pub fn lyrics_list(config_dir: State<'_, ConfigDir>) -> Result<LyricDocSet, String> {
+    let root = &config_dir.0;
+    let project = selected_project(root).map_err(|e| e.to_string())?;
+    Ok(library::lyrics::list_docs(root, &project))
+}
+
+/// Create a new, empty lyric document in the selected project and return it.
+///
+/// The id is minted from the project's monotonic counter, never reused, so a
+/// deleted document's id cannot be handed to a later one.
+#[tauri::command]
+pub fn lyrics_create(
+    config_dir: State<'_, ConfigDir>,
+    title: Option<String>,
+) -> Result<LyricDoc, String> {
+    let root = &config_dir.0;
+    let mut project = selected_project(root).map_err(|e| e.to_string())?;
+    library::lyrics::create_doc(root, &mut project, title).map_err(|e| e.to_string())
+}
+
+/// Delete a whole lyric document -- file to OS trash, id unlisted -- refusing
+/// (with a message naming the tracks) when a track's provenance references any
+/// of its versions. Returns the project's remaining documents.
+#[tauri::command]
+pub fn lyrics_delete_doc(
+    config_dir: State<'_, ConfigDir>,
+    doc_id: String,
+) -> Result<LyricDocSet, String> {
+    let root = &config_dir.0;
+    let project = selected_project(root).map_err(|e| e.to_string())?;
+    library::lyrics::delete_doc(
+        root,
+        &project.slug,
+        &LyricDocId(doc_id),
+        library::tracks::trash_to_os,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Persist the working document, versions and approval included.

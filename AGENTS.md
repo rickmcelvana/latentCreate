@@ -29,10 +29,10 @@ passed 2026-09-01**, so the phase's milestone check is met in full. **The phase 
 **T-408** (delete for lyric versions/documents/albums/projects, reusing T-405's `trash_to_os`),
 **T-409** (the song title, carried from Lyrics Studio to the export filename) and **T-406**
 (provenance inspector) remain, in that order. **T-408 is in progress:** part a (delete a lyric
-version, refusing when a track references it) is **complete** -- a-back and a-front landed
-2026-09-01 architect-direct and the click-through passed all five steps (v31 correctly refused).
-**T-408b is next** (many lyric docs per project + doc delete), then c/d. Context is in the latest
-PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+version) is **complete** (a-back + a-front landed 2026-09-01 architect-direct; click-through passed,
+v31 correctly refused). **Part b (many lyric docs per project + doc delete): backend landed
+2026-09-01** (`delete_doc`, shared `tracks_referencing`, the doc commands); **b-front (the document
+picker) is next**, then c/d. Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.

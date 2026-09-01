@@ -101,8 +101,11 @@ pub fn run() {
             lyrics::lyrics_cancel,
             optimize::lyrics_optimize,
             lyricdoc::lyrics_open,
+            lyricdoc::lyrics_list,
+            lyricdoc::lyrics_create,
             lyricdoc::lyrics_save,
             lyricdoc::lyrics_delete_version,
+            lyricdoc::lyrics_delete_doc,
             lyricdoc::lyrics_lint
         ])
         .run(tauri::generate_context!())

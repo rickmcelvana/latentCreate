@@ -351,7 +351,10 @@ Scope:
 - **b. Many lyric documents per project, and delete a document.** `lyrics_create`, `lyrics_list`,
   `lyrics_open(id)` and a document picker in Lyrics Studio, retiring the Phase 2 one-document
   shortcut. A document is deletable only when none of its versions is referenced -- the same rule
-  as (a), applied to the whole file.
+  as (a), applied to the whole file. **Backend landed 2026-09-01**
+  ([t-408b-brief.md](t-408b-brief.md), architect-direct, six mutations killed): `delete_doc`, a
+  shared `tracks_referencing` helper, `DocumentReferenced`, the three commands, and `lyrics_open`
+  now takes an optional id; library 92 -> 100. The document picker (b-front) is the next run.
 - **c. Delete an album.** `library::albums::delete_album`, an `album_delete` command, and the
   affordance in the album panel. Deleting a list never touches the tracks in it.
 - **d. Delete a project.** The whole `projects/<slug>/` tree to OS trash -- tracks, sidecars,

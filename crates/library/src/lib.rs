@@ -96,6 +96,16 @@ pub enum LibraryError {
         /// Ids of the tracks whose provenance references it, in project order.
         tracks: Vec<String>,
     },
+    /// A lyric document cannot be deleted because a track's provenance references
+    /// one of its versions. The whole-file counterpart of [`Self::VersionReferenced`]
+    /// (T-408b), with the same "refuse and name the obstruction" rule.
+    #[error("{doc_id} is still used by {} track(s): {}", .tracks.len(), .tracks.join(", "))]
+    DocumentReferenced {
+        /// The lyric document that was asked to be deleted.
+        doc_id: String,
+        /// Ids of the tracks whose provenance references any of its versions.
+        tracks: Vec<String>,
+    },
 }
 
 #[cfg(test)]
