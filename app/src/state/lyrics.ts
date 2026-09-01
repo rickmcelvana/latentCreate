@@ -269,6 +269,10 @@ interface LyricsState extends LyricsSnapshot, OptimizerState {
   loadDocs: () => Promise<void>
   selectDoc: (id: string) => Promise<void>
   createDoc: () => Promise<void>
+  /** Update the open document's title locally as the user types (no save). */
+  setTitle: (title: string) => void
+  /** Persist the open document's title (trimmed; empty -> untitled). On blur. */
+  saveTitle: () => Promise<void>
   askDeleteDoc: () => void
   cancelDeleteDoc: () => void
   deleteDoc: (id: string) => Promise<boolean>
@@ -424,6 +428,34 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       const created = await createLyricDoc()
       set((state) => ({ docs: [...state.docs, created] }))
       await get().selectDoc(created.id)
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
+  },
+
+  setTitle: (title) => {
+    const doc = get().doc
+    if (doc === null) return
+    // Empty clears to untitled at once; whitespace-only is trimmed to null on
+    // save. Kept raw while typing so a space mid-title is not swallowed.
+    set({ doc: { ...doc, title: title === '' ? null : title } })
+  },
+
+  saveTitle: async () => {
+    const doc = get().doc
+    if (doc === null) return
+    const trimmed = (doc.title ?? '').trim()
+    const title = trimmed === '' ? null : trimmed
+    const next: LyricDoc = { ...doc, title }
+    // The open doc AND its entry in `docs`, so the picker's option reads the new
+    // title -- the one doc mutation whose result the list must reflect (commit
+    // and approve leave the label unchanged, so they update `doc` alone).
+    set((state) => ({
+      doc: next,
+      docs: state.docs.map((d) => (d.id === next.id ? next : d)),
+    }))
+    try {
+      await saveLyricDoc(next)
     } catch (err: unknown) {
       set({ error: String(err) })
     }

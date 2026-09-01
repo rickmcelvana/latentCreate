@@ -975,6 +975,11 @@ body {
   min-width: 0;
 }
 
+/* Titles run longer than the document dropdown, so give the input more room. */
+.doc-picker-title {
+  flex: 2;
+}
+
 .doc-picker-actions,
 .doc-picker-confirm {
   display: flex;

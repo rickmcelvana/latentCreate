@@ -544,6 +544,48 @@ describe('versioned document store', () => {
     expect(state.draft).toBe('')
   })
 
+  it('test_set_title_updates_the_open_doc_and_empty_clears_to_untitled', () => {
+    useLyricsStore.setState({ doc: lyricDoc(), docs: [lyricDoc()], selectedDocId: 'ld-0001' })
+
+    useLyricsStore.getState().setTitle('Midnight Drive')
+    expect(useLyricsStore.getState().doc?.title).toBe('Midnight Drive')
+    // No save while typing.
+    expect(mockSaveLyricDoc).not.toHaveBeenCalled()
+
+    useLyricsStore.getState().setTitle('')
+    expect(useLyricsStore.getState().doc?.title).toBeNull()
+  })
+
+  it('test_save_title_trims_persists_and_updates_the_list', async () => {
+    useLyricsStore.setState({
+      doc: lyricDoc({ title: '  Midnight Drive  ' }),
+      docs: [lyricDoc({ title: '  Midnight Drive  ' })],
+      selectedDocId: 'ld-0001',
+    })
+
+    await useLyricsStore.getState().saveTitle()
+
+    const state = useLyricsStore.getState()
+    expect(state.doc?.title).toBe('Midnight Drive')
+    // The picker reads its label from `docs`, so the list entry updates too.
+    expect(state.docs[0]!.title).toBe('Midnight Drive')
+    expect(mockSaveLyricDoc).toHaveBeenCalledTimes(1)
+    expect((mockSaveLyricDoc.mock.calls[0]![0] as LyricDoc).title).toBe('Midnight Drive')
+  })
+
+  it('test_save_title_of_only_whitespace_becomes_untitled', async () => {
+    useLyricsStore.setState({
+      doc: lyricDoc({ title: '   ' }),
+      docs: [lyricDoc({ title: '   ' })],
+      selectedDocId: 'ld-0001',
+    })
+
+    await useLyricsStore.getState().saveTitle()
+
+    expect(useLyricsStore.getState().doc?.title).toBeNull()
+    expect((mockSaveLyricDoc.mock.calls[0]![0] as LyricDoc).title).toBeNull()
+  })
+
   it('test_ask_and_cancel_delete_doc_toggle_the_marker', () => {
     useLyricsStore.setState({ deleteDocError: 'old' })
     useLyricsStore.getState().askDeleteDoc()

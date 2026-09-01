@@ -5387,16 +5387,18 @@ makes, each to the OS trash (except the album, which has no file), each refusing
 the reference graph demands.
 
 **Where the phase stands:** the milestone check was already met at T-405; T-408 was the scope
-owner-decision-4 added. **Remaining: T-409 (lanes b, c) then T-406.** **T-409 (the song title, carried)** is
-**briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)) and split into three lanes; lane a landed
-2026-09-01 architect-direct** -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
+owner-decision-4 added. **Remaining: T-409 (lane c) then T-406.** **T-409 (the song title, carried)** is
+**briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)) and split into three lanes; lanes a and b
+landed 2026-09-01 architect-direct** -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
 so every pre-T-409 sidecar stays readable), `ingest.rs` now copies it to `Track.title` instead of
 hardcoding `None`, the TS type and ARCHITECTURE §5 interface doc match, and `specFor` carries the
 selected doc's title onto the spec. The ~30 `GenerationSpec` construction sites (nearly all tests)
 took a mechanical `title: None`. create-core 174->175, src-tauri 112->114; the ingest-copies-the-title
-mutation was killed. **Lanes remaining: b (a title input in Lyrics Studio, bound to the existing
-`saveLyricDoc`) and c (an editable title field in the Audio Studio + sanitising the export default
-name -- trap 4).** The full task was checked against the phase-4.md scope, not a one-liner: a title named once in Lyrics Studio must reach
+mutation was killed. **Lane b landed too** (a Title input in the Lyrics Studio document picker, bound to the
+open doc, persisted through the existing `saveLyricDoc` on blur -- no new command; empty/whitespace
+clears to untitled, and the picker option follows). **Lane c remains: an editable title field in the
+Audio Studio (prefilled from the selected doc) + sanitising the export default name (trap 4).** The
+full task was checked against the phase-4.md scope, not a one-liner: a title named once in Lyrics Studio must reach
 the track, the Library and the exported file, and the field exists at both ends connected to nothing
 -- `Track.title` is hardcoded `None` at ingest and `LyricDoc.title` has never been writable. Five
 scope points: (1) a `LyricDoc.title` **input** in Lyrics Studio (schema + `bridge/lyricdoc.ts`
@@ -5453,4 +5455,25 @@ field in the Audio Studio (prefilled from the selected doc, so a batch shares on
 click-through, then **T-406** (provenance inspector) and Phase 4 closes.
 
 Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 414.
+Tree clean.
+
+### 2026-09-01 (later still) -- T-409 lane b: a title input in Lyrics Studio
+
+Landed lane b architect-direct, frontend-only. A **Title** input sits beside the Document dropdown in
+the Lyrics Studio picker, bound to the open document. `setTitle` updates it locally as the user types
+(empty clears to untitled at once); `saveTitle` on blur trims (whitespace-only -> null), persists
+through the existing `saveLyricDoc` -- **no new command** -- and updates both `doc` and its entry in
+`docs`, because the picker reads its option label from the list (commit and approve leave the label
+unchanged, so they update `doc` alone -- this is the one doc mutation the list must reflect). Three
+store tests: set-title updates and empty clears (no save while typing); save trims, persists and
+updates the list; a whitespace-only title saves as null. Frontend 414 -> 417. No backend, no
+mutation-testable path -- lane a already carries the title from the spec to the track, so once a doc
+has a title, generating from it produces a titled track and the Library and export follow.
+
+**Lane c remains:** an editable title field in the Audio Studio (prefilled from the selected doc, so
+a batch shares one title and the user can override before generating) and a `filenameSafe` helper
+applied to the export default name **before** the save dialog (trap 4 -- a `/` or `:` in a title is
+legal in a doc, illegal as a Windows filename). Then T-409's click-through, then T-406.
+
+Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 417.
 Tree clean.

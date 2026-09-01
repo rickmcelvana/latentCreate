@@ -412,7 +412,10 @@ flows from the title (`Library.tsx` passes ``${row.name}.${ext}``, and `row.name
 
 Scope:
 - **`LyricDoc.title` gets a UI** in Lyrics Studio. The field is already in the schema and in
-  `bridge/lyricdoc.ts` (and `saveLyricDoc` persists it); only the input is missing. **Lane b.**
+  `bridge/lyricdoc.ts` (and `saveLyricDoc` persists it); only the input is missing. **Lane b --
+  landed**: a Title input beside the Document dropdown, bound to the open doc, `setTitle` on change
+  and `saveTitle` on blur (trim; empty -> null), updating both `doc` and its `docs` entry so the
+  picker label follows. No new command; frontend 414 -> 417.
 - **`GenerationSpec` gains `title: Option<String>`**, prefilled in the Audio Studio from the
   selected lyric document and editable there. Resolving it at ingest from `spec.lyrics.doc_id` was
   the alternative and is **rejected on evidence**: one of the producer's 20 tracks carries no

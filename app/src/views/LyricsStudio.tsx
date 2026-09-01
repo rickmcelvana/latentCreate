@@ -282,9 +282,12 @@ function docLabel(doc: LyricDoc): string {
  */
 function DocumentPicker() {
   const docs = useLyricsStore((state) => state.docs)
+  const doc = useLyricsStore((state) => state.doc)
   const selectedDocId = useLyricsStore((state) => state.selectedDocId)
   const selectDoc = useLyricsStore((state) => state.selectDoc)
   const createDoc = useLyricsStore((state) => state.createDoc)
+  const setTitle = useLyricsStore((state) => state.setTitle)
+  const saveTitle = useLyricsStore((state) => state.saveTitle)
   const confirming = useLyricsStore((state) => state.confirmingDocDelete)
   const askDeleteDoc = useLyricsStore((state) => state.askDeleteDoc)
   const cancelDeleteDoc = useLyricsStore((state) => state.cancelDeleteDoc)
@@ -310,6 +313,19 @@ function DocumentPicker() {
             ))}
           </select>
         </label>
+        {doc !== null ? (
+          <label className="doc-picker-field doc-picker-title">
+            <span className="lyrics-label">Title</span>
+            <input
+              type="text"
+              className="lyrics-input"
+              placeholder="Untitled — the track and its export use this"
+              value={doc.title ?? ''}
+              onChange={(event) => setTitle(event.target.value)}
+              onBlur={() => void saveTitle()}
+            />
+          </label>
+        ) : null}
         {confirming ? (
           <div className="doc-picker-confirm">
             <span className="doc-picker-confirm-prompt">Delete this document?</span>
