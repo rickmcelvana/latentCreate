@@ -257,6 +257,22 @@ say in the code that the real handoff protocol is owned by those repos (ARCHITEC
 ### T-405 — track actions: delete, rename, export, reveal
 The per-track actions the milestone line does not require but the phase scope names.
 
+**Briefed 2026-09-01** ([t-405-brief.md](t-405-brief.md)), split three ways by lane. **T-405a
+(backend) is architect-direct and landed 2026-09-01**: `library::tracks::delete_track` /
+`rename_track` / `export_track` / `trash_to_os`, the `trash = "5.2"` (MIT) dependency, a
+`LibraryError::Trash` variant, and the four Tauri commands (`delete_track`, `rename_track`,
+`export_track`, `reveal_track`). **library 74 -> 84**, 10 new tests, 5 mutations run by hand and
+all killed. **T-405b** (`bridge/tracks.ts`, `state/trackActions.ts` + tests) and **T-405c** (the
+`TrackCard` controls + CSS) are the two Aider runs, each with its own launch command in the brief;
+c is the only part with a producer click-through.
+
+Verified while briefing: **`trash::delete` canonicalizes first and errors on a missing path**, so
+delete guards each file with `exists()` and a retry after a partial delete self-heals; and **`trash`
+moves to the real Recycle Bin**, so the trash operation is *injected* (production `trash_to_os`,
+tests a recording fake) rather than called directly -- the only way `cargo test` avoids filling the
+developer's trash, and what lets the CONVENTIONS "assert the trash call, not that the file is gone"
+test exist.
+
 Scope:
 **T-405 is where `trash` enters the workspace**, and T-408 reuses both the dependency and the
 discipline (ordering note below). Rename is also how the producer's 20 existing untitled tracks

@@ -7,9 +7,12 @@
 //! wraps anyway: `lyricdoc` over `library::lyrics`, `profile` over
 //! `library::profiles`, this over `library::tracks`.
 
+use std::path::PathBuf;
+
 use create_core::project::TrackId;
 use library::TrackSet;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::ConfigDir;
 
@@ -39,4 +42,80 @@ pub fn track_audio_path(config_dir: State<'_, ConfigDir>, id: String) -> Result<
     let abs = library::tracks::resolve_track_file(&config_dir.0, &project.slug, &track.file)
         .map_err(|e| e.to_string())?;
     Ok(abs.to_string_lossy().into_owned())
+}
+
+/// Move a track's audio and sidecar to the OS trash and unlist its id.
+///
+/// Never a hard delete (CONVENTIONS): the real trasher is
+/// `library::tracks::trash_to_os`. The frontend re-loads the library on
+/// success -- the action is synchronous and user-initiated, so no event is
+/// pushed. Removing the id from `Project::tracks` and every album is the
+/// library's job; the id is never reused.
+#[tauri::command]
+pub fn delete_track(config_dir: State<'_, ConfigDir>, id: String) -> Result<(), String> {
+    let root = &config_dir.0;
+    let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
+    library::tracks::delete_track(
+        root,
+        &project.slug,
+        &TrackId(id),
+        library::tracks::trash_to_os,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Set or clear a track's title on its sidecar.
+///
+/// An empty title clears it, and the Library falls back to the id. The sidecar
+/// is the single source of truth for a title (ARCHITECTURE 8), so nothing else
+/// is written.
+#[tauri::command]
+pub fn rename_track(
+    config_dir: State<'_, ConfigDir>,
+    id: String,
+    title: String,
+) -> Result<(), String> {
+    let root = &config_dir.0;
+    let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
+    library::tracks::rename_track(root, &project.slug, &TrackId(id), &title)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Copy a track's audio file to a destination the user chose in the save dialog.
+///
+/// `dest` comes from the OS save dialog, so it is trusted; the source id is
+/// whitelisted before it touches a path. A copy, so the track stays in the
+/// library.
+#[tauri::command]
+pub fn export_track(
+    config_dir: State<'_, ConfigDir>,
+    id: String,
+    dest: String,
+) -> Result<(), String> {
+    let root = &config_dir.0;
+    let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
+    library::tracks::export_track(root, &project.slug, &TrackId(id), &PathBuf::from(dest))
+        .map_err(|e| e.to_string())
+}
+
+/// Reveal a track's audio file in the OS file manager.
+///
+/// The same reveal `send_to` uses, on its own: resolve the id to an absolute
+/// path, then hand it to the opener plugin.
+#[tauri::command]
+pub fn reveal_track(
+    app: AppHandle,
+    config_dir: State<'_, ConfigDir>,
+    id: String,
+) -> Result<(), String> {
+    let root = &config_dir.0;
+    let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
+    let track = library::tracks::load_track(root, &project.slug, &TrackId(id))
+        .map_err(|e| e.to_string())?;
+    let path = library::tracks::resolve_track_file(root, &project.slug, &track.file)
+        .map_err(|e| e.to_string())?;
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| format!("Could not show the file: {e}. It is at {}.", path.display()))
 }

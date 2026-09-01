@@ -78,6 +78,10 @@ pub enum LibraryError {
     /// A reorder that is not the album's current tracks rearranged.
     #[error("the new order must be the same tracks, in a different order")]
     ReorderMismatch,
+    /// Moving a file to the OS trash failed. Carries the crate's own message
+    /// rather than the `trash::Error` type, so the boundary stays serde-simple.
+    #[error("could not move to trash: {0}")]
+    Trash(String),
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ use create_core::provenance::Track;
 use serde::{Deserialize, Serialize};
 
 use crate::atomic;
-use crate::projects::project_dir;
+use crate::projects::{load_project, project_dir, save_project};
 use crate::LibraryError;
 
 /// Directory inside a project holding its audio files and sidecars.
@@ -226,6 +226,115 @@ pub fn duration_of(path: &Path) -> Option<f64> {
     // this returns for one is the right answer.
     file.read_exact(&mut head).ok()?;
     flac_duration_s(&head)
+}
+
+/// Move a path to the OS trash. The real trasher `delete_track` is given in
+/// production; tests substitute a fake so `cargo test` never fills the user's
+/// Recycle Bin.
+///
+/// `trash::delete` canonicalizes first and errors on a path that is not there,
+/// which is why `delete_track` checks existence before calling this.
+pub fn trash_to_os(path: &Path) -> Result<(), LibraryError> {
+    trash::delete(path).map_err(|e| LibraryError::Trash(e.to_string()))
+}
+
+/// Trash a path only if it exists; a missing file is a no-op, not an error.
+fn trash_if_present<F>(path: &Path, trash: &F) -> Result<(), LibraryError>
+where
+    F: Fn(&Path) -> Result<(), LibraryError>,
+{
+    if path.exists() {
+        trash(path)?;
+    }
+    Ok(())
+}
+
+/// Move a track's files to the OS trash and unlist its id.
+///
+/// `trash` is the injected trash operation -- production passes [`trash_to_os`];
+/// tests pass a fake. The side effect a test must not perform is passed in, the
+/// same shape `now_rfc3339` uses for the clock.
+///
+/// The id leaves `Project::tracks` **and every album that holds it**: an album
+/// still holding a live id renders it (T-403), but a *deleted* track must drop
+/// out rather than linger as a permanent "Missing track". `next_track_seq` is
+/// untouched, so the freed id is never handed to a later track -- an album's
+/// surviving ids can never come to mean a different song.
+///
+/// **Order: files first, record last, missing files tolerated.** A crash after
+/// trashing but before the save leaves the project listing a track whose files
+/// are gone -- the "Missing track" state T-403 already renders -- and a retry
+/// completes cleanly because `trash_if_present` skips the files already gone.
+/// The reverse order would leave orphan files nothing references and no way to
+/// retry, since the id would already be gone from the record.
+pub fn delete_track<F>(root: &Path, slug: &str, id: &TrackId, trash: F) -> Result<(), LibraryError>
+where
+    F: Fn(&Path) -> Result<(), LibraryError>,
+{
+    let mut project = load_project(root, slug)?;
+    if !project.tracks.contains(id) {
+        return Err(LibraryError::NotFound {
+            kind: "track",
+            id: id.0.clone(),
+        });
+    }
+
+    // The sidecar names the audio file, so read it before trashing anything. A
+    // sidecar that will not load (already gone, or malformed) is tolerated: the
+    // record is still cleaned, and at worst one orphan audio file is left for a
+    // degraded track the user is deleting anyway.
+    if let Ok(track) = load_track(root, slug, id) {
+        let audio = resolve_track_file(root, slug, &track.file)?;
+        trash_if_present(&audio, &trash)?;
+    }
+    trash_if_present(&sidecar_path(root, slug, id)?, &trash)?;
+
+    project.tracks.retain(|t| t != id);
+    for album in &mut project.albums {
+        album.tracks.retain(|t| t != id);
+    }
+    save_project(root, &project)?;
+    Ok(())
+}
+
+/// Set or clear a track's title, returning the updated record.
+///
+/// The sidecar is the single source of truth for a title (ARCHITECTURE 8), so
+/// this rewrites the sidecar and nothing else -- `project.json` holds only the
+/// id. An empty or all-whitespace title clears it, and the Library then falls
+/// back to the id, exactly as an untitled track already reads.
+pub fn rename_track(
+    root: &Path,
+    slug: &str,
+    id: &TrackId,
+    title: &str,
+) -> Result<Track, LibraryError> {
+    let mut track = load_track(root, slug, id)?;
+    let trimmed = title.trim();
+    track.title = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    save_track(root, slug, &track)?;
+    Ok(track)
+}
+
+/// Copy a track's audio file to `dest`.
+///
+/// A **copy**, not a move: the track stays in the library. `dest` is a path the
+/// user chose in the OS save dialog, so it is trusted -- unlike an id or slug
+/// from the frontend, which are whitelisted before they touch a path.
+pub fn export_track(
+    root: &Path,
+    slug: &str,
+    id: &TrackId,
+    dest: &Path,
+) -> Result<(), LibraryError> {
+    let track = load_track(root, slug, id)?;
+    let src = resolve_track_file(root, slug, &track.file)?;
+    std::fs::copy(&src, dest)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -589,5 +698,254 @@ mod tests {
         let set = list_tracks(root.path(), &proj);
         assert!(set.tracks.is_empty());
         assert!(set.warnings.is_empty());
+    }
+
+    /// A fake trasher that records what it was asked to trash and moves it out
+    /// of the way, so a later `exists()` check sees it gone -- without touching
+    /// the real Recycle Bin. `RefCell` because the closure is `Fn`, not `FnMut`.
+    fn recording_trasher<'a>(
+        seen: &'a std::cell::RefCell<Vec<PathBuf>>,
+        graveyard: &Path,
+    ) -> impl Fn(&Path) -> Result<(), LibraryError> + 'a {
+        let graveyard = graveyard.to_path_buf();
+        move |path: &Path| {
+            seen.borrow_mut().push(path.to_path_buf());
+            let name = path.file_name().unwrap();
+            fs::rename(path, graveyard.join(name))?;
+            Ok(())
+        }
+    }
+
+    /// Sets up a project with one real track: sidecar + a stand-in audio file.
+    fn project_with_one_track(root: &Path) -> (Project, TrackId) {
+        let mut proj = project(root);
+        let id = mint_track_id(&mut proj);
+        let track = sample_track(id.clone(), format!("tracks/{}.flac", id.0));
+        save_track(root, &proj.slug, &track).unwrap();
+        fs::write(
+            audio_path(root, &proj.slug, &id, "flac").unwrap(),
+            b"FLACDATA",
+        )
+        .unwrap();
+        proj.tracks.push(id.clone());
+        save_project(root, &proj).unwrap();
+        (proj, id)
+    }
+
+    /// Invariant: delete uses the injected trasher for BOTH files and never
+    /// `fs::remove_file`. The test that matters for the one destructive action:
+    /// it asserts the trash call was made, not that the file is gone (a hard
+    /// delete would pass the second check and fail the rule -- CONVENTIONS).
+    #[test]
+    fn test_delete_track_trashes_both_files_and_hard_deletes_neither() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_track(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let trashed = seen.into_inner();
+        assert_eq!(
+            trashed.len(),
+            2,
+            "both the audio and the sidecar are trashed"
+        );
+        assert!(trashed.iter().any(|p| p.ends_with("tr-0001.flac")));
+        assert!(trashed.iter().any(|p| p.ends_with("tr-0001.json")));
+        // Both really left the tracks dir -- via the trasher, not a hard delete.
+        assert!(graveyard.join("tr-0001.flac").exists());
+        assert!(graveyard.join("tr-0001.json").exists());
+    }
+
+    /// Invariant: the deleted id leaves `Project::tracks`. Read the project back
+    /// from disk, not the in-memory copy, so the save is what is tested.
+    #[test]
+    fn test_delete_track_unlists_the_id_from_the_project() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_track(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let reloaded = load_project(root.path(), &proj.slug).unwrap();
+        assert!(!reloaded.tracks.contains(&id));
+        assert!(reloaded.tracks.is_empty());
+    }
+
+    /// Invariant: the deleted id also leaves every album that held it. An album
+    /// keeps a *live* id and renders a deleted one as missing (T-403), but a
+    /// delete must remove it -- otherwise the album carries a permanent phantom.
+    #[test]
+    fn test_delete_track_removes_the_id_from_every_album() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut proj, id) = project_with_one_track(root.path());
+        proj.albums.push(create_core::project::AlbumList {
+            name: "Best of".to_string(),
+            tracks: vec![id.clone()],
+        });
+        proj.albums.push(create_core::project::AlbumList {
+            name: "B-sides".to_string(),
+            tracks: vec![id.clone()],
+        });
+        save_project(root.path(), &proj).unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_track(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let reloaded = load_project(root.path(), &proj.slug).unwrap();
+        for album in &reloaded.albums {
+            assert!(
+                !album.tracks.contains(&id),
+                "album {:?} still holds the deleted id",
+                album.name
+            );
+        }
+    }
+
+    /// Invariant: deleting never lowers `next_track_seq`, so the freed id is not
+    /// handed to the next track. The whole reason ids come from a counter.
+    #[test]
+    fn test_delete_track_does_not_free_the_id_for_reuse() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let seq_before = proj.next_track_seq;
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_track(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let mut reloaded = load_project(root.path(), &proj.slug).unwrap();
+        assert_eq!(reloaded.next_track_seq, seq_before);
+        let next = mint_track_id(&mut reloaded);
+        assert_ne!(next, id, "the deleted id must not be minted again");
+    }
+
+    /// Invariant: an audio file already gone (deleted in Explorer, or a prior
+    /// half-completed delete) does not wedge the delete -- the sidecar is still
+    /// trashed and the record still cleaned. This is why `trash::delete`'s
+    /// error-on-missing had to be guarded.
+    #[test]
+    fn test_delete_track_tolerates_an_audio_file_already_gone() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        fs::remove_file(audio_path(root.path(), &proj.slug, &id, "flac").unwrap()).unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_track(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let trashed = seen.into_inner();
+        assert_eq!(trashed.len(), 1, "only the sidecar is left to trash");
+        assert!(trashed[0].ends_with("tr-0001.json"));
+        assert!(!load_project(root.path(), &proj.slug)
+            .unwrap()
+            .tracks
+            .contains(&id));
+    }
+
+    /// Invariant: deleting an id the project does not own is a NotFound, and the
+    /// trasher is never called -- nothing is trashed for a bad id.
+    #[test]
+    fn test_delete_track_refuses_an_id_the_project_does_not_own() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let err = delete_track(
+            root.path(),
+            &proj.slug,
+            &TrackId("tr-0001".to_string()),
+            recording_trasher(&seen, root.path()),
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, LibraryError::NotFound { kind: "track", .. }));
+        assert!(seen.into_inner().is_empty());
+    }
+
+    /// Invariant: rename sets the title on the sidecar and a later load reads it
+    /// back. The happy path -- named because T-404b's two surviving mutations
+    /// both sat in exactly this untested space.
+    #[test]
+    fn test_rename_track_sets_the_title_on_the_sidecar() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+
+        let returned = rename_track(root.path(), &proj.slug, &id, "  Midnight  ").unwrap();
+        assert_eq!(returned.title.as_deref(), Some("Midnight"));
+
+        let reloaded = load_track(root.path(), &proj.slug, &id).unwrap();
+        assert_eq!(reloaded.title.as_deref(), Some("Midnight"));
+    }
+
+    /// Invariant: an empty or whitespace title clears the title rather than
+    /// storing `Some("")`, which the Library would render as a blank name.
+    #[test]
+    fn test_rename_track_to_blank_clears_the_title() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        rename_track(root.path(), &proj.slug, &id, "Midnight").unwrap();
+
+        rename_track(root.path(), &proj.slug, &id, "   ").unwrap();
+        let reloaded = load_track(root.path(), &proj.slug, &id).unwrap();
+        assert_eq!(reloaded.title, None);
+    }
+
+    /// Invariant: export copies the audio to the destination and leaves the
+    /// original in place -- a copy, never a move.
+    #[test]
+    fn test_export_track_copies_and_leaves_the_original() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join("Midnight.flac");
+
+        export_track(root.path(), &proj.slug, &id, &dest).unwrap();
+
+        assert_eq!(fs::read(&dest).unwrap(), b"FLACDATA");
+        assert!(
+            audio_path(root.path(), &proj.slug, &id, "flac")
+                .unwrap()
+                .exists(),
+            "the source must still be in the library after an export"
+        );
     }
 }
