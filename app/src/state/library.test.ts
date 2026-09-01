@@ -33,6 +33,7 @@ function makeTrack(overrides: {
         inputs: overrides.inputs ?? {},
         loras: overrides.loras ?? [],
         lyrics: null,
+        title: null,
       },
       resolved_slots: {},
       comfy: null,

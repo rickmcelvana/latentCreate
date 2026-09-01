@@ -405,19 +405,28 @@ A title named once in Lyrics Studio reaches the track, the Library and the expor
 2026-09-01 by owner decision 5. The field exists at both ends and connects to nothing: `Track.title`
 is hardcoded `None` at ingest and `LyricDoc.title` has never been writable.
 
+**Briefed and split into three lanes 2026-09-01** ([t-409-brief.md](t-409-brief.md)); **lane a
+landed.** Two surfaces the brief found already wired shrank the task: the export default name already
+flows from the title (`Library.tsx` passes ``${row.name}.${ext}``, and `row.name` is already
+`title ?? id`), and `specFor` already threads the selected `doc` in.
+
 Scope:
 - **`LyricDoc.title` gets a UI** in Lyrics Studio. The field is already in the schema and in
-  `bridge/lyricdoc.ts`; only the input is missing.
+  `bridge/lyricdoc.ts` (and `saveLyricDoc` persists it); only the input is missing. **Lane b.**
 - **`GenerationSpec` gains `title: Option<String>`**, prefilled in the Audio Studio from the
   selected lyric document and editable there. Resolving it at ingest from `spec.lyrics.doc_id` was
   the alternative and is **rejected on evidence**: one of the producer's 20 tracks carries no
   lyric ref at all, so ingest would have no title source for it, and provenance should record what
-  the user chose rather than what a second file happened to say later.
-- **`ingest.rs` sets `Track.title` from the spec** instead of the hardcoded `None`.
+  the user chose rather than what a second file happened to say later. **Lane a landed the field
+  (serde-default) and `specFor` carrying `doc.title`; lane c adds the editable Audio Studio field.**
+- **`ingest.rs` sets `Track.title` from the spec** instead of the hardcoded `None`. **Lane a --
+  landed** (`build_track` copies `pending.spec.title`; ARCHITECTURE §5 interface doc in the same
+  commit; ~30 spec literals took `title: None`; create-core 174->175, src-tauri 112->114).
 - **Export (T-405) offers the title as the default filename**, sanitised for the filesystem, with
-  the OS save dialog handling collisions -- a batch of five is five tracks with one title.
+  the OS save dialog handling collisions -- a batch of five is five tracks with one title. **Lane c
+  (the sanitise is the only remaining export work -- the default name already flows from the title).**
 - **The Library shows it.** `state/library.ts`'s id fallback stays, for untitled and pre-existing
-  tracks.
+  tracks. **Already there** -- `trackName` is `title ?? id`, so lane a's ingest wiring lights it up.
 
 **The traps to design against:**
 1. **The audio file on disk keeps its id name.** `tracks/tr-0007.flac` does not become

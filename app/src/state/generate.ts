@@ -184,6 +184,10 @@ export function specFor(
     inputs: specInputs(model, values),
     loras: specLoras(stack),
     lyrics: lyricRefFor(doc, model, values),
+    // The title flows from the selected document (T-409 lane a). Lane c adds an
+    // editable title field in the Audio Studio; until then this is the doc's own
+    // title, and `null` for an untitled doc -- the Library falls back to the id.
+    title: doc?.title ?? null,
   }
 }
 

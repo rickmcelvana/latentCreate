@@ -513,7 +513,11 @@ mod tests {
         delete_project(root.path(), "alpha", recording_trasher(&seen, &graveyard)).unwrap();
 
         let trashed = seen.into_inner();
-        assert_eq!(trashed.len(), 1, "the whole project dir is trashed in one move");
+        assert_eq!(
+            trashed.len(),
+            1,
+            "the whole project dir is trashed in one move"
+        );
         assert_eq!(trashed[0], dir);
         // It really left the projects dir -- via the trasher, not a hard delete.
         assert!(!dir.exists());
@@ -591,12 +595,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let seen = std::cell::RefCell::new(Vec::new());
 
-        let err = delete_project(
-            root.path(),
-            "nope",
-            recording_trasher(&seen, root.path()),
-        )
-        .unwrap_err();
+        let err =
+            delete_project(root.path(), "nope", recording_trasher(&seen, root.path())).unwrap_err();
 
         assert!(matches!(
             err,

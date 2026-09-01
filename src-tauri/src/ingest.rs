@@ -144,7 +144,11 @@ fn build_track(
 ) -> Track {
     Track {
         id: id.clone(),
-        title: None,
+        // The title the user named at generation, carried on the spec (T-409). A
+        // snapshot copied here, not a link back to the lyric document: retitling
+        // the doc later never retitles a track already made. `None` stays the
+        // untitled state the Library renders as the id.
+        title: pending.spec.title.clone(),
         file: file.to_string(),
         duration_s,
         provenance: Provenance {
@@ -222,6 +226,7 @@ mod tests {
             model_license: "Apache-2.0".to_string(),
             template: Some("audio_ace_step1_5_xl_turbo".to_string()),
             spec: GenerationSpec {
+                title: None,
                 profile_id: "ace-step-1.5-turbo".to_string(),
                 inputs,
                 loras: vec![
@@ -292,6 +297,46 @@ mod tests {
 
         let project = library::projects::load_project(root.path(), &slug).unwrap();
         assert_eq!(project.tracks, vec![track.id.clone()]);
+    }
+
+    /// Protects: the track takes its title from the spec the user generated
+    /// with (T-409), not a hardcoded `None`. A snapshot copied at ingest -- the
+    /// whole reason the title travels on the spec rather than being read from
+    /// the lyric document later.
+    #[test]
+    fn test_ingest_carries_the_specs_title_onto_the_track() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("tracks").join("prompt_000.flac");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
+        std::fs::write(&src, head).unwrap();
+
+        let mut pending = pending(&slug, false, 120.0);
+        pending.spec.title = Some("Midnight Drive".to_string());
+        let batch = batch_with(&src);
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        assert_eq!(tracks[0].title.as_deref(), Some("Midnight Drive"));
+        // On the sidecar, not just the returned value.
+        let loaded = library::tracks::load_track(root.path(), &slug, &tracks[0].id).unwrap();
+        assert_eq!(loaded.title.as_deref(), Some("Midnight Drive"));
+    }
+
+    /// Protects: a spec with no title yields an untitled track (`None`), which
+    /// the Library renders as the id. Kills a mutation that fabricates a title.
+    #[test]
+    fn test_ingest_leaves_an_untitled_spec_untitled() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("tracks").join("prompt_000.flac");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
+        std::fs::write(&src, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0); // spec.title is None
+        let batch = batch_with(&src);
+        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        assert_eq!(tracks[0].title, None);
     }
 
     /// Protects: the sidecar alone carries enough to reproduce the run.

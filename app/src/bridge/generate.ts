@@ -29,6 +29,13 @@ export interface GenerationSpec {
   inputs: Record<string, InputValue>
   loras: LoraRef[]
   lyrics: LyricRef | null
+  /**
+   * The song title named at generation, carried to the track and its exported
+   * filename (T-409). `null` is an untitled track -- the Library falls back to
+   * the id. A snapshot: retitling the source lyric document later never
+   * retitles a track already made.
+   */
+  title: string | null
 }
 
 /**

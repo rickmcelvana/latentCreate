@@ -368,6 +368,7 @@ mod tests {
     ) -> TrackId {
         let id = crate::tracks::mint_track_id(proj);
         let spec = GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs: BTreeMap::new(),
             loras: Vec::new(),

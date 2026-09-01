@@ -125,6 +125,7 @@ mod tests {
         inputs.insert("seed".to_string(), InputValue::Seed(42));
 
         let spec = GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs,
             loras: vec![
@@ -192,6 +193,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("duration_s".to_string(), InputValue::Float(120.0));
         let spec = GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs,
             loras: vec![],

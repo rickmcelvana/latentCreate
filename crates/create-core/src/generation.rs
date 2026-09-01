@@ -143,6 +143,13 @@ pub struct GenerationSpec {
     /// Lyrics to render, when the model accepts them.
     #[serde(default)]
     pub lyrics: Option<LyricRef>,
+    /// The song title the user named at generation, carried to the track and its
+    /// exported filename. `None` is an untitled track (the Library falls back to
+    /// the id). A **snapshot**, not a link: it records what the user chose here,
+    /// so retitling the source `LyricDoc` later never retitles tracks already
+    /// made from it (ARCHITECTURE 8).
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 impl GenerationSpec {
@@ -376,6 +383,7 @@ mod tests {
         inputs.insert("duration_s".to_string(), InputValue::Float(120.0));
         inputs.insert(GenerationSpec::SEED_KEY.to_string(), InputValue::Seed(42));
         let spec = GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs,
             loras: vec![],
@@ -403,6 +411,7 @@ mod tests {
             InputValue::Text("synthwave".to_string()),
         );
         let spec = GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs,
             loras: vec![],
@@ -411,9 +420,33 @@ mod tests {
         assert_eq!(spec.seed(), None);
     }
 
+    /// Invariant: the title survives a JSON round trip, and a spec serialised
+    /// before this field existed (no `title` key) reads back as `None` rather
+    /// than failing to parse -- the `#[serde(default)]` guard that keeps every
+    /// pre-T-409 sidecar readable.
+    #[test]
+    fn test_title_round_trips_and_defaults_to_none_when_absent() {
+        let spec = GenerationSpec {
+            title: Some("Midnight Drive".to_string()),
+            profile_id: "ace-step-1.5-turbo".to_string(),
+            inputs: BTreeMap::new(),
+            loras: vec![],
+            lyrics: None,
+        };
+        let json = serde_json::to_string(&spec).unwrap();
+        let parsed: GenerationSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.title.as_deref(), Some("Midnight Drive"));
+
+        // A record from before the field was added carries no `title` key.
+        let old = r#"{"profile_id":"ace-step-1.5-turbo","inputs":{}}"#;
+        let from_old: GenerationSpec = serde_json::from_str(old).unwrap();
+        assert_eq!(from_old.title, None);
+    }
+
     #[test]
     fn test_active_loras_skips_disabled() {
         let spec = GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs: BTreeMap::new(),
             loras: vec![
@@ -448,6 +481,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("duration_s".to_string(), InputValue::Float(150.0));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -510,6 +544,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("seed".to_string(), InputValue::Seed(u64::MAX));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -533,6 +568,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("planner.temperature".to_string(), InputValue::Float(0.95));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -593,6 +629,7 @@ mod tests {
     fn test_slot_overrides_seed_the_map() {
         let profile = minimax();
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs: BTreeMap::new(),
             loras: vec![],
@@ -617,6 +654,7 @@ mod tests {
             InputValue::Text("test caption".to_string()),
         );
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -642,6 +680,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("negative".to_string(), InputValue::Text("bad".to_string()));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -669,6 +708,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("not_real".to_string(), InputValue::Text("x".to_string()));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -685,6 +725,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("duration_s".to_string(), InputValue::Int(120));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -709,6 +750,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("seed".to_string(), InputValue::Int(42));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -732,6 +774,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("steps".to_string(), InputValue::Seed(8));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -752,6 +795,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("bpm".to_string(), InputValue::Int(400));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -768,6 +812,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("duration_s".to_string(), InputValue::Float(500.0));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -796,6 +841,7 @@ mod tests {
         let mut inputs = BTreeMap::new();
         inputs.insert("key".to_string(), InputValue::Enum("D".to_string()));
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -815,6 +861,7 @@ mod tests {
             InputValue::Enum("totally-made-up-key".to_string()),
         );
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs,
             loras: vec![],
@@ -850,6 +897,7 @@ mod tests {
     fn test_empty_spec_resolves_to_empty_map_when_no_overrides() {
         let profile = ace_step();
         let spec = GenerationSpec {
+            title: None,
             profile_id: profile.id.clone(),
             inputs: BTreeMap::new(),
             loras: vec![],

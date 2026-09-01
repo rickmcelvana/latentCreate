@@ -5387,9 +5387,16 @@ makes, each to the OS trash (except the album, which has no file), each refusing
 the reference graph demands.
 
 **Where the phase stands:** the milestone check was already met at T-405; T-408 was the scope
-owner-decision-4 added. **Remaining: T-409 then T-406.** **T-409 (the song title, carried)** is next
-and **has no brief yet** -- write it first (one brief at a time). It is **not small** (I checked the
-phase-4.md scope rather than trusting a one-liner): a title named once in Lyrics Studio must reach
+owner-decision-4 added. **Remaining: T-409 (lanes b, c) then T-406.** **T-409 (the song title, carried)** is
+**briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)) and split into three lanes; lane a landed
+2026-09-01 architect-direct** -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
+so every pre-T-409 sidecar stays readable), `ingest.rs` now copies it to `Track.title` instead of
+hardcoding `None`, the TS type and ARCHITECTURE §5 interface doc match, and `specFor` carries the
+selected doc's title onto the spec. The ~30 `GenerationSpec` construction sites (nearly all tests)
+took a mechanical `title: None`. create-core 174->175, src-tauri 112->114; the ingest-copies-the-title
+mutation was killed. **Lanes remaining: b (a title input in Lyrics Studio, bound to the existing
+`saveLyricDoc`) and c (an editable title field in the Audio Studio + sanitising the export default
+name -- trap 4).** The full task was checked against the phase-4.md scope, not a one-liner: a title named once in Lyrics Studio must reach
 the track, the Library and the exported file, and the field exists at both ends connected to nothing
 -- `Track.title` is hardcoded `None` at ingest and `LyricDoc.title` has never been writable. Five
 scope points: (1) a `LyricDoc.title` **input** in Lyrics Studio (schema + `bridge/lyricdoc.ts`
@@ -5409,4 +5416,41 @@ task, then Phase 4 closes. Two noted-not-scheduled items still stand: the Librar
 (docs/CSS-TODO.md) and persisting the selected lyric document across restarts.
 
 Gate green: create-core 174, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 112, frontend 414.
+Tree clean.
+
+### 2026-09-01 (later still) -- T-409 briefed and split into lanes; lane a landed
+
+Wrote [tasks/t-409-brief.md](tasks/t-409-brief.md) and landed lane a architect-direct. **Briefing it
+against the actual code corrected two impressions.** First, T-409 is not the small export-only tweak
+a one-liner implied -- it spans a schema field, ingest, a Lyrics Studio input, an Audio Studio field
+and the export name. Second, two surfaces are **already wired**, which shrinks it: the export default
+name already flows from the title (`Library.tsx` passes ``${row.name}.${ext}`` and `row.name` is
+already `title ?? id`), so once `Track.title` is set the filename follows for free -- only the
+**sanitise** step (trap 4) remains there; and `specFor` already threads the selected `doc` in, so
+prefilling a title is a one-field add, not new plumbing.
+
+**Lane a -- the field flows.** `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
+so every pre-T-409 sidecar deserialises with `title: None` rather than failing), `ingest.rs`'s
+`build_track` copies `pending.spec.title` onto `Track.title` instead of the hardcoded `None`, the TS
+`GenerationSpec` type and the **ARCHITECTURE §5 interface doc** match (same commit, per the rule), and
+`specFor` carries `doc?.title ?? null` onto the spec. The interface change forced `title: None` onto
+~30 `GenerationSpec` struct literals (nearly all in test modules) -- a compiler-checked mechanical
+spread done with a small script, one false positive (an `impl` block) caught and fixed. Two new tests:
+a create-core serde round-trip that also asserts the missing-key default, and an ingest test that the
+spec's title reaches the track (its mutation -- re-hardcoding `None` -- killed via file-copy backup).
+create-core 174->175, src-tauri 112->114; `tsc -b` caught one frontend spec literal missing the field
+(a test helper), now fixed.
+
+**Also fixed a formatting nit that had slipped into the T-408d commit** (`8b9271d`): two `assert_eq!`
+calls in `projects.rs` tests were not rustfmt-clean. `cargo fmt --all --check` flags them, so the
+T-408d commit was not in fact fmt-green as its session note claimed -- nothing was pushed, so CI never
+saw it, and lane a's gate caught it. The reflow rides this commit.
+
+**Lanes remaining:** **b** -- a title input at the top of the Lyrics Studio document, bound to the
+open doc and saved through the existing `saveLyricDoc` (no new command). **c** -- an editable title
+field in the Audio Studio (prefilled from the selected doc, so a batch shares one title) and a
+`filenameSafe` helper applied to the export default name **before** the dialog (trap 4). Then T-409's
+click-through, then **T-406** (provenance inspector) and Phase 4 closes.
+
+Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 414.
 Tree clean.

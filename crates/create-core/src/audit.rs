@@ -375,6 +375,7 @@ mod tests {
         inputs.insert("planner.top_k".to_string(), InputValue::Int(0));
         inputs.insert("planner.min_p".to_string(), InputValue::Float(0.0));
         GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs,
             loras: vec![],
@@ -396,6 +397,7 @@ mod tests {
         inputs.insert("duration_s".to_string(), InputValue::Float(120.0));
         inputs.insert("seed".to_string(), InputValue::Seed(8578771011914929));
         GenerationSpec {
+            title: None,
             profile_id: "minimax-music-3".to_string(),
             inputs,
             loras: vec![],

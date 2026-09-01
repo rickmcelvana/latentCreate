@@ -43,7 +43,10 @@ selection is left alone (deleting the selected project falls back to the first r
 first real deletion to reach `selected_project`'s "configured slug no longer exists" arm). Landed
 2026-09-01 architect-direct (three destructive-core mutations killed); **click-through passed all
 five steps 2026-09-01, so T-408 is COMPLETE across all four parts.** The phase now moves to **T-409**
-(the song title, carried from Lyrics Studio to the export filename -- **not yet briefed**) then
+(the song title, carried from Lyrics Studio to the export filename), **briefed and split into three
+lanes; lane a landed 2026-09-01** -- `GenerationSpec.title` (serde-default) flows through `ingest.rs`
+to `Track.title`, with the ARCHITECTURE §5 interface doc in the same commit; **lanes b (a Lyrics
+Studio title input) and c (an Audio Studio title field + export-name sanitising) remain** -- then
 **T-406** (provenance inspector, last), after which Phase 4 closes. Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**

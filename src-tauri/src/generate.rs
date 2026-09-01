@@ -460,6 +460,7 @@ mod tests {
         inputs.insert("seed".to_string(), InputValue::Seed(42));
         inputs.insert("duration_s".to_string(), InputValue::Float(30.0));
         GenerationSpec {
+            title: None,
             profile_id: "ace-step-1.5-turbo".to_string(),
             inputs,
             loras: Vec::new(),
@@ -647,6 +648,7 @@ mod tests {
         inputs.insert("duration_s".to_string(), InputValue::Float(30.0));
         inputs.insert("seed".to_string(), InputValue::Seed(8578771011914929));
         let spec = GenerationSpec {
+            title: None,
             profile_id: "minimax-music-3".to_string(),
             inputs,
             loras: Vec::new(),

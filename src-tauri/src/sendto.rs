@@ -155,6 +155,7 @@ mod tests {
             model_license: "Apache-2.0".to_string(),
             template: None,
             spec: create_core::generation::GenerationSpec {
+                title: None,
                 profile_id: "ace-step-1.5-turbo".to_string(),
                 inputs: std::collections::BTreeMap::new(),
                 loras: Vec::new(),
