@@ -222,7 +222,13 @@ The v1 link-out: open the mixing/mastering site and reveal the file for drag-in.
 **T-404a** (backend) is architect-direct and **landed 2026-09-01** -- `src-tauri/src/sendto.rs`,
 the `send_to` command, `target_url`, and four tests; src-tauri 107 -> 111. **T-404b** (frontend:
 `bridge/sendto.ts`, `state/sendto.ts` + tests, the `TrackCard` affordance, the CSS) is the Aider
-run, with its launch command in the brief.
+run, with its launch command in the brief. **T-404b landed 2026-09-01** and the two files of pure
+reference transcribed byte-identically; frontend 373 -> **382**. Review found three defects,
+all fixed directly (WORKFLOW 2): the run **deleted `.track-head-actions`**, the flex rule the
+row's whole action cluster hangs off, while merging the selector list next to it; and two
+mutations survived the seven tests it wrote -- hardcoding the destination to `'mixing'` and
+dropping the success path's `sending` reset both left the suite green. Two tests added, both
+mutations re-run and dead. **Click-through pending.**
 
 Verified while briefing, and worth keeping: **no capability change is needed** (`opener:default`
 already grants both permissions, and the Rust API does not consult the JS scope at all), and

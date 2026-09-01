@@ -2031,7 +2031,8 @@ body {
   gap: var(--gap-sm);
 }
 
-.track-play {
+.track-play,
+.track-send {
   padding: var(--gap-xs) var(--gap-sm);
   background: transparent;
   border: 1px solid var(--border);
@@ -2045,9 +2046,27 @@ body {
     border-color var(--transition);
 }
 
-.track-play:hover {
+.track-play:hover,
+.track-send:hover {
   color: var(--accent-hover);
   border-color: var(--accent);
+}
+
+.track-send:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  cursor: default;
+}
+
+.track-send-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.track-send-error {
+  margin: var(--gap-sm) 0 0;
+  color: var(--danger);
+  font-size: 13px;
 }
 
 /* --- Albums (T-403) --- */

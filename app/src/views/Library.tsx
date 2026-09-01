@@ -11,6 +11,13 @@ import { Player } from '../components/Player'
 import { usePlayerStore } from '../state/player'
 import { AlbumPanel } from '../components/AlbumPanel'
 import { useAlbumsStore } from '../state/albums'
+import {
+  failureFor,
+  isSending,
+  SEND_TARGET_NAMES,
+  SEND_TARGETS,
+  useSendToStore,
+} from '../state/sendto'
 
 export function Library() {
   const tracks = useLibraryStore((state) => state.tracks)
@@ -162,6 +169,13 @@ function ProjectCreate() {
 
 function TrackCard({ row }: { row: TrackRow }) {
   const play = usePlayerStore((state) => state.play)
+  const send = useSendToStore((state) => state.send)
+  const sending = useSendToStore((state) => state.sending)
+  const failure = useSendToStore((state) => state.failure)
+
+  const sendError = failureFor(failure, row.id)
+  const busy = isSending(sending, row.id)
+
   return (
     <li className="panel track-row">
       <div className="track-head">
@@ -174,6 +188,18 @@ function TrackCard({ row }: { row: TrackRow }) {
           >
             Play
           </button>
+          <span className="track-send-label">Send to</span>
+          {SEND_TARGETS.map((target) => (
+            <button
+              key={target}
+              type="button"
+              className="track-send"
+              disabled={busy}
+              onClick={() => void send(row.id, target)}
+            >
+              {SEND_TARGET_NAMES[target]}
+            </button>
+          ))}
           <span className="track-duration">{row.duration}</span>
         </div>
       </div>
@@ -210,6 +236,7 @@ function TrackCard({ row }: { row: TrackRow }) {
       </dl>
 
       <p className="track-file">{row.file}</p>
+      {sendError !== null ? <p className="track-send-error">{sendError}</p> : null}
     </li>
   )
 }
