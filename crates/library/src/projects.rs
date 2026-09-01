@@ -181,6 +181,49 @@ pub fn load_project(root: &Path, slug: &str) -> Result<Project, LibraryError> {
     Ok(project)
 }
 
+/// Delete a whole project -- its entire `projects/<slug>/` directory to the OS
+/// trash. Returns the projects that remain.
+///
+/// The most destructive delete in the app: the tree trashed holds every track,
+/// sidecar, lyric document and the `project.json` itself. It is also the
+/// simplest, because a project *is* its directory. There is no outer record to
+/// keep in step ([`list_projects`] reads the filesystem) and no id counter to
+/// preserve, so -- unlike [`delete_track`](crate::tracks::delete_track) and
+/// [`delete_doc`](crate::lyrics::delete_doc) -- there is no
+/// file-first/record-last order to get wrong: one trash call moves the whole
+/// tree, and the project lands in the Recycle Bin as a single restorable folder.
+///
+/// **Existence is checked on the directory, not the record.** This does not
+/// [`load_project`]: a project whose `project.json` is malformed must still be
+/// deletable -- reading it first would make the one project the user most wants
+/// gone the one they cannot remove. [`project_dir`] still refuses a slug that
+/// could escape the root.
+///
+/// **The selection is not touched here.** Deleting the *selected* project leaves
+/// `config.default_project_slug` naming a slug that no longer exists;
+/// `projectctx::selected_project` and the frontend's `effectiveProjectSlug`
+/// already resolve that to the first remaining project -- the same fallback a
+/// hand-edited config hits. Reconciling config here would duplicate a resolution
+/// the app already trusts and couple a filesystem op to the config store.
+///
+/// `trash` is the injected trash operation -- production passes
+/// [`trash_to_os`](crate::tracks::trash_to_os), tests a fake -- the shape T-405
+/// established for the one destructive action a test must not really perform.
+pub fn delete_project<F>(root: &Path, slug: &str, trash: F) -> Result<ProjectSet, LibraryError>
+where
+    F: Fn(&Path) -> Result<(), LibraryError>,
+{
+    let dir = project_dir(root, slug)?;
+    if !dir.exists() {
+        return Err(LibraryError::NotFound {
+            kind: "project",
+            id: slug.to_string(),
+        });
+    }
+    trash(&dir)?;
+    Ok(list_projects(root))
+}
+
 /// Reads every project under `root`. **Never fails.**
 ///
 /// A missing projects directory yields nothing and no warning -- that is the
@@ -435,5 +478,150 @@ mod tests {
         assert!(now.ends_with('Z'));
         assert_eq!(&now[4..5], "-");
         assert_eq!(&now[10..11], "T");
+    }
+
+    /// A fake trasher that records what it was asked to trash and moves it into
+    /// a graveyard, so a later `exists()` sees it gone -- without touching the
+    /// real Recycle Bin. Handles a directory (a whole project) as one move.
+    /// `RefCell` because the closure is `Fn`, not `FnMut`.
+    fn recording_trasher<'a>(
+        seen: &'a std::cell::RefCell<Vec<PathBuf>>,
+        graveyard: &Path,
+    ) -> impl Fn(&Path) -> Result<(), LibraryError> + 'a {
+        let graveyard = graveyard.to_path_buf();
+        move |path: &Path| {
+            seen.borrow_mut().push(path.to_path_buf());
+            let name = path.file_name().unwrap();
+            fs::rename(path, graveyard.join(name))?;
+            Ok(())
+        }
+    }
+
+    /// Invariant: delete moves the whole project directory via the injected
+    /// trasher and never hard-deletes it. The test that matters for the one
+    /// destructive action: it asserts the trash call was made with the project
+    /// directory, not merely that the directory is gone (CONVENTIONS).
+    #[test]
+    fn test_delete_project_trashes_the_whole_directory_and_hard_deletes_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        create_project(root.path(), "Alpha", NOW).unwrap();
+        let dir = project_dir(root.path(), "alpha").unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_project(root.path(), "alpha", recording_trasher(&seen, &graveyard)).unwrap();
+
+        let trashed = seen.into_inner();
+        assert_eq!(trashed.len(), 1, "the whole project dir is trashed in one move");
+        assert_eq!(trashed[0], dir);
+        // It really left the projects dir -- via the trasher, not a hard delete.
+        assert!(!dir.exists());
+        assert!(graveyard.join("alpha").join(PROJECT_FILE).exists());
+    }
+
+    /// Invariant: the returned list is the projects that remain, read back from
+    /// the filesystem. Deleting "alpha" not "beta", and reloading, is what kills
+    /// a "return before removal" or "trash the wrong dir" mutation.
+    #[test]
+    fn test_delete_project_returns_the_remaining_projects() {
+        let root = tempfile::tempdir().unwrap();
+        create_project(root.path(), "Alpha", NOW).unwrap();
+        create_project(root.path(), "Beta", NOW).unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let remaining =
+            delete_project(root.path(), "alpha", recording_trasher(&seen, &graveyard)).unwrap();
+
+        let slugs: Vec<&str> = remaining.projects.iter().map(|p| p.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["beta"]);
+        let reloaded: Vec<String> = list_projects(root.path())
+            .projects
+            .into_iter()
+            .map(|p| p.slug)
+            .collect();
+        assert_eq!(reloaded, vec!["beta".to_string()]);
+    }
+
+    /// Invariant: deleting one project leaves the others untouched -- kills a
+    /// mutation that trashes the parent `projects/` directory instead of the
+    /// slug's own.
+    #[test]
+    fn test_delete_project_leaves_the_other_projects_intact() {
+        let root = tempfile::tempdir().unwrap();
+        create_project(root.path(), "Alpha", NOW).unwrap();
+        let beta = create_project(root.path(), "Beta", NOW).unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_project(root.path(), "alpha", recording_trasher(&seen, &graveyard)).unwrap();
+
+        let still_there = load_project(root.path(), "beta").unwrap();
+        assert_eq!(still_there, beta);
+    }
+
+    /// Invariant: a project whose `project.json` is malformed is still
+    /// deletable. Proves existence is checked on the *directory*, not via
+    /// `load_project` -- kills a mutation that swaps the existence check for a
+    /// `load_project` guard, which would refuse exactly this project.
+    #[test]
+    fn test_delete_project_of_a_malformed_project_still_deletes() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = project_dir(root.path(), "broken").unwrap();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(PROJECT_FILE), "{ not json").unwrap();
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_project(root.path(), "broken", recording_trasher(&seen, &graveyard)).unwrap();
+
+        assert!(!dir.exists());
+        assert!(list_projects(root.path()).projects.is_empty());
+    }
+
+    /// Invariant: deleting a slug with no directory is a NotFound, and the
+    /// trasher is never called -- nothing is trashed for a project that is not
+    /// there.
+    #[test]
+    fn test_delete_project_of_an_unknown_slug_is_not_found_and_trashes_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let err = delete_project(
+            root.path(),
+            "nope",
+            recording_trasher(&seen, root.path()),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            LibraryError::NotFound {
+                kind: "project",
+                ..
+            }
+        ));
+        assert!(seen.into_inner().is_empty());
+    }
+
+    /// Invariant: a slug from the frontend that could escape the root is refused
+    /// before existence is even checked, and the trasher is never called.
+    #[test]
+    fn test_delete_project_refuses_a_slug_that_escapes_the_root() {
+        let root = tempfile::tempdir().unwrap();
+        for slug in ["../secrets", "a/b", "C:\\Windows", ""] {
+            let seen = std::cell::RefCell::new(Vec::new());
+            let err = delete_project(root.path(), slug, recording_trasher(&seen, root.path()))
+                .unwrap_err();
+            assert!(
+                matches!(err, LibraryError::UnusableName(_)),
+                "slug {slug:?} should be refused"
+            );
+            assert!(seen.into_inner().is_empty());
+        }
     }
 }

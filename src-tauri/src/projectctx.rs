@@ -98,6 +98,27 @@ mod tests {
         assert_eq!(project.slug, alpha.slug);
     }
 
+    /// Protects: the runtime wiring T-408d introduces. The unit test above
+    /// simulates a gone slug by never creating it; this produces the condition
+    /// the real way -- an actual `delete_project` of the *selected* project --
+    /// and confirms the app lands on a sibling rather than erroring. A fake
+    /// trasher removes the directory so the deletion takes effect in the tempdir.
+    #[test]
+    fn test_selected_project_after_deleting_the_configured_project_lands_on_a_sibling() {
+        let root = tempfile::tempdir().unwrap();
+        let alpha = library::projects::create_project(root.path(), "Alpha", NOW).unwrap();
+        library::projects::create_project(root.path(), "Beta", "2026-08-30T10:00:01Z").unwrap();
+        write_config(root.path(), Some("beta"));
+
+        library::projects::delete_project(root.path(), "beta", |path| {
+            std::fs::remove_dir_all(path).map_err(library::LibraryError::Io)
+        })
+        .unwrap();
+
+        let project = selected_project(root.path()).unwrap();
+        assert_eq!(project.slug, alpha.slug);
+    }
+
     /// Protects: a garbage slug in a hand-edited config cannot break the app.
     /// It degrades to the same fallback as a missing project, silently and
     /// consistently -- `load_project` refuses the slug, the chain falls

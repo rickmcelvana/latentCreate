@@ -367,10 +367,20 @@ Scope:
   (frontend 405 -> 410). **Producer click-through passed all steps 2026-09-01 -- a deleted album's
   tracks all stayed in the library. Part c is complete.**
 - **d. Delete a project.** The whole `projects/<slug>/` tree to OS trash -- tracks, sidecars,
-  lyrics, `project.json`. Deleting the *selected* project falls through `selected_project`'s
-  existing "configured slug that no longer exists" arm (decisions log 2026-08-30); that arm is
-  built and tested but has never been exercised by anything, and this task is the first thing
-  that can reach it.
+  lyrics, `project.json`. **The part that takes the pattern furthest by needing the least of it: a
+  project *is* its directory,** so there is no outer record to keep in step and no id counter to
+  preserve -- `delete_project` moves the tree in one `trash` call, no file-first/record-last order.
+  Two design points the other parts don't have: existence is checked on the **directory, not the
+  record** (a malformed `project.json` must stay deletable -- so no `load_project` guard), and the
+  **config selection is left alone** -- deleting the *selected* project falls through
+  `selected_project`'s existing "configured slug that no longer exists" arm (decisions log
+  2026-08-30), the first flow to reach it from a real deletion, rather than the command writing
+  config. **Landed 2026-09-01** ([t-408d-brief.md](t-408d-brief.md), architect-direct, three
+  destructive-core mutations killed via file-copy backup): `delete_project` (library 103 -> 109,
+  incl. a `projectctx` wiring test that deletes the configured project and asserts the app lands on a
+  sibling; src-tauri 111 -> 112), the `projects_delete` command, and a strong-warning inline-confirm
+  Delete on each project row (frontend 410 -> 414). **Producer click-through pending. When it passes,
+  T-408 closes.**
 
 **The traps to design against:**
 1. **OS trash, never `fs::remove_file`** (CONVENTIONS). The test that matters asserts the `trash`

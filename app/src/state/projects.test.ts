@@ -12,6 +12,7 @@ import {
 
 const mockListProjects = vi.fn()
 const mockCreateProject = vi.fn()
+const mockDeleteProject = vi.fn()
 const mockSaveConfig = vi.fn()
 const mockLoadConfig = vi.fn()
 const mockListTracks = vi.fn()
@@ -20,6 +21,7 @@ let mockIsTauri = true
 vi.mock('../bridge/projects', () => ({
   listProjects: () => mockListProjects(),
   createProject: (name: string) => mockCreateProject(name),
+  deleteProject: (slug: string) => mockDeleteProject(slug),
 }))
 
 vi.mock('../bridge/config', () => ({
@@ -137,6 +139,7 @@ describe('projects store', () => {
     mockIsTauri = true
     mockListProjects.mockReset()
     mockCreateProject.mockReset()
+    mockDeleteProject.mockReset()
     mockSaveConfig.mockReset()
     mockLoadConfig.mockReset()
     mockListTracks.mockReset()
@@ -144,6 +147,7 @@ describe('projects store', () => {
     useProjectsStore.setState({
       projects: [],
       warnings: null,
+      confirmingDelete: null,
       loading: false,
       error: null,
     })
@@ -241,5 +245,54 @@ describe('projects store', () => {
     expect(saved.default_project_slug).toBe('b')
     expect(saved.default_profile_id).toBe('ace-step-1.5-turbo')
     expect(mockListTracks).toHaveBeenCalledTimes(1)
+  })
+
+  it('askDelete_and_cancelDelete_toggle_the_pending_confirm', () => {
+    useProjectsStore.getState().askDelete('a')
+    expect(useProjectsStore.getState().confirmingDelete).toBe('a')
+    useProjectsStore.getState().cancelDelete()
+    expect(useProjectsStore.getState().confirmingDelete).toBeNull()
+  })
+
+  it('deleteProject_adopts_the_refreshed_list_and_clears_the_confirm', async () => {
+    useProjectsStore.setState({
+      projects: [makeProject({ slug: 'a' }), makeProject({ slug: 'b' })],
+      confirmingDelete: 'a',
+    })
+    mockDeleteProject.mockResolvedValue({
+      projects: [makeProject({ slug: 'b' })],
+      warnings: [],
+    })
+
+    const ok = await useProjectsStore.getState().deleteProject('a')
+
+    expect(ok).toBe(true)
+    expect(mockDeleteProject).toHaveBeenCalledWith('a')
+    const slugs = useProjectsStore.getState().projects.map((p) => p.slug)
+    expect(slugs).toEqual(['b'])
+    expect(useProjectsStore.getState().confirmingDelete).toBeNull()
+  })
+
+  it('deleteProject_reloads_the_library_for_the_now_effective_project', async () => {
+    useProjectsStore.setState({ projects: [makeProject({ slug: 'a' })] })
+    mockDeleteProject.mockResolvedValue({ projects: [], warnings: [] })
+
+    await useProjectsStore.getState().deleteProject('a')
+
+    expect(mockListTracks).toHaveBeenCalledTimes(1)
+  })
+
+  it('deleteProject_surfaces_an_error_and_clears_the_confirm', async () => {
+    useProjectsStore.setState({
+      projects: [makeProject({ slug: 'a' })],
+      confirmingDelete: 'a',
+    })
+    mockDeleteProject.mockRejectedValue(new Error('trash failed'))
+
+    const ok = await useProjectsStore.getState().deleteProject('a')
+
+    expect(ok).toBe(false)
+    expect(useProjectsStore.getState().error).toBe('trash failed')
+    expect(useProjectsStore.getState().confirmingDelete).toBeNull()
   })
 })

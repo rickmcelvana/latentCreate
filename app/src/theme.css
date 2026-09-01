@@ -1952,6 +1952,54 @@ body {
   white-space: nowrap;
 }
 
+.project-row-delete {
+  font: inherit;
+  font-size: 12px;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap-xs) var(--gap-sm);
+  cursor: pointer;
+}
+
+.project-row-delete:hover {
+  border-color: var(--danger);
+}
+
+.project-delete-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+}
+
+.project-delete-prompt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.project-delete-yes,
+.project-delete-cancel {
+  font: inherit;
+  font-size: 12px;
+  border-radius: var(--radius);
+  padding: var(--gap-xs) var(--gap-sm);
+  cursor: pointer;
+}
+
+.project-delete-yes {
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+}
+
+.project-delete-cancel {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
 .project-create {
   display: flex;
   gap: var(--gap-sm);

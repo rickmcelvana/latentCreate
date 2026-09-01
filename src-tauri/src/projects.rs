@@ -30,3 +30,20 @@ pub fn projects_create(config_dir: State<'_, ConfigDir>, name: String) -> Result
     library::projects::create_project(&config_dir.0, &name, &library::projects::now_rfc3339())
         .map_err(|e| e.to_string())
 }
+
+/// Delete a whole project -- its `projects/<slug>/` tree to the OS trash -- and
+/// return the projects that remain.
+///
+/// Never a hard delete (CONVENTIONS): the real trasher is
+/// `library::tracks::trash_to_os`. The selection is not written here; deleting
+/// the *selected* project leaves `config.default_project_slug` pointing at a
+/// gone slug, which `projectctx::selected_project` resolves to the first
+/// remaining project -- the frontend re-lists and lands on the same one.
+#[tauri::command]
+pub fn projects_delete(
+    config_dir: State<'_, ConfigDir>,
+    slug: String,
+) -> Result<library::ProjectSet, String> {
+    library::projects::delete_project(&config_dir.0, &slug, library::tracks::trash_to_os)
+        .map_err(|e| e.to_string())
+}

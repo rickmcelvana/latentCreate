@@ -91,6 +91,7 @@ pub fn run() {
             tracks::track_audio_path,
             projects::projects_list,
             projects::projects_create,
+            projects::projects_delete,
             albums::albums_list,
             albums::album_create,
             albums::album_rename,

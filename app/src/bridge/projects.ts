@@ -42,3 +42,8 @@ export async function listProjects(): Promise<ProjectSet> {
 export async function createProject(name: string): Promise<Project> {
   return await invoke<Project>('projects_create', { name })
 }
+
+/** Delete a whole project (its tree to the OS trash). Returns what remains. */
+export async function deleteProject(slug: string): Promise<ProjectSet> {
+  return await invoke<ProjectSet>('projects_delete', { slug })
+}

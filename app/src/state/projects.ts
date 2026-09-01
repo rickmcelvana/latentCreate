@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   createProject,
+  deleteProject as deleteProjectRequest,
   listProjects,
   type Project,
   type ProjectWarning,
@@ -60,6 +61,8 @@ interface ProjectsState {
   projects: Project[]
   /** The rendered warning line, or `null`. */
   warnings: string | null
+  /** The slug of the project awaiting a delete confirm, or `null`. */
+  confirmingDelete: string | null
   loading: boolean
   error: string | null
   load: () => Promise<void>
@@ -67,11 +70,18 @@ interface ProjectsState {
   create: (name: string) => Promise<boolean>
   /** Persist the selection and reload the track list. */
   select: (slug: string) => Promise<boolean>
+  /** Arm the delete confirm for one project row. */
+  askDelete: (slug: string) => void
+  /** Cancel a pending delete confirm. */
+  cancelDelete: () => void
+  /** Delete a whole project (its tree to the OS trash). `true` on success. */
+  deleteProject: (slug: string) => Promise<boolean>
 }
 
 export const useProjectsStore = create<ProjectsState>((set, get) => ({
   projects: [],
   warnings: null,
+  confirmingDelete: null,
   loading: false,
   error: null,
 
@@ -122,5 +132,30 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     // target the same project".
     await useLibraryStore.getState().load()
     return true
+  },
+
+  askDelete: (slug) => set({ confirmingDelete: slug, error: null }),
+  cancelDelete: () => set({ confirmingDelete: null }),
+
+  deleteProject: async (slug) => {
+    try {
+      const projectSet = await deleteProjectRequest(slug)
+      set({
+        projects: projectSet.projects,
+        warnings: projectWarningLine(projectSet.warnings),
+        confirmingDelete: null,
+        error: null,
+      })
+      // The selection is not written on delete: dropping the slug from the list
+      // lets `effectiveProjectSlug` fall back to the first remaining project,
+      // the same resolution the backend's `selected_project` makes. Reload the
+      // library so its tracks are the now-effective project's; the album panel
+      // reloads on its own (Library keys its effect on the derived selection).
+      await useLibraryStore.getState().load()
+      return true
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), confirmingDelete: null })
+      return false
+    }
   },
 }))
