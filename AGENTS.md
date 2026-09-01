@@ -33,10 +33,12 @@ version) is **complete** (a-back + a-front landed 2026-09-01 architect-direct; c
 v31 correctly refused). **Part b (many lyric docs per project + doc delete) is complete**
 (b-back + b-front landed 2026-09-01 architect-direct: `delete_doc`, shared `tracks_referencing`, the
 doc commands, and the Lyrics Studio document picker; click-through passed all five steps).
-**Part c (delete an album) is code-complete** -- the pattern-breaker: an album has no file, so
+**Part c (delete an album) is complete** -- the pattern-breaker: an album has no file, so
 `delete_album` trashes nothing and refuses nothing (nothing references an album), and deleting a
 list never touches its tracks; landed 2026-09-01 architect-direct with the album-panel affordance,
-**producer click-through pending**. Then T-408d (project). Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+click-through passed (a deleted album's tracks all stayed). **T-408d (delete a project) is the one
+remaining part** and is not yet briefed -- the whole `projects/<slug>/` tree to OS trash, the first
+thing to reach `selected_project`'s never-exercised "configured slug no longer exists" arm. Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.

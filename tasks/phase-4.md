@@ -364,7 +364,8 @@ Scope:
   points at an album). **Landed 2026-09-01** ([t-408c-brief.md](t-408c-brief.md), architect-direct,
   three mutations killed): `delete_album` (library 100 -> 103), the `album_delete` command, and an
   inline-confirm Delete beside Rename in the album panel whose copy says the tracks stay
-  (frontend 405 -> 410). **Producer click-through pending.**
+  (frontend 405 -> 410). **Producer click-through passed all steps 2026-09-01 -- a deleted album's
+  tracks all stayed in the library. Part c is complete.**
 - **d. Delete a project.** The whole `projects/<slug>/` tree to OS trash -- tracks, sidecars,
   lyrics, `project.json`. Deleting the *selected* project falls through `selected_project`'s
   existing "configured slug that no longer exists" arm (decisions log 2026-08-30); that arm is
