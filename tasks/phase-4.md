@@ -218,6 +218,22 @@ check).
 ### T-404 — Send-to — **milestone line**
 The v1 link-out: open the mixing/mastering site and reveal the file for drag-in.
 
+**Briefed 2026-09-01** ([t-404-brief.md](t-404-brief.md)), split by lane rather than by size:
+**T-404a** (backend) is architect-direct and **landed 2026-09-01** -- `src-tauri/src/sendto.rs`,
+the `send_to` command, `target_url`, and four tests; src-tauri 107 -> 111. **T-404b** (frontend:
+`bridge/sendto.ts`, `state/sendto.ts` + tests, the `TrackCard` affordance, the CSS) is the Aider
+run, with its launch command in the brief.
+
+Verified while briefing, and worth keeping: **no capability change is needed** (`opener:default`
+already grants both permissions, and the Rust API does not consult the JS scope at all), and
+**`reveal_item_in_dir` canonicalizes first**, so a deleted file is an error rather than a no-op --
+which is why the command checks `is_file()` itself and reveals *before* opening the browser.
+
+**The URLs were re-verified and ARCHITECTURE 8 is right.** `../latent-mixing` mentions
+`latentmixing.com` 59 times against `latentmixer.com` 17, and the majority is stale: that repo's
+2026-08-08 entry records the app deployed at `app.latentmixer.com` with a doc sweep still owed, and
+the live `latentbeats.com` links `app.latentmixer.com` / `app.latentmastering.com`.
+
 Scope:
 - **`send_to` command** (or two): `openUrl` to `https://app.latentmixer.com` /
   `https://app.latentmastering.com` and `revealItemInDir` on the resolved audio path. The

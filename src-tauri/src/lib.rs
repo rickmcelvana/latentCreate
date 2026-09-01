@@ -23,6 +23,7 @@ mod optimize;
 mod profile;
 mod projectctx;
 mod projects;
+mod sendto;
 mod tracks;
 
 use jobs::ComfyState;
@@ -78,6 +79,7 @@ pub fn run() {
             import::save_imported_profile,
             install::models_install,
             install::models_progress,
+            sendto::send_to,
             jobs::connect_comfy,
             jobs::run_workflow,
             jobs::cancel_job,
