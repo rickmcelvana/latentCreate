@@ -232,12 +232,15 @@ interface LyricsState extends LyricsSnapshot, OptimizerState {
   confirmingVersion: number | null
   /**
    * The message from a refused version delete (it names the tracks holding the
-   * version), or `null`. Kept separate from `error` on purpose: `error` is part
-   * of `LyricsSnapshot` and feeds `generationPhase`, so reusing it would flip
-   * the editor's status pill to "Failed" for a refusal that is not a generation
-   * failure. Shown at the version list, where the action happened.
+   * version) and the version it belongs to, or `null`. Kept separate from
+   * `error` on purpose: `error` is part of `LyricsSnapshot` and feeds
+   * `generationPhase`, so reusing it would flip the editor's status pill to
+   * "Failed" for a refusal that is not a generation failure. Carries `version`
+   * so the message renders at *that row* -- a document can hold dozens of
+   * versions, and a message at the top of the list is off-screen when the row
+   * acted on is far down (T-408a click-through).
    */
-  deleteError: string | null
+  deleteError: { version: number; message: string } | null
   setBrief: (patch: Partial<LyricBrief>) => void
   optimize: (profileId: string) => Promise<void>
   setProposed: (text: string) => void
@@ -442,8 +445,9 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       set({ doc: updated, confirmingVersion: null, deleteError: null })
       return true
     } catch (err: unknown) {
-      // The message names the tracks holding the version -- show it as-is.
-      set({ deleteError: String(err), confirmingVersion: null })
+      // The message names the tracks holding the version -- show it as-is, at
+      // the row it belongs to.
+      set({ deleteError: { version: number, message: String(err) }, confirmingVersion: null })
       return false
     }
   },

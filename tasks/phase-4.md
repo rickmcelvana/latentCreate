@@ -344,9 +344,10 @@ Scope:
   ([t-408a-brief.md](t-408a-brief.md), architect-direct, six mutations killed):
   `library::lyrics::delete_version`, `LibraryError::VersionReferenced`, the `lyrics_delete_version`
   command; library 84 -> 92. **a-front (the Lyrics Studio delete affordance) landed the same day**
-  (architect-direct; frontend 395 -> 399), a `VersionRow` Delete with an inline confirm and a
-  `deleteError` message at the version list. **Producer click-through pending** -- the refusal
-  against `my-first-song`'s real v31 is the part the gate cannot see.
+  (architect-direct; frontend 395 -> 399), a `VersionRow` Delete with an inline confirm. **Producer
+  click-through passed all five steps** (v31 correctly refused, naming the track); one defect found
+  and fixed -- the refusal message now renders inline at its row rather than the top of a 31-item
+  list. **Part a is complete.**
 - **b. Many lyric documents per project, and delete a document.** `lyrics_create`, `lyrics_list`,
   `lyrics_open(id)` and a document picker in Lyrics Studio, retiring the Phase 2 one-document
   shortcut. A document is deletable only when none of its versions is referenced -- the same rule

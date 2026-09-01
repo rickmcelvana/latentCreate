@@ -948,6 +948,12 @@ body {
   font-size: 13px;
 }
 
+/* The refusal message, at the row it belongs to rather than the top of the
+   list (T-408a click-through). */
+.lyrics-version-error {
+  margin: var(--gap-sm) 0 0;
+}
+
 /* --- The shared prompt diff (LyricsStudio now, audio tags in Phase 3) --- */
 
 .prompt-diff {

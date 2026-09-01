@@ -395,10 +395,6 @@ function VersionList() {
   return (
     <div className="lyrics-versions">
       <h2 className="lyrics-versions-title">Versions</h2>
-      {/* The refusal message names the tracks holding a version, shown here at
-          the list rather than through the editor's generation error -- a refused
-          delete is not a generation failure. */}
-      {deleteError !== null ? <p className="lyrics-error">{deleteError}</p> : null}
       <ol className="lyrics-version-list">
         {doc?.versions.map((version) => (
           <VersionRow
@@ -406,6 +402,12 @@ function VersionList() {
             version={version}
             isApproved={doc.approved === version.number}
             confirming={confirmingVersion === version.number}
+            /* The refusal names the tracks holding this version. Shown at the
+               row it belongs to, not at the top of the list -- a document can
+               hold dozens of versions, and a top-of-list message is off-screen
+               when the acted-on row is far down (T-408a click-through). It is
+               kept off the editor's generation error, which a refusal is not. */
+            errorMessage={deleteError?.version === version.number ? deleteError.message : null}
             onRestore={() => restore(version.number)}
             onApprove={() => void approve(version.number)}
             onAskDelete={() => askDeleteVersion(version.number)}
@@ -422,6 +424,7 @@ function VersionRow({
   version,
   isApproved,
   confirming,
+  errorMessage,
   onRestore,
   onApprove,
   onAskDelete,
@@ -431,6 +434,7 @@ function VersionRow({
   version: LyricVersion
   isApproved: boolean
   confirming: boolean
+  errorMessage: string | null
   onRestore: () => void
   onApprove: () => void
   onAskDelete: () => void
@@ -470,6 +474,7 @@ function VersionRow({
           </button>
         </div>
       )}
+      {errorMessage !== null ? <p className="lyrics-error lyrics-version-error">{errorMessage}</p> : null}
     </li>
   )
 }

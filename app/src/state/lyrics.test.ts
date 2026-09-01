@@ -189,8 +189,13 @@ describe('lyrics store', () => {
   })
 
   it('test_ask_and_cancel_delete_version_toggle_the_marker', () => {
+    // A stale refusal from a prior attempt is cleared when a new confirm arms.
+    useLyricsStore.setState({
+      deleteError: { version: 5, message: 'old' },
+    })
     useLyricsStore.getState().askDeleteVersion(2)
     expect(useLyricsStore.getState().confirmingVersion).toBe(2)
+    expect(useLyricsStore.getState().deleteError).toBeNull()
     useLyricsStore.getState().cancelDeleteVersion()
     expect(useLyricsStore.getState().confirmingVersion).toBeNull()
   })
@@ -241,7 +246,11 @@ describe('lyrics store', () => {
     expect(ok).toBe(false)
     const state = useLyricsStore.getState()
     expect(state.doc).toEqual(doc)
-    expect(state.deleteError).toBe('version 1 of ld-0001 is still used by 1 track(s): tr-0007')
+    // The error is keyed to the version, so the view can render it at that row.
+    expect(state.deleteError).toEqual({
+      version: 1,
+      message: 'version 1 of ld-0001 is still used by 1 track(s): tr-0007',
+    })
     expect(state.confirmingVersion).toBeNull()
   })
 
