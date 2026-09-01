@@ -92,7 +92,18 @@ behaviour lives in `library::lyrics::delete_version`, which the tests cover.
 
 ---
 
-## T-408a-front -- frontend (Aider run)
+## T-408a-front -- frontend (LANDED 2026-09-01, architect-direct)
+
+Implemented directly, not through Aider: the reference below was already written, and WORKFLOW 1
+skips the executor for already-written work. Two deliberate deviations from the spec below, both
+recorded in PROJECT.md's session log:
+1. **A dedicated `deleteError` field, not the shared `error`.** `error` is part of `LyricsSnapshot`
+   and feeds `generationPhase`; routing a refusal through it flips the editor status pill to
+   "Failed". `deleteError` sits outside the snapshot and renders at the version list.
+2. **No `.setup-button-danger`.** It did not already exist, and T-405's destructive flow uses a
+   plain button with a `--warning` prompt, so the confirm matches that.
+
+Frontend 395 -> 399. The producer click-through (below) is the remaining step.
 
 **Files to modify:**
 - `app/src/bridge/lyricdoc.ts` (add one function)

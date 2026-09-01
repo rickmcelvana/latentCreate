@@ -28,10 +28,10 @@ T-405 (track actions: delete-to-trash, rename, export, reveal) are complete, bot
 passed 2026-09-01**, so the phase's milestone check is met in full. **The phase is not finished** --
 **T-408** (delete for lyric versions/documents/albums/projects, reusing T-405's `trash_to_os`),
 **T-409** (the song title, carried from Lyrics Studio to the export filename) and **T-406**
-(provenance inspector) remain, in that order. **T-408 is in progress:** its part a-back (delete a
-lyric version, refusing when a track references it) landed 2026-09-01 architect-direct; a-front (the
-Lyrics Studio affordance) is the next Aider run, then b/c/d. Its context is in the latest PROJECT.md
-session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+(provenance inspector) remain, in that order. **T-408 is in progress:** part a (delete a lyric
+version, refusing when a track references it) is code-complete -- a-back and a-front both landed
+2026-09-01 architect-direct -- with the producer click-through pending, then b/c/d. Its context is
+in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.

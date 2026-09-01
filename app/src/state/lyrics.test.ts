@@ -34,6 +34,7 @@ const mockCancelLyrics = vi.fn()
 const mockSubscribeLyrics = vi.fn()
 const mockOpenLyricDoc = vi.fn()
 const mockSaveLyricDoc = vi.fn()
+const mockDeleteLyricVersion = vi.fn()
 const mockLintLyrics = vi.fn()
 let mockIsTauri = true
 
@@ -50,6 +51,7 @@ vi.mock('../bridge/lyrics', () => ({
 vi.mock('../bridge/lyricdoc', () => ({
   openLyricDoc: () => mockOpenLyricDoc(),
   saveLyricDoc: (doc: unknown) => mockSaveLyricDoc(doc),
+  deleteLyricVersion: (docId: string, number: number) => mockDeleteLyricVersion(docId, number),
   lintLyrics: (profileId: string, brief: unknown, text: string) =>
     mockLintLyrics(profileId, brief, text),
 }))
@@ -105,6 +107,7 @@ beforeEach(() => {
   mockSubscribeLyrics.mockReset()
   mockOpenLyricDoc.mockReset()
   mockSaveLyricDoc.mockReset()
+  mockDeleteLyricVersion.mockReset()
   mockLintLyrics.mockReset()
   useLyricsStore.setState({
     brief: mockDefaultBrief,
@@ -117,6 +120,8 @@ beforeEach(() => {
     doc: null,
     findings: [],
     linted: false,
+    confirmingVersion: null,
+    deleteError: null,
     optimization: null,
     proposed: '',
     optimizing: false,
@@ -181,6 +186,70 @@ describe('lyrics store', () => {
     const brief = useLyricsStore.getState().brief
     expect(brief.mood).toBe('somber')
     expect(brief.structure).toBe('V-C-V-C-B-C')
+  })
+
+  it('test_ask_and_cancel_delete_version_toggle_the_marker', () => {
+    useLyricsStore.getState().askDeleteVersion(2)
+    expect(useLyricsStore.getState().confirmingVersion).toBe(2)
+    useLyricsStore.getState().cancelDeleteVersion()
+    expect(useLyricsStore.getState().confirmingVersion).toBeNull()
+  })
+
+  /**
+   * Protects the happy path (T-405b lesson): a successful delete replaces `doc`
+   * with the backend's result -- never a local edit -- and clears the confirm.
+   * Asserting the call arguments guards the dropped-argument mutation (T-404b).
+   */
+  it('test_delete_version_replaces_the_doc_with_the_backend_result', async () => {
+    const before = lyricDoc({
+      versions: [
+        { number: 1, text: 'one', created_at: 't1', source: { kind: 'human' } },
+        { number: 2, text: 'two', created_at: 't2', source: { kind: 'human' } },
+      ],
+    })
+    const after = lyricDoc({
+      versions: [{ number: 1, text: 'one', created_at: 't1', source: { kind: 'human' } }],
+    })
+    mockDeleteLyricVersion.mockResolvedValue(after)
+    useLyricsStore.setState({ doc: before, confirmingVersion: 2 })
+
+    const ok = await useLyricsStore.getState().deleteVersion(2)
+
+    expect(ok).toBe(true)
+    expect(mockDeleteLyricVersion).toHaveBeenCalledWith('ld-0001', 2)
+    const state = useLyricsStore.getState()
+    expect(state.doc).toEqual(after)
+    expect(state.confirmingVersion).toBeNull()
+    expect(state.deleteError).toBeNull()
+  })
+
+  /**
+   * Protects: a refusal records its message (which names the blocking tracks)
+   * and leaves the document unchanged -- the delete must not appear to succeed.
+   */
+  it('test_delete_version_refusal_keeps_the_doc_and_shows_the_message', async () => {
+    const doc = lyricDoc({
+      versions: [{ number: 1, text: 'one', created_at: 't1', source: { kind: 'human' } }],
+    })
+    mockDeleteLyricVersion.mockRejectedValue(
+      'version 1 of ld-0001 is still used by 1 track(s): tr-0007',
+    )
+    useLyricsStore.setState({ doc, confirmingVersion: 1 })
+
+    const ok = await useLyricsStore.getState().deleteVersion(1)
+
+    expect(ok).toBe(false)
+    const state = useLyricsStore.getState()
+    expect(state.doc).toEqual(doc)
+    expect(state.deleteError).toBe('version 1 of ld-0001 is still used by 1 track(s): tr-0007')
+    expect(state.confirmingVersion).toBeNull()
+  })
+
+  it('test_delete_version_is_a_noop_without_a_doc', async () => {
+    useLyricsStore.setState({ doc: null })
+    const ok = await useLyricsStore.getState().deleteVersion(1)
+    expect(ok).toBe(false)
+    expect(mockDeleteLyricVersion).not.toHaveBeenCalled()
   })
 })
 

@@ -69,6 +69,16 @@ export async function saveLyricDoc(doc: LyricDoc): Promise<void> {
   await invoke('lyrics_save', { doc })
 }
 
+/**
+ * Delete one version, refusing (with a message naming the tracks) when a track's
+ * provenance references it. Returns the updated document, so the caller replaces
+ * its copy rather than editing `versions` locally -- a local edit followed by
+ * `saveLyricDoc` would bypass the backend's refusal check.
+ */
+export async function deleteLyricVersion(docId: string, number: number): Promise<LyricDoc> {
+  return await invoke<LyricDoc>('lyrics_delete_version', { docId, version: number })
+}
+
 /** Lint text against a profile and brief, returning advisory findings. */
 export async function lintLyrics(
   profileId: string,

@@ -935,6 +935,19 @@ body {
   gap: var(--gap-sm);
 }
 
+/* The inline delete confirm, in place of the action buttons (T-408a). Same
+   shape as .track-action-confirm: a warning-toned prompt beside the buttons. */
+.lyrics-version-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.lyrics-version-confirm-prompt {
+  color: var(--warning);
+  font-size: 13px;
+}
+
 /* --- The shared prompt diff (LyricsStudio now, audio tags in Phase 3) --- */
 
 .prompt-diff {

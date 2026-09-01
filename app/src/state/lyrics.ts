@@ -12,6 +12,7 @@ import {
 } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
 import {
+  deleteLyricVersion,
   lintLyrics,
   openLyricDoc,
   saveLyricDoc,
@@ -223,6 +224,20 @@ interface LyricsState extends LyricsSnapshot, OptimizerState {
    * findings about text the user has since edited are worse than none.
    */
   linted: boolean
+  /**
+   * The version number awaiting a delete confirmation, or `null`. Keyed by
+   * number because that is a version's identity within a document -- the T-405
+   * `confirming` shape, applied to versions.
+   */
+  confirmingVersion: number | null
+  /**
+   * The message from a refused version delete (it names the tracks holding the
+   * version), or `null`. Kept separate from `error` on purpose: `error` is part
+   * of `LyricsSnapshot` and feeds `generationPhase`, so reusing it would flip
+   * the editor's status pill to "Failed" for a refusal that is not a generation
+   * failure. Shown at the version list, where the action happened.
+   */
+  deleteError: string | null
   setBrief: (patch: Partial<LyricBrief>) => void
   optimize: (profileId: string) => Promise<void>
   setProposed: (text: string) => void
@@ -240,6 +255,9 @@ interface LyricsState extends LyricsSnapshot, OptimizerState {
   saveDraft: () => Promise<void>
   restore: (number: number) => void
   approve: (number: number) => Promise<void>
+  askDeleteVersion: (number: number) => void
+  cancelDeleteVersion: () => void
+  deleteVersion: (number: number) => Promise<boolean>
   lint: (profileId: string) => Promise<void>
 }
 
@@ -254,6 +272,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   doc: null,
   findings: [],
   linted: false,
+  confirmingVersion: null,
+  deleteError: null,
   ...NO_OPTIMIZATION,
 
   // Editing the brief drops any accepted prompt. The override was written
@@ -404,6 +424,27 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       await saveLyricDoc(next)
     } catch (err: unknown) {
       set({ error: String(err) })
+    }
+  },
+
+  askDeleteVersion: (number) => set({ confirmingVersion: number, deleteError: null }),
+  cancelDeleteVersion: () => set({ confirmingVersion: null }),
+
+  // The backend is the authority: it refuses when a track references the
+  // version, and returns the document with the version removed. The store
+  // replaces `doc` with that result -- it never edits `versions` locally, which
+  // would skip the refusal check entirely.
+  deleteVersion: async (number) => {
+    const doc = get().doc
+    if (doc === null) return false
+    try {
+      const updated = await deleteLyricVersion(doc.id, number)
+      set({ doc: updated, confirmingVersion: null, deleteError: null })
+      return true
+    } catch (err: unknown) {
+      // The message names the tracks holding the version -- show it as-is.
+      set({ deleteError: String(err), confirmingVersion: null })
+      return false
     }
   },
 

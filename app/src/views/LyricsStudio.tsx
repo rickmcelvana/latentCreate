@@ -381,23 +381,36 @@ function Findings({ findings }: { findings: LintFinding[] }) {
   )
 }
 
-/** The versions, with restore and approve. */
+/** The versions, with restore, approve and delete. */
 function VersionList() {
   const doc = useLyricsStore((state) => state.doc)
   const restore = useLyricsStore((state) => state.restore)
   const approve = useLyricsStore((state) => state.approve)
+  const confirmingVersion = useLyricsStore((state) => state.confirmingVersion)
+  const askDeleteVersion = useLyricsStore((state) => state.askDeleteVersion)
+  const cancelDeleteVersion = useLyricsStore((state) => state.cancelDeleteVersion)
+  const deleteVersion = useLyricsStore((state) => state.deleteVersion)
+  const deleteError = useLyricsStore((state) => state.deleteError)
 
   return (
     <div className="lyrics-versions">
       <h2 className="lyrics-versions-title">Versions</h2>
+      {/* The refusal message names the tracks holding a version, shown here at
+          the list rather than through the editor's generation error -- a refused
+          delete is not a generation failure. */}
+      {deleteError !== null ? <p className="lyrics-error">{deleteError}</p> : null}
       <ol className="lyrics-version-list">
         {doc?.versions.map((version) => (
           <VersionRow
             key={version.number}
             version={version}
             isApproved={doc.approved === version.number}
+            confirming={confirmingVersion === version.number}
             onRestore={() => restore(version.number)}
             onApprove={() => void approve(version.number)}
+            onAskDelete={() => askDeleteVersion(version.number)}
+            onCancelDelete={cancelDeleteVersion}
+            onConfirmDelete={() => void deleteVersion(version.number)}
           />
         ))}
       </ol>
@@ -408,13 +421,21 @@ function VersionList() {
 function VersionRow({
   version,
   isApproved,
+  confirming,
   onRestore,
   onApprove,
+  onAskDelete,
+  onCancelDelete,
+  onConfirmDelete,
 }: {
   version: LyricVersion
   isApproved: boolean
+  confirming: boolean
   onRestore: () => void
   onApprove: () => void
+  onAskDelete: () => void
+  onCancelDelete: () => void
+  onConfirmDelete: () => void
 }) {
   return (
     <li className={`lyrics-version ${isApproved ? 'lyrics-version-approved' : ''}`}>
@@ -424,16 +445,31 @@ function VersionRow({
         {isApproved ? <span className="lyrics-version-approved-badge">approved</span> : null}
       </div>
       <p className="lyrics-version-preview">{preview(version.text)}</p>
-      <div className="lyrics-version-actions">
-        <button type="button" className="setup-button" onClick={onRestore}>
-          Restore
-        </button>
-        {!isApproved ? (
-          <button type="button" className="setup-button setup-button-primary" onClick={onApprove}>
-            Approve
+      {confirming ? (
+        <div className="lyrics-version-confirm">
+          <span className="lyrics-version-confirm-prompt">Delete this version?</span>
+          <button type="button" className="setup-button" onClick={onConfirmDelete}>
+            Delete
           </button>
-        ) : null}
-      </div>
+          <button type="button" className="setup-button" onClick={onCancelDelete}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="lyrics-version-actions">
+          <button type="button" className="setup-button" onClick={onRestore}>
+            Restore
+          </button>
+          {!isApproved ? (
+            <button type="button" className="setup-button setup-button-primary" onClick={onApprove}>
+              Approve
+            </button>
+          ) : null}
+          <button type="button" className="setup-button" onClick={onAskDelete}>
+            Delete
+          </button>
+        </div>
+      )}
     </li>
   )
 }

@@ -343,7 +343,10 @@ Scope:
   would silently repoint every sidecar's `LyricRef`. **Backend landed 2026-09-01**
   ([t-408a-brief.md](t-408a-brief.md), architect-direct, six mutations killed):
   `library::lyrics::delete_version`, `LibraryError::VersionReferenced`, the `lyrics_delete_version`
-  command; library 84 -> 92. The Lyrics Studio affordance (a-front) is the next Aider run.
+  command; library 84 -> 92. **a-front (the Lyrics Studio delete affordance) landed the same day**
+  (architect-direct; frontend 395 -> 399), a `VersionRow` Delete with an inline confirm and a
+  `deleteError` message at the version list. **Producer click-through pending** -- the refusal
+  against `my-first-song`'s real v31 is the part the gate cannot see.
 - **b. Many lyric documents per project, and delete a document.** `lyrics_create`, `lyrics_list`,
   `lyrics_open(id)` and a document picker in Lyrics Studio, retiring the Phase 2 one-document
   shortcut. A document is deletable only when none of its versions is referenced -- the same rule
