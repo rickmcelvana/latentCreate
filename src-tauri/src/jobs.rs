@@ -57,6 +57,12 @@ pub struct TrackSaved {
 #[derive(Default)]
 pub struct ComfyState {
     comfy: RwLock<Option<Arc<LocalComfy>>>,
+    /// Serialises the check-connect-store in `ensure_connected` and
+    /// [`connect_comfy`]. Without it, two concurrent first-use commands each
+    /// see `comfy == None`, each spawn a `comfy-mcp`, and the second store
+    /// drops the first -- two console windows, one killed immediately (the
+    /// Setup view's ComfyUI and Models steps do exactly this on mount).
+    pub(crate) connect: tokio::sync::Mutex<()>,
     jobs: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
     pending: Arc<Mutex<HashMap<String, PendingTrack>>>,
 }
@@ -143,12 +149,13 @@ pub async fn connect_comfy(
     config_dir: State<'_, ConfigDir>,
     bin: Option<String>,
 ) -> Result<(), String> {
+    let _guard = state.connect.lock().await;
     let bin = bin.unwrap_or_else(|| "comfy-mcp".to_string());
     let log = SessionLog::open(config_dir.0.join("session.log")).map_err(|e| e.to_string())?;
     let comfy = LocalComfy::connect(&bin, log)
         .await
         .map_err(|e| e.to_string())?;
-    *state.comfy.write().await = Some(Arc::new(comfy));
+    state.store(comfy).await;
     Ok(())
 }
 

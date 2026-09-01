@@ -75,6 +75,21 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
 
 ## Key decisions log
 
+- **2026-09-01 — a cold start spawned `comfy-mcp` twice, and the loser's console window was the
+  only trace of it.** Launching the built app opened two windows: one closed immediately, one
+  persisted for the session. Root cause was a check-then-act race in `ensure_connected`
+  (`src-tauri/src/comfy.rs`): the Setup view's ComfyUI and Models steps both probe on mount, so
+  `comfy_status` and `models_status` hit the connect path concurrently, both saw `comfy == None`,
+  both spawned a child, and the second `store` dropped the first `Arc` — whose rmcp
+  `TokioChildProcess` then killed the loser (the closing window). The fix serialises
+  check-connect-store under a `tokio::sync::Mutex<()>` on `ComfyState` (`connect`), re-checking
+  `connected()` after acquiring so the second caller reuses the winner; `connect_comfy` shares the
+  lock and now routes through `store()` instead of writing the slot directly. Related fix, the
+  reason any window was visible at all: the child is spawned with `CREATE_NO_WINDOW` on Windows,
+  since a stdio server the user never talks to has no business flashing a console per spawn. Same
+  seam as the T-306b/T-308c lesson — *a guard in one layer does not bind the layer above it* —
+  but here the two racing callers were the same function, and a read-then-write gap across one
+  `.await` was enough to break it.
 - **2026-08-31 — albums are name-addressed, and names are unique within a project.** T-403's
   brief does not add an album id to the schema, and that is deliberate. An album id would exist
   only to address an in-record list; the thing ids exist for here — a filesystem-safe handle — is
@@ -4830,3 +4845,23 @@ Vite build ok.
 against the dark ground, brightens on hover), per the manual-verify list in the T-407 brief.
 
 **Next:** T-404 (Send-to), the last milestone line; brief it and run it through Aider.
+
+### 2026-09-01 (later) — double `comfy-mcp` spawn on cold start fixed; console window hidden
+
+The producer reported that launching the built app opens **two** windows — one closing immediately,
+one persisting for the session. Tracked to a check-then-act race in `ensure_connected`
+(`src-tauri/src/comfy.rs`): the Setup view's ComfyUI and Models steps both probe on mount, so
+`comfy_status` and `models_status` hit the connect path concurrently, both observed `comfy == None`,
+both spawned a `comfy-mcp`, and the second `store` dropped the first `Arc` — whose rmcp
+`TokioChildProcess` then killed its child (the closing window). Fixed by serialising
+check-connect-store under a `tokio::sync::Mutex<()>` (`ComfyState::connect`), re-checking
+`connected()` after acquiring; `connect_comfy` shares the lock and now calls `store()`. Second,
+related fix: `mcp-bridge` spawns the child with `CREATE_NO_WINDOW` on Windows, so the surviving
+process no longer flashes a console for the whole session.
+
+**Gate green** (`npm run gate`); counts unchanged (no new tests): create-core 174, library 74,
+mcp-bridge 96, llm-bridge 35, src-tauri 107, frontend 373. The race is a multi-command timing bug
+the single-command unit tests cannot reach, and the console flag is a Windows spawn attribute with
+nothing offline to assert. Producer confirmed on a built app: one launch, one window, gone.
+
+**Next:** T-404 (Send-to), the last Phase 4 milestone line.

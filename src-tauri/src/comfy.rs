@@ -154,6 +154,11 @@ pub(crate) async fn ensure_connected(
     config_dir: &State<'_, ConfigDir>,
     bin: Option<String>,
 ) -> Result<std::sync::Arc<LocalComfy>, EnsureError> {
+    // Hold the connect lock across the check-and-connect: two concurrent
+    // first-use commands must not both spawn a `comfy-mcp` (the Setup view's
+    // ComfyUI and Models steps probe on mount and race here). Re-checking after
+    // acquiring picks up the winner's connection instead of spawning again.
+    let _guard = state.connect.lock().await;
     if let Some(comfy) = state.connected().await {
         return Ok(comfy);
     }

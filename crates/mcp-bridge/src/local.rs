@@ -18,6 +18,12 @@ use crate::health::ServerInfo;
 use crate::session_log::SessionLog;
 use crate::types::SystemStats;
 
+/// Spawn `comfy-mcp` with no console window on Windows. It is a stdio server
+/// the user never talks to directly, and a flashing console per spawn is noise
+/// -- and was the tell for the double-spawn race in `ensure_connected`.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// A live `comfy-mcp` session.
 ///
 /// The child process is killed when this is dropped -- rmcp's
@@ -39,6 +45,8 @@ impl LocalComfy {
         let (transport, stderr) =
             TokioChildProcess::builder(tokio::process::Command::new(bin).configure(|c| {
                 c.env("PYTHONIOENCODING", "utf-8");
+                #[cfg(windows)]
+                c.creation_flags(CREATE_NO_WINDOW);
             }))
             .stderr(Stdio::piped())
             .spawn()
