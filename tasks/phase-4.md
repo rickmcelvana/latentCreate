@@ -379,8 +379,10 @@ Scope:
   destructive-core mutations killed via file-copy backup): `delete_project` (library 103 -> 109,
   incl. a `projectctx` wiring test that deletes the configured project and asserts the app lands on a
   sibling; src-tauri 111 -> 112), the `projects_delete` command, and a strong-warning inline-confirm
-  Delete on each project row (frontend 410 -> 414). **Producer click-through pending. When it passes,
-  T-408 closes.**
+  Delete on each project row (frontend 410 -> 414). **Producer click-through passed all five steps
+  2026-09-01 -- deleting the selected project landed the app on a sibling with no restart, and the
+  trashed folders were whole in the Recycle Bin. Part d is complete, and T-408 closes: all four parts
+  done and click-through-passed.**
 
 **The traps to design against:**
 1. **OS trash, never `fs::remove_file`** (CONVENTIONS). The test that matters asserts the `trash`

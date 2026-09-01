@@ -36,14 +36,15 @@ doc commands, and the Lyrics Studio document picker; click-through passed all fi
 **Part c (delete an album) is complete** -- the pattern-breaker: an album has no file, so
 `delete_album` trashes nothing and refuses nothing (nothing references an album), and deleting a
 list never touches its tracks; landed 2026-09-01 architect-direct with the album-panel affordance,
-click-through passed (a deleted album's tracks all stayed). **Part d (delete a project) is
-code-complete** -- the whole `projects/<slug>/` tree to OS trash in one move; a project *is* its
-directory, so existence is checked on the directory (a malformed `project.json` stays deletable) and
-the config selection is left alone (deleting the selected project falls back to the first remaining
-one -- the first real deletion to reach `selected_project`'s "configured slug no longer exists" arm).
-Landed 2026-09-01 architect-direct (three destructive-core mutations killed); **its producer
-click-through has not run yet.** When it passes, **T-408 closes** and the phase moves to T-409 (song
-title carried to the export filename, not yet briefed) then T-406 (provenance inspector). Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+click-through passed (a deleted album's tracks all stayed). **Part d (delete a project) is complete**
+-- the whole `projects/<slug>/` tree to OS trash in one move; a project *is* its directory, so
+existence is checked on the directory (a malformed `project.json` stays deletable) and the config
+selection is left alone (deleting the selected project falls back to the first remaining one -- the
+first real deletion to reach `selected_project`'s "configured slug no longer exists" arm). Landed
+2026-09-01 architect-direct (three destructive-core mutations killed); **click-through passed all
+five steps 2026-09-01, so T-408 is COMPLETE across all four parts.** The phase now moves to **T-409**
+(the song title, carried from Lyrics Studio to the export filename -- **not yet briefed**) then
+**T-406** (provenance inspector, last), after which Phase 4 closes. Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.
