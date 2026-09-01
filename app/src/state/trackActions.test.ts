@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { errorFor, isRow, useTrackActionsStore } from './trackActions'
+import { errorFor, filenameSafe, isRow, useTrackActionsStore } from './trackActions'
 
 const mockDeleteTrack = vi.fn()
 const mockRenameTrack = vi.fn()
@@ -39,6 +39,30 @@ describe('errorFor', () => {
 
   it('returns null when nothing failed', () => {
     expect(errorFor(null, 'tr-0001')).toBeNull()
+  })
+})
+
+describe('filenameSafe', () => {
+  it('replaces Windows-illegal characters with underscores', () => {
+    // The T-409 trap-4 case from the brief.
+    expect(filenameSafe('Midnight: Drive/2')).toBe('Midnight_ Drive_2')
+    expect(filenameSafe('My Song: Vol. 2/2')).toBe('My Song_ Vol. 2_2')
+  })
+
+  it('leaves a clean title unchanged', () => {
+    expect(filenameSafe('Midnight Drive')).toBe('Midnight Drive')
+  })
+
+  it('reduces a title of only illegal characters to empty, for the id fallback', () => {
+    // The caller does `filenameSafe(name) || row.id`, so an empty result means
+    // the id is used -- a filename of bare underscores is never produced.
+    expect(filenameSafe('///')).toBe('')
+    expect(filenameSafe(':*?')).toBe('')
+  })
+
+  it('strips a trailing dot or space, which Windows forbids', () => {
+    expect(filenameSafe('Untitled.')).toBe('Untitled')
+    expect(filenameSafe('spaced   ')).toBe('spaced')
   })
 })
 

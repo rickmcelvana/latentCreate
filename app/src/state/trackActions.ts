@@ -24,6 +24,31 @@ export function isRow(marker: string | null, trackId: string): boolean {
   return marker === trackId
 }
 
+/**
+ * A track title reduced to a legal filename **stem** (no extension), for the
+ * export dialog's default name (T-409). Windows-illegal characters
+ * (`\ / : * ? " < > |`) and control characters become `_`; a trailing dot or
+ * space is stripped (Windows forbids them); leading and trailing underscores go
+ * too, so a title of only illegal characters reduces to `''` -- the caller then
+ * falls back to the track id, which is always safe.
+ *
+ * **Sanitise before the dialog, not after** (T-409 trap 4): the symptom of
+ * getting this wrong is the OS refusing the save with its own message rather
+ * than the app preventing it.
+ */
+export function filenameSafe(name: string): string {
+  // Drop control characters without a control-char regex (which oxlint flags),
+  // then map the Windows-illegal punctuation to `_`.
+  const noControl = Array.from(name)
+    .filter((ch) => ch.charCodeAt(0) >= 0x20)
+    .join('')
+  return noControl
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/[.\s]+$/, '')
+    .replace(/^_+|_+$/g, '')
+    .trim()
+}
+
 interface TrackActionsState {
   /** A track id with an action in flight, or `null`. */
   busy: string | null

@@ -20,6 +20,7 @@ import {
 } from '../state/sendto'
 import {
   errorFor,
+  filenameSafe,
   isRow,
   useTrackActionsStore,
 } from '../state/trackActions'
@@ -311,7 +312,11 @@ function TrackCard({ row }: { row: TrackRow }) {
             disabled={busy}
             onClick={() => {
               const ext = row.file.split('.').pop() ?? 'flac'
-              void actions.runExport(row.id, `${row.name}.${ext}`)
+              // Sanitise the title before the dialog (T-409 trap 4); the id is
+              // always filename-safe, so it is the fallback for an all-illegal
+              // title.
+              const stem = filenameSafe(row.name) || row.id
+              void actions.runExport(row.id, `${stem}.${ext}`)
             }}
           >
             Export

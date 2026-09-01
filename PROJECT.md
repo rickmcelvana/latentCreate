@@ -5387,18 +5387,20 @@ makes, each to the OS trash (except the album, which has no file), each refusing
 the reference graph demands.
 
 **Where the phase stands:** the milestone check was already met at T-405; T-408 was the scope
-owner-decision-4 added. **Remaining: T-409 (lane c) then T-406.** **T-409 (the song title, carried)** is
-**briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)) and split into three lanes; lanes a and b
-landed 2026-09-01 architect-direct** -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
+owner-decision-4 added. **Remaining: T-409 click-through, then T-406.** **T-409 (the song title, carried)** is
+**code-complete -- briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)), split into three lanes, all
+three landed 2026-09-01 architect-direct; its producer click-through is pending.** -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
 so every pre-T-409 sidecar stays readable), `ingest.rs` now copies it to `Track.title` instead of
 hardcoding `None`, the TS type and ARCHITECTURE §5 interface doc match, and `specFor` carries the
 selected doc's title onto the spec. The ~30 `GenerationSpec` construction sites (nearly all tests)
 took a mechanical `title: None`. create-core 174->175, src-tauri 112->114; the ingest-copies-the-title
-mutation was killed. **Lane b landed too** (a Title input in the Lyrics Studio document picker, bound to the
-open doc, persisted through the existing `saveLyricDoc` on blur -- no new command; empty/whitespace
-clears to untitled, and the picker option follows). **Lane c remains: an editable title field in the
-Audio Studio (prefilled from the selected doc) + sanitising the export default name (trap 4).** The
-full task was checked against the phase-4.md scope, not a one-liner: a title named once in Lyrics Studio must reach
+mutation was killed. **Lane b** added a Title input in the Lyrics Studio document picker (bound to the
+open doc, persisted through the existing `saveLyricDoc` on blur -- no new command). **Lane c** added
+the editable Title field in the Audio Studio (an override prefilled from the selected doc, one title
+across a batch) and `filenameSafe`, which sanitises the export default name **before** the OS dialog
+(trap 4) and falls back to the always-safe id when a title is all-illegal. Counts: create-core 175,
+src-tauri 114, frontend 414->426. The full task was checked against the phase-4.md scope, not a
+one-liner: a title named once in Lyrics Studio must reach
 the track, the Library and the exported file, and the field exists at both ends connected to nothing
 -- `Track.title` is hardcoded `None` at ingest and `LyricDoc.title` has never been writable. Five
 scope points: (1) a `LyricDoc.title` **input** in Lyrics Studio (schema + `bridge/lyricdoc.ts`
@@ -5476,4 +5478,39 @@ applied to the export default name **before** the save dialog (trap 4 -- a `/` o
 legal in a doc, illegal as a Windows filename). Then T-409's click-through, then T-406.
 
 Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 417.
+Tree clean.
+
+### 2026-09-01 (later still) -- T-409 lane c: title in the Audio Studio, sanitised for export; T-409 code-complete
+
+Landed lane c architect-direct, frontend-only. The **Audio Studio** grew a **Title** field
+(`GenerateBar`), and `specFor`/`specsFor` now take an explicit `title` so it can be an **override**
+rather than always the document's: the generate store resolves `override ?? doc?.title ?? null` and
+`cleanTitle` normalises it (trim; empty/whitespace -> untitled). The override is `null` until the user
+types (then it shows and uses the selected doc's title), and any string -- `''` included, meaning a
+deliberate untitled -- persists across a document switch. **One title across a batch** (the seed
+varies per variation, the title does not). For **export**, `filenameSafe` (in `trackActions`) maps the
+Windows-illegal set `\ / : * ? " < > |` and control characters to `_`, strips a trailing dot/space and
+leading/trailing underscores, and reduces an all-illegal title to `''` so the caller falls back to the
+always-safe track id -- applied **before** the save dialog (trap 4), where `Library.tsx` builds the
+default name. The default name already flowed from `row.name` (`title ?? id`), so lane a's ingest
+wiring plus this sanitiser is the whole export half.
+
+Adding the `title` param shifted `specsFor`'s positional signature; 11 test call sites took the new
+arg (a script for the 8 `specsFor` calls, three `specFor` by hand). Nine new tests: `filenameSafe`
+(illegal -> `_`, all-illegal -> id fallback, clean unchanged, trailing dot stripped), `specFor`
+carries+normalises the title, a batch shares the one title, and `submit` uses the doc title / prefers
+the override / treats an emptied override as untitled. Two oxlint findings from the new code fixed:
+a control-char regex (rewritten to filter by char code) and a `doc` shadow in the picker's `map`.
+frontend 417 -> 426.
+
+**T-409 is code-complete across all three lanes.** End to end: title a document (or type one in the
+Audio Studio), generate, and the track carries that title in the Library and as its sanitised export
+filename; a batch shares it; retitling the document later leaves existing tracks alone (the title is a
+snapshot on the spec, copied at ingest). **Its producer click-through is pending** -- six steps in
+[tasks/t-409-brief.md](tasks/t-409-brief.md), including a title with a `/` or `:` exporting to a legal
+filename, and an untitled track still exporting by its id. When it passes, the phase moves to **T-406**
+(provenance inspector, the last task -- it will surface the new `title` field), after which Phase 4
+closes.
+
+Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 426.
 Tree clean.

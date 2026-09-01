@@ -20,8 +20,10 @@ export function GenerateBar() {
   const lastProfileId = useGenerateStore((s) => s.lastProfileId)
   const count = useGenerateStore((s) => s.count)
   const queued = useGenerateStore((s) => s.queued)
+  const titleOverride = useGenerateStore((s) => s.title)
   const submit = useGenerateStore((s) => s.submit)
   const setCount = useGenerateStore((s) => s.setCount)
+  const setTitle = useGenerateStore((s) => s.setTitle)
   const useApprovedLyric = useGenerateStore((s) => s.useApprovedLyric)
 
   const profileId = useParamPanelStore((s) => s.profileId)
@@ -53,6 +55,18 @@ export function GenerateBar() {
           {reason}
         </p>
       ))}
+
+      <label className="generate-title">
+        <span className="generate-title-label">Title</span>
+        <input
+          type="text"
+          className="generate-title-input"
+          placeholder="Untitled — names the track and its exported file"
+          value={titleOverride ?? doc?.title ?? ''}
+          disabled={busy}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </label>
 
       <div className="generate-actions">
         {canBatch(model) ? (

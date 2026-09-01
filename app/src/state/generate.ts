@@ -171,6 +171,17 @@ export function blockers(
   return reasons
 }
 
+/**
+ * The song title for a spec: trimmed, and empty or whitespace-only becomes
+ * `null` (an untitled track, which the Library renders as the id). The Audio
+ * Studio title is free text, so it is normalised here, at the one place the
+ * spec is built, rather than trusting the field.
+ */
+export function cleanTitle(title: string | null): string | null {
+  const trimmed = (title ?? '').trim()
+  return trimmed === '' ? null : trimmed
+}
+
 /** Everything one generation needs, assembled from the two panels. */
 export function specFor(
   profileId: string,
@@ -178,16 +189,17 @@ export function specFor(
   values: Record<string, ControlValue>,
   stack: StackRow[],
   doc: LyricDoc | null,
+  title: string | null,
 ): GenerationSpec {
   return {
     profile_id: profileId,
     inputs: specInputs(model, values),
     loras: specLoras(stack),
     lyrics: lyricRefFor(doc, model, values),
-    // The title flows from the selected document (T-409 lane a). Lane c adds an
-    // editable title field in the Audio Studio; until then this is the doc's own
-    // title, and `null` for an untitled doc -- the Library falls back to the id.
-    title: doc?.title ?? null,
+    // The title the user named at generation (T-409). The caller resolves it --
+    // the Audio Studio override when the user typed one, else the selected
+    // document's own title -- and this normalises it (empty -> untitled).
+    title: cleanTitle(title),
   }
 }
 
@@ -213,18 +225,21 @@ export function specsFor(
   values: Record<string, ControlValue>,
   stack: StackRow[],
   doc: LyricDoc | null,
+  title: string | null,
   count: number,
   nextSeed: () => number,
   pinned: boolean,
 ): GenerationSpec[] {
   const name = seedControl(model)
   const total = effectiveCount(model, count)
-  if (name === null) return [specFor(profileId, model, values, stack, doc)]
+  // One title across the batch: the seed varies per variation (below), the
+  // title does not -- five variations are five takes of the same song.
+  if (name === null) return [specFor(profileId, model, values, stack, doc, title)]
 
   const firstValues = pinned ? values : { ...values, [name]: nextSeed() }
-  const specs = [specFor(profileId, model, firstValues, stack, doc)]
+  const specs = [specFor(profileId, model, firstValues, stack, doc, title)]
   for (let i = 1; i < total; i++) {
-    specs.push(specFor(profileId, model, { ...values, [name]: nextSeed() }, stack, doc))
+    specs.push(specFor(profileId, model, { ...values, [name]: nextSeed() }, stack, doc, title))
   }
   return specs
 }

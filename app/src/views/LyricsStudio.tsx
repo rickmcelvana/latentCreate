@@ -306,9 +306,9 @@ function DocumentPicker() {
             value={selectedDocId ?? ''}
             onChange={(event) => void selectDoc(event.target.value)}
           >
-            {docs.map((doc) => (
-              <option key={doc.id} value={doc.id}>
-                {docLabel(doc)}
+            {docs.map((d) => (
+              <option key={d.id} value={d.id}>
+                {docLabel(d)}
               </option>
             ))}
           </select>

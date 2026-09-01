@@ -202,6 +202,7 @@ describe('specFor', () => {
       values({ seed: 4242, tags: 'synthwave', lyrics: APPROVED }),
       stack,
       doc(),
+      null,
     )
 
     expect(spec.profile_id).toBe('ace-step-1.5-turbo')
@@ -223,9 +224,18 @@ describe('specFor', () => {
       { path: 'b\\adapter_model.safetensors', label: 'b', strength: 1.2, enabled: false },
     ]
 
-    const spec = specFor('ace-step-1.5-turbo', model, values(), stack, null)
+    const spec = specFor('ace-step-1.5-turbo', model, values(), stack, null, null)
 
     expect(spec.loras).toEqual([{ file: 'b\\adapter_model.safetensors', strength: 1.2, enabled: false }])
+  })
+
+  /** Protects: the title reaches the spec, trimmed; blank or null is untitled. */
+  it('test_the_title_is_carried_and_normalised', () => {
+    expect(specFor('ace-step-1.5-turbo', model, values(), [], null, '  Midnight  ').title).toBe(
+      'Midnight',
+    )
+    expect(specFor('ace-step-1.5-turbo', model, values(), [], null, '   ').title).toBeNull()
+    expect(specFor('ace-step-1.5-turbo', model, values(), [], null, null).title).toBeNull()
   })
 })
 
@@ -244,6 +254,7 @@ describe('specsFor', () => {
       values({ seed: 4242 }),
       [],
       null,
+      null,
       1,
       nextSeed,
       true,
@@ -251,7 +262,7 @@ describe('specsFor', () => {
 
     expect(specs).toHaveLength(1)
     expect(specs[0]).toEqual(
-      specFor('ace-step-1.5-turbo', model, values({ seed: 4242 }), [], null),
+      specFor('ace-step-1.5-turbo', model, values({ seed: 4242 }), [], null, null),
     )
     expect(nextSeed).not.toHaveBeenCalled()
   })
@@ -270,6 +281,7 @@ describe('specsFor', () => {
       model,
       values({ seed: 4242 }),
       [],
+      null,
       null,
       1,
       nextSeed,
@@ -290,6 +302,7 @@ describe('specsFor', () => {
       model,
       values({ seed: 4242 }),
       [],
+      null,
       null,
       4,
       nextSeed,
@@ -313,6 +326,7 @@ describe('specsFor', () => {
       values({ seed: 4242 }),
       [],
       null,
+      null,
       4,
       nextSeed,
       false,
@@ -325,6 +339,25 @@ describe('specsFor', () => {
     expect(specs[3].inputs.seed).toEqual({ type: 'seed', value: 4444 })
   })
 
+  /** Protects: a batch shares one title -- variations are takes of one song. */
+  it('test_every_spec_in_a_batch_carries_the_one_title', () => {
+    const seeds = [1111, 2222, 3333]
+    const nextSeed = vi.fn(() => seeds.shift()!)
+    const specs = specsFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242 }),
+      [],
+      null,
+      'Album Take',
+      4,
+      nextSeed,
+      true,
+    )
+    expect(specs).toHaveLength(4)
+    for (const spec of specs) expect(spec.title).toBe('Album Take')
+  })
+
   /** Protects: only the seed varies between specs. */
   it('test_only_the_seed_differs', () => {
     const seeds = [1111, 2222, 3333]
@@ -334,6 +367,7 @@ describe('specsFor', () => {
       model,
       values({ seed: 4242, tags: 'synthwave' }),
       [],
+      null,
       null,
       4,
       nextSeed,
@@ -361,6 +395,7 @@ describe('specsFor', () => {
       values({ seed: 4242 }),
       [],
       null,
+      null,
       4,
       nextSeed,
       true,
@@ -386,6 +421,7 @@ describe('specsFor', () => {
       values({ seed: 4242 }),
       [],
       null,
+      null,
       4,
       nextSeed,
       false,
@@ -402,6 +438,7 @@ describe('specsFor', () => {
       model,
       values({ seed: 4242 }),
       [],
+      null,
       null,
       99,
       nextSeed,

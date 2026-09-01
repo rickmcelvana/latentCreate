@@ -27,8 +27,16 @@ interface GenerateState {
   count: number
   /** How many of the current batch ComfyUI has accepted so far. */
   queued: number
+  /**
+   * The Audio Studio title override, or `null` to follow the selected document.
+   * `null` means "the user has not touched the field", so it shows and uses the
+   * selected doc's own title; any string (including `''`, meaning untitled) is a
+   * deliberate override that persists across a document switch.
+   */
+  title: string | null
   submit: () => Promise<void>
   setCount: (n: number) => void
+  setTitle: (title: string) => void
   useApprovedLyric: () => void
 }
 
@@ -39,6 +47,7 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
   lastProfileId: null,
   count: 1,
   queued: 0,
+  title: null,
 
   /**
    * Queue one or more generations.
@@ -69,10 +78,13 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
     const stack = useLoraPanelStore.getState().stack
     const doc = useLyricsStore.getState().doc
     const { count } = get()
+    // The override when the user typed one, else the selected document's title.
+    // `specFor` normalises it (empty -> untitled).
+    const title = get().title ?? doc?.title ?? null
 
     set({ busy: true, error: null, queued: 0 })
     try {
-      const specs = specsFor(profileId, model, values, stack, doc, count, freshSeed, seedPinned)
+      const specs = specsFor(profileId, model, values, stack, doc, title, count, freshSeed, seedPinned)
       // Keep the screen truthful: the seed that ran is the seed shown. A fresh
       // Generate re-rolls an unpinned seed, and the field must not keep showing
       // the value that was replaced (MCP-SURFACE 20.2's "whatever runs is on
@@ -101,6 +113,10 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
   },
 
   setCount: (n) => set({ count: n }),
+
+  // Any keystroke is an override, `''` included -- an empty field means the user
+  // wants this generation untitled, not "fall back to the document".
+  setTitle: (title) => set({ title }),
 
   /** Fill the lyrics field from the approved version. */
   useApprovedLyric: () => {

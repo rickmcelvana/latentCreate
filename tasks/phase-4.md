@@ -420,14 +420,18 @@ Scope:
   selected lyric document and editable there. Resolving it at ingest from `spec.lyrics.doc_id` was
   the alternative and is **rejected on evidence**: one of the producer's 20 tracks carries no
   lyric ref at all, so ingest would have no title source for it, and provenance should record what
-  the user chose rather than what a second file happened to say later. **Lane a landed the field
-  (serde-default) and `specFor` carrying `doc.title`; lane c adds the editable Audio Studio field.**
+  the user chose rather than what a second file happened to say later. **Landed** -- lane a added the
+  field (serde-default); **lane c** added the editable Audio Studio Title as an *override*
+  (`specFor`/`specsFor` take an explicit title, resolved `override ?? doc.title ?? null`, one title
+  across a batch).
 - **`ingest.rs` sets `Track.title` from the spec** instead of the hardcoded `None`. **Lane a --
   landed** (`build_track` copies `pending.spec.title`; ARCHITECTURE §5 interface doc in the same
   commit; ~30 spec literals took `title: None`; create-core 174->175, src-tauri 112->114).
 - **Export (T-405) offers the title as the default filename**, sanitised for the filesystem, with
-  the OS save dialog handling collisions -- a batch of five is five tracks with one title. **Lane c
-  (the sanitise is the only remaining export work -- the default name already flows from the title).**
+  the OS save dialog handling collisions -- a batch of five is five tracks with one title. **Lane c --
+  landed**: the default name already flowed from `row.name` (`title ?? id`), so this added
+  `filenameSafe` (illegal set + control chars -> `_`, trailing dot/space stripped, all-illegal ->
+  id fallback), applied **before** the dialog (trap 4). frontend 414 -> 426.
 - **The Library shows it.** `state/library.ts`'s id fallback stays, for untitled and pre-existing
   tracks. **Already there** -- `trackName` is `title ?? id`, so lane a's ingest wiring lights it up.
 

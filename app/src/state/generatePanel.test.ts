@@ -66,6 +66,7 @@ beforeEach(() => {
     lastProfileId: null,
     count: 1,
     queued: 0,
+    title: null,
   })
   useJobsStore.setState({ jobs: {} })
   useLoraPanelStore.setState({ stack: [] })
@@ -90,6 +91,35 @@ describe('useGenerateStore.submit', () => {
     expect(useGenerateStore.getState().last?.prompt_id).toBe('prompt-abc')
     expect(useGenerateStore.getState().lastProfileId).toBe('ace-step-1.5-turbo')
     expect(useGenerateStore.getState().error).toBeNull()
+  })
+
+  /** Protects: with no override, the spec's title is the selected doc's title. */
+  it('test_submit_uses_the_selected_documents_title', async () => {
+    useLyricsStore.setState({
+      doc: { id: 'ld-0001', title: 'Midnight Drive', versions: [], approved: null },
+    })
+    await useGenerateStore.getState().submit()
+    expect(sent?.title).toBe('Midnight Drive')
+  })
+
+  /** Protects: an Audio Studio override wins over the document's own title. */
+  it('test_submit_prefers_the_title_override', async () => {
+    useLyricsStore.setState({
+      doc: { id: 'ld-0001', title: 'Doc Title', versions: [], approved: null },
+    })
+    useGenerateStore.getState().setTitle('Overridden')
+    await useGenerateStore.getState().submit()
+    expect(sent?.title).toBe('Overridden')
+  })
+
+  /** Protects: clearing the field is a deliberate untitled, not "use the doc". */
+  it('test_submit_with_an_emptied_override_is_untitled', async () => {
+    useLyricsStore.setState({
+      doc: { id: 'ld-0001', title: 'Doc Title', versions: [], approved: null },
+    })
+    useGenerateStore.getState().setTitle('')
+    await useGenerateStore.getState().submit()
+    expect(sent?.title).toBeNull()
   })
 
   /**
