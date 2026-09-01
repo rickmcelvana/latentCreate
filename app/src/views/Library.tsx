@@ -18,6 +18,11 @@ import {
   SEND_TARGETS,
   useSendToStore,
 } from '../state/sendto'
+import {
+  errorFor,
+  isRow,
+  useTrackActionsStore,
+} from '../state/trackActions'
 
 export function Library() {
   const tracks = useLibraryStore((state) => state.tracks)
@@ -171,10 +176,16 @@ function TrackCard({ row }: { row: TrackRow }) {
   const play = usePlayerStore((state) => state.play)
   const send = useSendToStore((state) => state.send)
   const sending = useSendToStore((state) => state.sending)
-  const failure = useSendToStore((state) => state.failure)
+  const sendFailure = useSendToStore((state) => state.failure)
 
-  const sendError = failureFor(failure, row.id)
-  const busy = isSending(sending, row.id)
+  const reloadLibrary = useLibraryStore((state) => state.load)
+  const actions = useTrackActionsStore()
+
+  const sendError = failureFor(sendFailure, row.id)
+  const actionError = errorFor(actions.error, row.id)
+  const busy = isSending(sending, row.id) || isRow(actions.busy, row.id)
+  const confirming = isRow(actions.confirming, row.id)
+  const renaming = isRow(actions.renaming, row.id)
 
   return (
     <li className="panel track-row">
@@ -236,7 +247,128 @@ function TrackCard({ row }: { row: TrackRow }) {
       </dl>
 
       <p className="track-file">{row.file}</p>
+
+      {renaming ? (
+        <RenameRow row={row} onDone={() => void reloadLibrary()} />
+      ) : confirming ? (
+        <ConfirmDeleteRow row={row} onDone={() => void reloadLibrary()} />
+      ) : (
+        <div className="track-actions">
+          <button
+            type="button"
+            className="track-action"
+            disabled={busy}
+            onClick={() => actions.startRename(row.id)}
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            className="track-action"
+            disabled={busy}
+            onClick={() => {
+              const ext = row.file.split('.').pop() ?? 'flac'
+              void actions.runExport(row.id, `${row.name}.${ext}`)
+            }}
+          >
+            Export
+          </button>
+          <button
+            type="button"
+            className="track-action"
+            disabled={busy}
+            onClick={() => void actions.reveal(row.id)}
+          >
+            Reveal
+          </button>
+          <button
+            type="button"
+            className="track-action"
+            disabled={busy}
+            onClick={() => actions.askDelete(row.id)}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {actionError !== null ? <p className="track-action-error">{actionError}</p> : null}
       {sendError !== null ? <p className="track-send-error">{sendError}</p> : null}
     </li>
+  )
+}
+
+function RenameRow({
+  row,
+  onDone,
+}: {
+  row: TrackRow
+  onDone: () => void
+}) {
+  const [value, setValue] = useState(row.name)
+  const submitRename = useTrackActionsStore((state) => state.submitRename)
+  const cancelRename = useTrackActionsStore((state) => state.cancelRename)
+
+  return (
+    <form
+      className="track-action-rename"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void submitRename(row.id, value).then((ok) => {
+          if (ok) onDone()
+        })
+      }}
+    >
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+      />
+      <button type="submit" className="track-action">
+        Save
+      </button>
+      <button
+        type="button"
+        className="track-action"
+        onClick={() => cancelRename()}
+      >
+        Cancel
+      </button>
+    </form>
+  )
+}
+
+function ConfirmDeleteRow({
+  row,
+  onDone,
+}: {
+  row: TrackRow
+  onDone: () => void
+}) {
+  const confirmDelete = useTrackActionsStore((state) => state.confirmDelete)
+  const cancelDelete = useTrackActionsStore((state) => state.cancelDelete)
+
+  return (
+    <div className="track-action-confirm">
+      <span>Move to Trash?</span>
+      <button
+        type="button"
+        className="track-action"
+        onClick={() => {
+          void confirmDelete(row.id).then((ok) => {
+            if (ok) onDone()
+          })
+        }}
+      >
+        Trash it
+      </button>
+      <button
+        type="button"
+        className="track-action"
+        onClick={() => cancelDelete()}
+      >
+        Cancel
+      </button>
+    </div>
   )
 }

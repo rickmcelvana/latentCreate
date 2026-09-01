@@ -2031,8 +2031,16 @@ body {
   gap: var(--gap-sm);
 }
 
+.track-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  margin-top: var(--gap-sm);
+}
+
 .track-play,
-.track-send {
+.track-send,
+.track-action {
   padding: var(--gap-xs) var(--gap-sm);
   background: transparent;
   border: 1px solid var(--border);
@@ -2047,12 +2055,14 @@ body {
 }
 
 .track-play:hover,
-.track-send:hover {
+.track-send:hover,
+.track-action:hover {
   color: var(--accent-hover);
   border-color: var(--accent);
 }
 
-.track-send:disabled {
+.track-send:disabled,
+.track-action:disabled {
   color: var(--text-muted);
   border-color: var(--border);
   cursor: default;
@@ -2063,10 +2073,42 @@ body {
   font-size: 12px;
 }
 
-.track-send-error {
+.track-send-error,
+.track-action-error {
   margin: var(--gap-sm) 0 0;
   color: var(--danger);
   font-size: 13px;
+}
+
+.track-action-confirm,
+.track-action-rename {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  margin-top: var(--gap-sm);
+}
+
+.track-action-confirm span {
+  color: var(--warning);
+  font-size: 13px;
+}
+
+.track-action-rename input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--gap-xs) var(--gap-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color var(--transition);
+}
+
+.track-action-rename input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* --- Albums (T-403) --- */

@@ -264,7 +264,7 @@ The per-track actions the milestone line does not require but the phase scope na
 `export_track`, `reveal_track`). **library 74 -> 84**, 10 new tests, 5 mutations run by hand and
 all killed. **T-405b** (`bridge/tracks.ts`, `state/trackActions.ts` + tests) and **T-405c** (the
 `TrackCard` controls + CSS) are the two Aider runs, each with its own launch command in the brief;
-c is the only part with a producer click-through.
+c is the only part with a producer click-through. **T-405b and T-405c landed 2026-09-01** and the store transcribed byte-identically; frontend 382 -> **395**. Review found the two failure tests never armed `confirming`/`renaming` before acting, so "keeps it set" passed vacuously (the store was correct) -- fixed to arm the precondition, and the clear-on-failure mutation now dies. **Click-through pending** (the 6-step list at the end of the brief).
 
 Verified while briefing: **`trash::delete` canonicalizes first and errors on a missing path**, so
 delete guards each file with `exists()` and a retry after a partial delete self-heals; and **`trash`
