@@ -82,6 +82,20 @@ pub enum LibraryError {
     /// rather than the `trash::Error` type, so the boundary stays serde-simple.
     #[error("could not move to trash: {0}")]
     Trash(String),
+    /// A lyric version cannot be deleted because a track's provenance points at
+    /// it. Deleting it would strand that track's recipe, so the delete is
+    /// refused -- the refusal is the feature (PROJECT.md decisions log,
+    /// 2026-09-01), not a limitation to work around. Names the tracks holding
+    /// it so the user can find what to remove first.
+    #[error("version {version} of {doc_id} is still used by {} track(s): {}", .tracks.len(), .tracks.join(", "))]
+    VersionReferenced {
+        /// The lyric document the version belongs to.
+        doc_id: String,
+        /// The 1-based version number that was asked to be deleted.
+        version: u32,
+        /// Ids of the tracks whose provenance references it, in project order.
+        tracks: Vec<String>,
+    },
 }
 
 #[cfg(test)]

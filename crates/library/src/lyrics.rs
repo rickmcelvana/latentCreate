@@ -193,9 +193,83 @@ pub fn list_docs(root: &Path, project: &Project) -> LyricDocSet {
     LyricDocSet { docs, warnings }
 }
 
+/// Delete one version from a document, refusing when a track's provenance points
+/// at it. Returns the updated document.
+///
+/// **The refusal is the feature** (PROJECT.md decisions log, 2026-09-01): a
+/// track's sidecar records `(doc_id, version)`, so deleting a referenced version
+/// would leave that track's recipe pointing at lyrics nobody could show. The
+/// error names every track holding it -- the way T-403 renders a dangling id as
+/// "Missing track" -- so "cannot delete this version" is never a dead end.
+///
+/// **Versions are never renumbered.** The chosen version is removed and every
+/// other keeps its `number`, so a hole is legal -- exactly what
+/// [`LyricDoc::push_version`] already assumes when it counts from the highest
+/// present. Renumbering would silently repoint every surviving sidecar's
+/// `LyricRef`, the very hazard the refusal exists to prevent. The one number
+/// this can free for reuse is a *deleted top* version, and that is safe: the
+/// refusal guarantees no sidecar referenced it, so a later `push_version`
+/// minting it again cannot collide with any track's recipe. A per-document
+/// version counter is deliberately not added -- there is nothing for it to
+/// protect that the refusal does not.
+///
+/// **Deleting the approved version clears the approval** rather than being
+/// refused: approval is the user's current working pointer for AudioStudio, not
+/// provenance, and a document with none is an ordinary state (a fresh one has
+/// none). The track-reference rule is the only bar to deletion.
+///
+/// There is no OS trash here -- a version is an element inside the document
+/// file, not a file of its own -- so this rewrites the one document atomically
+/// through [`save_doc`], the same write every other version edit uses.
+pub fn delete_version(
+    root: &Path,
+    project: &Project,
+    doc_id: &LyricDocId,
+    version: u32,
+) -> Result<LyricDoc, LibraryError> {
+    let mut doc = load_doc(root, &project.slug, doc_id)?;
+    if !doc.versions.iter().any(|v| v.number == version) {
+        return Err(LibraryError::NotFound {
+            kind: "lyric version",
+            id: format!("{}#{version}", doc_id.0),
+        });
+    }
+
+    // Refuse before touching the document: a version any track references stays.
+    // Malformed or missing sidecars cannot be read to check, and are surfaced as
+    // warnings elsewhere (T-311e); a track that cannot be loaded is already a
+    // degraded record the user is not being blocked by here.
+    let referencing: Vec<String> = crate::tracks::list_tracks(root, project)
+        .tracks
+        .into_iter()
+        .filter(|t| {
+            matches!(&t.provenance.spec.lyrics, Some(l) if &l.doc_id == doc_id && l.version == version)
+        })
+        .map(|t| t.id.0)
+        .collect();
+    if !referencing.is_empty() {
+        return Err(LibraryError::VersionReferenced {
+            doc_id: doc_id.0.clone(),
+            version,
+            tracks: referencing,
+        });
+    }
+
+    doc.versions.retain(|v| v.number != version);
+    if doc.approved == Some(version) {
+        doc.approved = None;
+    }
+    save_doc(root, &project.slug, &doc)?;
+    Ok(doc)
+}
+
 #[cfg(test)]
 mod tests {
-    use create_core::project::LyricSource;
+    use std::collections::BTreeMap;
+
+    use create_core::generation::{GenerationSpec, LyricRef};
+    use create_core::project::{LyricSource, TrackId};
+    use create_core::provenance::{Provenance, Track};
 
     use super::*;
     use crate::projects::create_project;
@@ -204,6 +278,234 @@ mod tests {
 
     fn project(root: &Path) -> Project {
         create_project(root, "Night Drive", NOW).unwrap()
+    }
+
+    /// A document with `n` versions (numbers 1..=n), written to disk.
+    fn doc_with_versions(root: &Path, proj: &mut Project, n: u32) -> LyricDoc {
+        let mut doc = create_doc(root, proj, Some("Song".to_string())).unwrap();
+        for i in 1..=n {
+            doc.push_version(format!("draft {i}"), LyricSource::Human, NOW);
+        }
+        save_doc(root, &proj.slug, &doc).unwrap();
+        doc
+    }
+
+    /// Register a track whose provenance points at `(doc_id, version)`, both on
+    /// disk and on the project, so [`delete_version`]'s scan can see it.
+    fn track_referencing(
+        root: &Path,
+        proj: &mut Project,
+        doc_id: &LyricDocId,
+        version: u32,
+    ) -> TrackId {
+        let id = crate::tracks::mint_track_id(proj);
+        let spec = GenerationSpec {
+            profile_id: "ace-step-1.5-turbo".to_string(),
+            inputs: BTreeMap::new(),
+            loras: Vec::new(),
+            lyrics: Some(LyricRef {
+                doc_id: doc_id.clone(),
+                version,
+            }),
+        };
+        let track = Track {
+            id: id.clone(),
+            title: None,
+            file: format!("tracks/{}.flac", id.0),
+            duration_s: None,
+            provenance: Provenance {
+                profile_id: "ace-step-1.5-turbo".to_string(),
+                profile_display_name: "ACE-Step".to_string(),
+                model_license: "Apache-2.0".to_string(),
+                template: None,
+                spec,
+                resolved_slots: BTreeMap::new(),
+                comfy: None,
+                created_at: NOW.to_string(),
+                prompt_id: None,
+            },
+        };
+        crate::tracks::save_track(root, &proj.slug, &track).unwrap();
+        proj.tracks.push(id.clone());
+        crate::projects::save_project(root, proj).unwrap();
+        id
+    }
+
+    /// Invariant: the chosen version goes and every other keeps its number -- a
+    /// hole is legal and nothing is renumbered, or a surviving sidecar's
+    /// `LyricRef` would silently point at different lyrics.
+    #[test]
+    fn test_delete_version_removes_it_and_keeps_the_others() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 3);
+
+        let updated = delete_version(root.path(), &proj, &doc.id, 2).unwrap();
+        let numbers: Vec<u32> = updated.versions.iter().map(|v| v.number).collect();
+        assert_eq!(
+            numbers,
+            vec![1, 3],
+            "v2 removed, 1 and 3 keep their numbers"
+        );
+
+        // Persisted, not just returned.
+        let reloaded = load_doc(root.path(), &proj.slug, &doc.id).unwrap();
+        assert_eq!(
+            reloaded
+                .versions
+                .iter()
+                .map(|v| v.number)
+                .collect::<Vec<_>>(),
+            vec![1, 3]
+        );
+    }
+
+    /// Invariant: a version a track's provenance points at is refused, and the
+    /// error names the track holding it -- the refusal is the feature, and a
+    /// refusal with no subject is a dead end.
+    #[test]
+    fn test_delete_referenced_version_is_refused_and_names_the_track() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 2);
+        let track = track_referencing(root.path(), &mut proj, &doc.id, 1);
+
+        let err = delete_version(root.path(), &proj, &doc.id, 1).unwrap_err();
+        match err {
+            LibraryError::VersionReferenced {
+                version, tracks, ..
+            } => {
+                assert_eq!(version, 1);
+                assert_eq!(tracks, vec![track.0]);
+            }
+            other => panic!("expected VersionReferenced, got {other:?}"),
+        }
+
+        // The version is untouched on disk -- a refused delete changes nothing.
+        let reloaded = load_doc(root.path(), &proj.slug, &doc.id).unwrap();
+        assert!(reloaded.versions.iter().any(|v| v.number == 1));
+    }
+
+    /// Invariant: a track referencing a *different* version does not block the
+    /// delete -- the scan matches on the exact `(doc_id, version)`, not just the
+    /// document.
+    #[test]
+    fn test_a_track_referencing_another_version_does_not_block() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 2);
+        track_referencing(root.path(), &mut proj, &doc.id, 1);
+
+        // v2 is unreferenced even though the document has a referenced version.
+        let updated = delete_version(root.path(), &proj, &doc.id, 2).unwrap();
+        assert_eq!(
+            updated
+                .versions
+                .iter()
+                .map(|v| v.number)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+    }
+
+    /// Invariant: the reference match is on the exact document, not just the
+    /// version number. Two documents both have a v1; a track referencing one
+    /// document's v1 must not block deleting the *other* document's v1.
+    #[test]
+    fn test_a_reference_to_another_document_does_not_block() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc_a = doc_with_versions(root.path(), &mut proj, 1);
+        let doc_b = doc_with_versions(root.path(), &mut proj, 1);
+        // A track references doc B's v1; doc A's v1 shares the number, not the doc.
+        track_referencing(root.path(), &mut proj, &doc_b.id, 1);
+
+        let updated = delete_version(root.path(), &proj, &doc_a.id, 1).unwrap();
+        assert!(updated.versions.is_empty(), "doc A's v1 was deletable");
+        // And doc B's referenced v1 is still refused, proving the match works both ways.
+        let err = delete_version(root.path(), &proj, &doc_b.id, 1).unwrap_err();
+        assert!(matches!(err, LibraryError::VersionReferenced { .. }));
+    }
+
+    /// Invariant: deleting the approved version clears the approval rather than
+    /// leaving `approved` pointing at a number with no version behind it.
+    #[test]
+    fn test_delete_approved_version_clears_the_approval() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let mut doc = doc_with_versions(root.path(), &mut proj, 2);
+        assert!(doc.approve(2));
+        save_doc(root.path(), &proj.slug, &doc).unwrap();
+
+        let updated = delete_version(root.path(), &proj, &doc.id, 2).unwrap();
+        assert_eq!(updated.approved, None);
+
+        let reloaded = load_doc(root.path(), &proj.slug, &doc.id).unwrap();
+        assert_eq!(reloaded.approved, None);
+        assert_eq!(
+            reloaded
+                .versions
+                .iter()
+                .map(|v| v.number)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+    }
+
+    /// Invariant: deleting a version that keeps the approval of another one
+    /// leaves that approval alone.
+    #[test]
+    fn test_deleting_an_unapproved_version_keeps_the_approval() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let mut doc = doc_with_versions(root.path(), &mut proj, 3);
+        assert!(doc.approve(3));
+        save_doc(root.path(), &proj.slug, &doc).unwrap();
+
+        let updated = delete_version(root.path(), &proj, &doc.id, 1).unwrap();
+        assert_eq!(updated.approved, Some(3));
+    }
+
+    /// Documents the reuse-is-safe property: deleting the top version frees its
+    /// number, and a later `push_version` mints it again. Safe precisely because
+    /// the refusal guaranteed no sidecar referenced the deleted version, so the
+    /// reissued number cannot collide with any track's recipe.
+    #[test]
+    fn test_deleting_the_top_version_lets_push_reuse_its_number_safely() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 2);
+
+        let mut updated = delete_version(root.path(), &proj, &doc.id, 2).unwrap();
+        assert_eq!(
+            updated
+                .versions
+                .iter()
+                .map(|v| v.number)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+
+        let minted = updated.push_version("new draft", LyricSource::Human, NOW);
+        assert_eq!(minted, 2, "the freed top number is reissued");
+    }
+
+    /// Invariant: a version number the document does not have is Not Found, not
+    /// a silent no-op -- the caller named something that is not there.
+    #[test]
+    fn test_delete_missing_version_is_not_found() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let doc = doc_with_versions(root.path(), &mut proj, 2);
+
+        let err = delete_version(root.path(), &proj, &doc.id, 99).unwrap_err();
+        assert!(matches!(
+            err,
+            LibraryError::NotFound {
+                kind: "lyric version",
+                ..
+            }
+        ));
     }
 
     /// Invariant: the new document is both on disk and listed by the project.

@@ -6,6 +6,7 @@
 //! lint it. Until Phase 4's Library view, there is exactly one project and one
 //! working document, both created on demand.
 
+use create_core::generation::LyricDocId;
 use create_core::lyrics::lint::{lint_lyrics, LintFinding};
 use create_core::lyrics::LyricBrief;
 use create_core::project::LyricDoc;
@@ -40,6 +41,24 @@ pub fn lyrics_save(config_dir: State<'_, ConfigDir>, doc: LyricDoc) -> Result<()
     let root = &config_dir.0;
     let project = selected_project(root).map_err(|e| e.to_string())?;
     library::lyrics::save_doc(root, &project.slug, &doc).map_err(|e| e.to_string())
+}
+
+/// Delete one version from the working document, returning the updated document.
+///
+/// Refuses when a track's provenance points at the version, with a message
+/// naming the tracks -- the refusal is the feature (PROJECT.md decisions log,
+/// 2026-09-01). The document id is whitelisted in `library` before it touches a
+/// path, so a bogus id from the frontend cannot escape the project.
+#[tauri::command]
+pub fn lyrics_delete_version(
+    config_dir: State<'_, ConfigDir>,
+    doc_id: String,
+    version: u32,
+) -> Result<LyricDoc, String> {
+    let root = &config_dir.0;
+    let project = selected_project(root).map_err(|e| e.to_string())?;
+    library::lyrics::delete_version(root, &project, &LyricDocId(doc_id), version)
+        .map_err(|e| e.to_string())
 }
 
 /// Lint lyric text against a profile and brief, returning advisory findings.
