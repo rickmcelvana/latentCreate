@@ -24,7 +24,8 @@ Profile-driven param panel (slot-backed, incl. bpm/key/timesig and the advanced 
 **All five discharged by 2026-08-30**, each by its own dated click-through (T-311, MCP-SURFACE 27, MCP-SURFACE 20, T-313f, T-315/MCP-SURFACE 28.4). T-314 now carries only the full-length run, settling `vram_gb_min`, and one regression check on the gallery path T-313a refactored.
 
 ## Phase 4 — Library & Player (T-401 …) — **IN PROGRESS** — [phase-4.md](phase-4.md)
-Library views (project/track lists, album lists), player with AnalyserNode spectrum+waveform visualizer, track actions (trash-delete, rename, export/reveal), Send-to links (v1: open app.latentmixer.com / app.latentmastering.com + reveal file), provenance inspector panel ("re-use these settings" action).
+Library views (project/track lists, album lists), player with AnalyserNode spectrum+waveform visualizer, track actions (trash-delete, rename, export/reveal), Send-to links (v1: open app.latentmixer.com / app.latentmastering.com + reveal file), provenance inspector panel ("re-use these settings" action), **delete for every kind of created content** (lyric versions, lyric documents, albums, projects -- T-408) and **a song title carried from Lyrics Studio to the exported file** (T-409), both added 2026-09-01 by owner decision.
+**Progress:** T-401 (projects first-class), T-402 (playback + visualizer), T-403 (album lists) and T-407 (scrollbar styling) are complete; two of the three milestone-line items are discharged. Remaining order: **T-404 -> T-405 -> T-408 -> T-409 -> T-406.**
 **Phase-start check — done 2026-08-30:** the mixing/mastering repos are web-first with no landed file-handoff protocol, so Send-to stays the v1 link-out + reveal-file. Owner decisions: projects become first-class (multi-project), and milestone-first ordering.
 **Milestone check (live):** generate → play with visualizer → album list → send-to opens site with file revealed.
 

@@ -36,6 +36,20 @@ handoff protocol is still owned by those repos and does not exist yet.
 2. **Milestone-first ordering** — playback+visualizer, album list, and send-to land before
    delete/rename/export/reveal and the provenance inspector.
 
+**Owner decisions 2026-09-01**, from a progress review that read this file against the repo and
+against the producer's own app data:
+
+3. **T-404 ships as the v1 link-out now**, without waiting for the sibling apps. Re-checked
+   2026-09-01: neither `../latent-mixing` nor `../latent-mastering` has an import surface, and
+   latent-mixing's own docs plan a *mixing -> mastering* handoff, not a *create ->* one. The real
+   pass-off is mostly work in those repos; when it lands it is a **new task here, not a change to
+   T-404**.
+4. **Delete covers every kind of created content, not only tracks** -- lyric versions, lyric
+   documents, albums and projects (T-408). A lyric version a track's provenance points at is
+   **refused, with the reason named**, not deleted-and-rendered-missing.
+5. **A song title named once is carried to the track and to the exported file** (T-409), on
+   `GenerationSpec` rather than resolved at ingest.
+
 ---
 
 ## What already exists (verified against the repo, not assumed)
@@ -58,6 +72,31 @@ handoff protocol is still owned by those repos and does not exist yet.
   `assetProtocol` block. Playback needs `assetProtocol: { enable: true, scope: [...] }` plus a
   CSP `media-src asset: http://asset.localhost`, and `convertFileSrc` from `@tauri-apps/api/core`.
 - **`trash` 5.2.6** (MIT, permissive) is the OS-trash delete crate; not yet a dependency.
+
+**Added 2026-09-01, from the progress review:**
+
+- **Nothing in `library` deletes anything.** `projects.rs` is create/save/load/list, `lyrics.rs`
+  create/save/load/list, `tracks.rs` mint/save/load/list/resolve, `albums.rs`
+  create/rename/add/remove/reorder. There is **no `delete_album`** either -- T-403 did not build
+  one. `trash` is still not a dependency.
+- **A project can hold exactly one lyric document.** `lyricdoc::lyrics_open` returns
+  `project.lyrics.first()` or creates one, and there is no `lyrics_create` command. That file's
+  own header says so ("until Phase 4's Library view, there is exactly one project and one working
+  document"), and Phase 4 never picked it up. `Project.lyrics` is a `Vec` and `mint_doc_id`
+  already never reuses a number: **the schema is ready, the command layer is not.**
+- **`Track.title` and `LyricDoc.title` both exist and are never set.** `ingest.rs:147` hardcodes
+  `title: None`; nothing anywhere writes `LyricDoc.title`. `state/library.ts` already falls back
+  to the id for display, which is the only reason untitled tracks read as `tr-0002` rather than as
+  a blank row.
+- **`GenerationSpec` has no title field** -- `profile_id`, `inputs`, `loras`,
+  `lyrics: Option<LyricRef>`, and that is all.
+- **Measured on the producer's app data, 2026-09-01** (`%APPDATA%\com.latentbeats.create`):
+  `my-first-song` holds **31 versions in one document** (`ld-0001`, `title: null`, `approved: 31`)
+  and **20 tracks, every one `title: null`**; `testproject` holds 1 version and 2 tracks. **19 of
+  the 20 sidecars reference `ld-0001` version 31** -- the approved one -- and one references no
+  lyric at all. Two numbers that shape T-408 and T-409: under decision 4, **30 of the 31 versions
+  are free to delete and version 31 is pinned by 19 tracks**, and the lyric-less track is the case
+  that leaves ingest with no title to resolve.
 
 ---
 
@@ -193,6 +232,10 @@ say in the code that the real handoff protocol is owned by those repos (ARCHITEC
 The per-track actions the milestone line does not require but the phase scope names.
 
 Scope:
+**T-405 is where `trash` enters the workspace**, and T-408 reuses both the dependency and the
+discipline (ordering note below). Rename is also how the producer's 20 existing untitled tracks
+get titles at all -- T-409 sets a title at ingest and does not backfill.
+
 - **Delete → OS trash** (`trash` crate, never hard delete — CONVENTIONS). Removes the audio file
   and the sidecar, and unlists the id from `Project.tracks` (and from any album). The id is
   **not** reused (`mint_track_id` invariant).
@@ -244,6 +287,100 @@ step against the QwenCloud endpoint (163 models) -- the list's scrollbar is a th
 in the border-bright tone against the dark ground, not the browser default, and it brightens on
 hover. Same treatment on the main content pane scroll and the profile/project pickers.
 
+
+### T-408 - deleting created content
+Delete for everything the app makes, not only tracks. Opened 2026-09-01 by owner decision 4: the
+phase scope named a track delete, and the app has none for lyric versions, lyric documents, albums
+or projects, so a person testing one song accumulates 31 lyric versions with no way to remove one.
+
+Scope:
+- **a. Delete a lyric version.** `library::lyrics` gains a delete that **refuses when any track in
+  the project references that `(doc_id, version)`** and names the track(s) holding it -- the
+  refusal is the feature, not a limitation to work around. Versions are **never renumbered**:
+  `push_version` already counts from the highest present, so a hole is legal, and renumbering
+  would silently repoint every sidecar's `LyricRef`.
+- **b. Many lyric documents per project, and delete a document.** `lyrics_create`, `lyrics_list`,
+  `lyrics_open(id)` and a document picker in Lyrics Studio, retiring the Phase 2 one-document
+  shortcut. A document is deletable only when none of its versions is referenced -- the same rule
+  as (a), applied to the whole file.
+- **c. Delete an album.** `library::albums::delete_album`, an `album_delete` command, and the
+  affordance in the album panel. Deleting a list never touches the tracks in it.
+- **d. Delete a project.** The whole `projects/<slug>/` tree to OS trash -- tracks, sidecars,
+  lyrics, `project.json`. Deleting the *selected* project falls through `selected_project`'s
+  existing "configured slug that no longer exists" arm (decisions log 2026-08-30); that arm is
+  built and tested but has never been exercised by anything, and this task is the first thing
+  that can reach it.
+
+**The traps to design against:**
+1. **OS trash, never `fs::remove_file`** (CONVENTIONS). The test that matters asserts the `trash`
+   call was made, not that the file is gone -- a hard delete passes the second check and fails the
+   rule.
+2. **Ids are never reused.** `next_lyric_seq` and `next_track_seq` are monotonic *because of*
+   delete, and until this task nothing in the repo could prove it. A test that deletes and then
+   mints is the first real exercise of the invariant both fields' doc comments describe.
+3. **A refusal that does not name its obstruction is a dead end.** "Cannot delete this version"
+   with no subject is the failure mode; it says which track holds it, the way the album panel says
+   "Missing track".
+4. **A delete that half-succeeds.** File removed, id still listed (or the reverse) is the
+   two-layers-deaf-together shape this repo has hit repeatedly. Order the writes so the record is
+   the last thing changed, and test the interrupted path, not only the happy one.
+5. **Album membership.** A deleted track must leave every `AlbumList` that holds it -- T-403
+   renders a dangling id as "Missing track", which is the safety net, not the plan.
+
+### T-409 - the song title, carried
+A title named once in Lyrics Studio reaches the track, the Library and the exported file. Opened
+2026-09-01 by owner decision 5. The field exists at both ends and connects to nothing: `Track.title`
+is hardcoded `None` at ingest and `LyricDoc.title` has never been writable.
+
+Scope:
+- **`LyricDoc.title` gets a UI** in Lyrics Studio. The field is already in the schema and in
+  `bridge/lyricdoc.ts`; only the input is missing.
+- **`GenerationSpec` gains `title: Option<String>`**, prefilled in the Audio Studio from the
+  selected lyric document and editable there. Resolving it at ingest from `spec.lyrics.doc_id` was
+  the alternative and is **rejected on evidence**: one of the producer's 20 tracks carries no
+  lyric ref at all, so ingest would have no title source for it, and provenance should record what
+  the user chose rather than what a second file happened to say later.
+- **`ingest.rs` sets `Track.title` from the spec** instead of the hardcoded `None`.
+- **Export (T-405) offers the title as the default filename**, sanitised for the filesystem, with
+  the OS save dialog handling collisions -- a batch of five is five tracks with one title.
+- **The Library shows it.** `state/library.ts`'s id fallback stays, for untitled and pre-existing
+  tracks.
+
+**The traps to design against:**
+1. **The audio file on disk keeps its id name.** `tracks/tr-0007.flac` does not become
+   `Midnight.flac`. ARCHITECTURE 8: the id addresses the file and the sidecar is the only truth;
+   a title in the filename puts one fact in two places for the first rename to break. The title is
+   a **display-and-export** name.
+2. **`Track.title` is a snapshot, not a link.** Renaming the lyric document later must not retitle
+   tracks already made from it -- the same one-source-of-truth rule.
+3. **Titles are not unique and are not ids.** Albums are name-addressed (T-403 decision 1);
+   tracks stay id-addressed.
+4. **Sanitise before the dialog, not after.** A title with `/`, `:` or a trailing dot is legal in a
+   `LyricDoc` and illegal as a Windows filename; the symptom is the OS refusing the save with its
+   own message instead of the app preventing it.
+5. **`GenerationSpec` is stored in provenance**, so the title lands there for free and T-406's
+   "re-use these settings" carries it. The new field is an ARCHITECTURE 5/7 interface change, so
+   that doc edit lands in the **same commit** as the code (AGENTS).
+
+---
+
+## Ordering, set 2026-09-01
+
+**T-404 -> T-405 -> T-408 -> T-409 -> T-406.** The owner left the order to judgement; the
+dependencies decide most of it.
+
+- **T-404 first** -- it discharges the last milestone line and depends on nothing.
+- **T-405 before T-408** -- T-405 brings `trash` into the workspace and establishes the
+  delete-to-trash discipline once, and T-408 reuses both. T-405's rename is also the only way the
+  20 tracks that already exist ever get titles, since T-409 sets a title at ingest and does not
+  backfill.
+- **T-408 before T-409** -- the two are independent, but the 31 accumulated lyric versions are the
+  live pain, and T-409's export half needs T-405's export to exist anyway.
+- **T-406 last**, unchanged -- it is the only task nothing else waits on, and T-409 adds one field
+  to the spec it inspects.
+
+**Not in this phase:** the real file handoff to the mixing/mastering apps. It is mostly work in
+those repos (decision 3 above); when an import surface lands there, it opens as its own task here.
 
 ---
 

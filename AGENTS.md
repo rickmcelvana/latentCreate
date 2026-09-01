@@ -22,8 +22,11 @@ selected lands in `projects/<slug>/tracks/` and the Library shows it under that 
 (playback + visualizer) is complete** — click-through passed, the first Phase 4 milestone line
 discharged. **T-403 (album lists) is complete** — `library::albums`, the six `albums_*` commands,
 the `state/albums` store (18 tests) and the Library album panel; **the producer click-through
-passed 2026-08-31 and the second Phase 4 milestone line ("album list") is discharged.** Briefs are written one at a time, each
-after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+passed 2026-08-31 and the second Phase 4 milestone line ("album list") is discharged.** **A planning pass on 2026-09-01** added two tasks and set the remaining order --
+**T-404 (Send-to) -> T-405 (track actions) -> T-408 (delete for every kind of created content) ->
+T-409 (the song title, carried) -> T-406 (provenance inspector)** -- and confirmed the sibling
+apps still have no import surface, so T-404 stays the v1 link-out. Briefs are written one at a
+time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.
