@@ -216,9 +216,34 @@ Scope:
   handoff, not a new type).
 
 **The trap to design against:** "re-use these settings" must not silently re-roll the seed the
-way a fresh Generate does (T-316) — the user is asking to reproduce a specific track, so the
+way a fresh Generate does (T-316) -- the user is asking to reproduce a specific track, so the
 seed is pinned, not re-rolled. The test that matters asserts the loaded spec carries the
 sidecar's seed verbatim.
+
+### T-407 - shared scrollbar styling - **styling debt pulled forward**
+Not a milestone task: the first entry in [docs/CSS-TODO.md](../docs/CSS-TODO.md) (found
+2026-08-27, T-301b click-through), pulled forward and paid 2026-09-01 at the producer's request,
+out of milestone order.
+
+**Complete 2026-09-01; landed directly as architect work** (the T-207/T-208 lane: a change this
+small, written and verified by the architect, is not worth an executor round trip).
+
+Scope:
+- One shared rule in `theme.css`, not per view: standard `scrollbar-width: thin` /
+  `scrollbar-color: var(--border-bright) transparent` for Firefox, plus a `::-webkit-scrollbar`
+  treatment (10px, rounded thumb, muted hover, transparent track) for the WebView2/Chromium the
+  shipped app runs in. Tokens only, no forked values, nothing hardcoded.
+
+**The trap to design against:** solving it per view (the model list gets a rule, then the next
+overflowing list rediscovers the gap). The rule is global, so any pane that can overflow --
+nav rail, content pane, model/profile/project lists, the lyric draft -- is covered the moment
+it overflows, including views that do not exist yet.
+
+**Manual verify (producer click-through):** in a built app, open the Setup wizard's lyric-model
+step against the QwenCloud endpoint (163 models) -- the list's scrollbar is a thin rounded thumb
+in the border-bright tone against the dark ground, not the browser default, and it brightens on
+hover. Same treatment on the main content pane scroll and the profile/project pickers.
+
 
 ---
 

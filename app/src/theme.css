@@ -63,6 +63,42 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* --- Shared scrollbar treatment (T-407, from docs/CSS-TODO.md 2026-08-27) ---
+   One rule for every pane that can overflow -- nav rail, content pane, the
+   model/profile/project lists, the lyric draft -- instead of per view. The UA
+   default scrollbar reads as un-themed against the dark ground. Standard
+   properties carry Firefox; the ::-webkit-scrollbar block carries the
+   WebView2/Chromium the app actually runs in (it wins when both are present).
+   Tokens only: the thumb is the bright border tone, hover is the muted text
+   tone, and the track stays transparent so nothing paints over the ground. */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-bright) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* --- App shell: fixed nav rail + scrolling content pane (T-002 fills the rail) --- */
 
 .app-shell {

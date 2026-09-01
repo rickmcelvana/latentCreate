@@ -10,16 +10,6 @@ hex. The branding source of truth is `latentbeats.com` — change the site first
 
 ---
 
-## Setup wizard
-
-- **The lyric-model list's scrollbar is unstyled** (found 2026-08-27, T-301b click-through).
-  The list itself performs well — the producer's QwenCloud endpoint returns **163 models** and
-  it "scrolls and loads good, no lag or stuttering" — but the scrollbar is the browser default
-  against the app's dark ground, so it reads as un-themed the moment the list overflows. Wants
-  `scrollbar-color` / `scrollbar-width`, or a `::-webkit-scrollbar` treatment, using existing
-  tokens. Applies to any list that can overflow, so it is worth solving once as a shared rule
-  rather than per view.
-
 ## Lyrics Studio
 
 - **The streamed-reasoning panel should read as reassuring, not as the app being stuck**

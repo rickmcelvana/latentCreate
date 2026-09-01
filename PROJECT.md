@@ -537,8 +537,8 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   rendered strings — `app/src/views/CoverArt.tsx` holds a legitimate one.
 - **Styling debt lives in [docs/CSS-TODO.md](docs/CSS-TODO.md)**, not here -- presentation
   gaps found while clicking through a feature, written down at the moment they are noticed
-  so the Phase 5 polish pass is not a rediscovery exercise. Currently: the model list's
-  unstyled scrollbar, and the streamed-reasoning panel.
+  so the Phase 5 polish pass is not a rediscovery exercise. The scrollbar entry was paid
+  early by T-407 (2026-09-01); currently: the streamed-reasoning panel.
 - Album lists → bulk send-to-mastering once mastering's bulk import lands (owner-stated future feature).
 - latentPlayer integration (library hand-off) once player matures.
 - Audio-to-audio flows (cover/remix/extend) for models that support it — profiles already leave room via `inputs`.
@@ -4805,5 +4805,28 @@ track"** in place, not dropped; rename following the open album and refusing a t
 
 **T-403 is complete and the second Phase 4 milestone line ("album list") is discharged.** Two of
 the three milestone lines remain (send-to, T-404).
+
+**Next:** T-404 (Send-to), the last milestone line; brief it and run it through Aider.
+
+### 2026-09-01 -- T-407: shared scrollbar styling (CSS-TODO debt pulled forward)
+
+The producer asked for the first [docs/CSS-TODO.md](docs/CSS-TODO.md) entry to be paid now
+rather than at the Phase 5 polish pass. Briefed as **T-407** in
+[phase-4.md](tasks/phase-4.md) and landed directly as architect work (the T-207/T-208 lane --
+a ~40-line CSS-only change is not worth an executor round trip). One shared rule in
+`theme.css`: standard `scrollbar-width: thin` / `scrollbar-color: var(--border-bright)
+transparent` for Firefox, plus a `::-webkit-scrollbar` treatment (10px, rounded thumb in
+border-bright, muted-text hover, transparent track) for the WebView2/Chromium the shipped app
+runs in. Global, so every pane that can overflow -- nav rail, content pane, the
+model/profile/project lists, the lyric draft -- is covered once, including views that do not
+exist yet. Tokens only; nothing forked or hardcoded. The CSS-TODO entry is deleted (its
+history is this commit); the ledger now holds only the streamed-reasoning panel.
+
+**Gate green** (`npm run gate`): all suites and counts unchanged (docs + CSS only):
+create-core 174, library 74, mcp-bridge 96, llm-bridge 35, src-tauri 107, frontend 373.
+Vite build ok.
+
+**Producer click-through owed:** the model-list scrollbar on a built app (thin rounded thumb
+against the dark ground, brightens on hover), per the manual-verify list in the T-407 brief.
 
 **Next:** T-404 (Send-to), the last milestone line; brief it and run it through Aider.
