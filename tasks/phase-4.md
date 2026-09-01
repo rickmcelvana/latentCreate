@@ -228,7 +228,11 @@ all fixed directly (WORKFLOW 2): the run **deleted `.track-head-actions`**, the 
 row's whole action cluster hangs off, while merging the selector list next to it; and two
 mutations survived the seven tests it wrote -- hardcoding the destination to `'mixing'` and
 dropping the success path's `sending` reset both left the suite green. Two tests added, both
-mutations re-run and dead. **Click-through pending.**
+mutations re-run and dead. **Click-through PASSED 2026-09-01, all five steps** -- both
+destinations open their own site with the file revealed, a missing file gives the sentence and
+opens nothing (and works again once restored), the window order is good, and the error moves
+with the row rather than multiplying. **T-404 is complete, and the third and last Phase 4
+milestone line is discharged.**
 
 Verified while briefing, and worth keeping: **no capability change is needed** (`opener:default`
 already grants both permissions, and the Rust API does not consult the JS scope at all), and
@@ -409,6 +413,11 @@ those repos (decision 3 above); when an import surface lands there, it opens as 
 ## Milestone check (live)
 
 **generate → play with visualizer → album list → send-to opens site with file revealed.**
+
+**DISCHARGED 2026-09-01**, in four dated click-throughs rather than one sitting: generate (Phase 3,
+T-311), play with visualizer (T-402, 2026-08-30), album list (T-403, 2026-08-31), send-to (T-404,
+2026-09-01). **The phase's milestone check is met; the phase is not finished** -- T-405, T-408,
+T-409 and T-406 remain, and they are the half of the scope the milestone line never covered.
 
 Run by the producer at the end of the phase, from a checklist in the phase file. The automated
 steps (store logic, library functions, command wiring) are covered by tests; the visualizer's
