@@ -2323,6 +2323,58 @@ body {
   border: 1px solid var(--border);
 }
 
+.album-row-actions {
+  display: flex;
+  gap: var(--gap-xs);
+}
+
+.album-row-delete {
+  font: inherit;
+  font-size: 12px;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap-xs) var(--gap-sm);
+  cursor: pointer;
+}
+
+.album-row-delete:hover {
+  border-color: var(--danger);
+}
+
+.album-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+}
+
+.album-delete-prompt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.album-delete-yes,
+.album-delete-cancel {
+  font: inherit;
+  font-size: 12px;
+  border-radius: var(--radius);
+  padding: var(--gap-xs) var(--gap-sm);
+  cursor: pointer;
+}
+
+.album-delete-yes {
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+}
+
+.album-delete-cancel {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
 .album-row-body {
   border-top: 1px solid var(--border);
   padding: var(--gap-sm) var(--gap-md) var(--gap-md);

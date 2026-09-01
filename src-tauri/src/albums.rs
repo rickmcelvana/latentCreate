@@ -38,6 +38,14 @@ pub fn album_rename(config_dir: State<'_, ConfigDir>, from: String, to: String) 
         .map_err(|e| e.to_string())
 }
 
+/// Delete an album from the selected project. Removes only the list; every
+/// track it held stays in the library.
+#[tauri::command]
+pub fn album_delete(config_dir: State<'_, ConfigDir>, name: String) -> AlbumsResult {
+    let project = selected_project(&config_dir.0).map_err(|e| e.to_string())?;
+    library::albums::delete_album(&config_dir.0, &project.slug, &name).map_err(|e| e.to_string())
+}
+
 /// Add a track to an album in the selected project.
 #[tauri::command]
 pub fn album_add_track(

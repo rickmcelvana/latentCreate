@@ -9,11 +9,13 @@ const mockRenameAlbum = vi.fn()
 const mockAddAlbumTrack = vi.fn()
 const mockRemoveAlbumTrack = vi.fn()
 const mockReorderAlbum = vi.fn()
+const mockDeleteAlbum = vi.fn()
 
 vi.mock('../bridge/albums', () => ({
   listAlbums: () => mockListAlbums(),
   createAlbum: (name: string) => mockCreateAlbum(name),
   renameAlbum: (from: string, to: string) => mockRenameAlbum(from, to),
+  deleteAlbum: (name: string) => mockDeleteAlbum(name),
   addAlbumTrack: (albumName: string, trackId: string) => mockAddAlbumTrack(albumName, trackId),
   removeAlbumTrack: (albumName: string, trackId: string) => mockRemoveAlbumTrack(albumName, trackId),
   reorderAlbum: (albumName: string, trackIds: string[]) => mockReorderAlbum(albumName, trackIds),
@@ -39,7 +41,13 @@ function track(id: string, name: string): TrackRow {
 }
 
 function reset() {
-  useAlbumsStore.setState({ albums: [], open: null, loading: false, error: null })
+  useAlbumsStore.setState({
+    albums: [],
+    open: null,
+    confirmingDelete: null,
+    loading: false,
+    error: null,
+  })
 }
 
 describe('albumRows', () => {
@@ -100,6 +108,7 @@ describe('albums store', () => {
     mockAddAlbumTrack.mockReset()
     mockRemoveAlbumTrack.mockReset()
     mockReorderAlbum.mockReset()
+    mockDeleteAlbum.mockReset()
     reset()
   })
 
@@ -147,6 +156,46 @@ describe('albums store', () => {
     mockRenameAlbum.mockResolvedValue([album('A2'), album('B')])
     await useAlbumsStore.getState().rename('A', 'A2')
     expect(useAlbumsStore.getState().open).toBe('B')
+  })
+
+  it('askDelete and cancelDelete toggle the pending confirm', () => {
+    useAlbumsStore.getState().askDelete('A')
+    expect(useAlbumsStore.getState().confirmingDelete).toBe('A')
+    useAlbumsStore.getState().cancelDelete()
+    expect(useAlbumsStore.getState().confirmingDelete).toBe(null)
+  })
+
+  it('deleteAlbum adopts the refreshed list and clears the confirm', async () => {
+    useAlbumsStore.setState({ albums: [album('A'), album('B')], confirmingDelete: 'B' })
+    mockDeleteAlbum.mockResolvedValue([album('A')])
+    const ok = await useAlbumsStore.getState().deleteAlbum('B')
+    expect(ok).toBe(true)
+    expect(mockDeleteAlbum).toHaveBeenCalledWith('B')
+    expect(useAlbumsStore.getState().albums).toEqual([album('A')])
+    expect(useAlbumsStore.getState().confirmingDelete).toBe(null)
+  })
+
+  it('deleteAlbum closes the album when it was the open one', async () => {
+    useAlbumsStore.setState({ albums: [album('A')], open: 'A' })
+    mockDeleteAlbum.mockResolvedValue([])
+    await useAlbumsStore.getState().deleteAlbum('A')
+    expect(useAlbumsStore.getState().open).toBe(null)
+  })
+
+  it('deleteAlbum leaves a different open album untouched', async () => {
+    useAlbumsStore.setState({ albums: [album('A'), album('B')], open: 'B' })
+    mockDeleteAlbum.mockResolvedValue([album('B')])
+    await useAlbumsStore.getState().deleteAlbum('A')
+    expect(useAlbumsStore.getState().open).toBe('B')
+  })
+
+  it('deleteAlbum surfaces an error and clears the confirm', async () => {
+    useAlbumsStore.setState({ albums: [album('A')], confirmingDelete: 'A' })
+    mockDeleteAlbum.mockRejectedValue(new Error('disk failed'))
+    const ok = await useAlbumsStore.getState().deleteAlbum('A')
+    expect(ok).toBe(false)
+    expect(useAlbumsStore.getState().error).toBe('disk failed')
+    expect(useAlbumsStore.getState().confirmingDelete).toBe(null)
   })
 
   it('addTrack adopts the refreshed list', async () => {

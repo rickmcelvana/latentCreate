@@ -16,6 +16,11 @@ export async function renameAlbum(from: string, to: string): Promise<AlbumList[]
   return await invoke<AlbumList[]>('album_rename', { from, to })
 }
 
+/** Delete an album. Returns the refreshed album list. */
+export async function deleteAlbum(name: string): Promise<AlbumList[]> {
+  return await invoke<AlbumList[]>('album_delete', { name })
+}
+
 /** Add a track to an album. Returns the refreshed album list. */
 export async function addAlbumTrack(album: string, trackId: string): Promise<AlbumList[]> {
   return await invoke<AlbumList[]>('album_add_track', { album, trackId })

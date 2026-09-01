@@ -63,7 +63,10 @@ export function AlbumPanel() {
                     {row.entries.length} {row.entries.length === 1 ? 'track' : 'tracks'}
                   </span>
                 </button>
-                <AlbumRename name={row.name} />
+                <div className="album-row-actions">
+                  <AlbumRename name={row.name} />
+                  <AlbumDelete name={row.name} />
+                </div>
               </div>
 
               {open === row.name ? (
@@ -166,6 +169,37 @@ function AlbumAddTrack({ row }: { row: AlbumRow }) {
         Add
       </button>
     </form>
+  )
+}
+
+/**
+ * Inline delete: a button that becomes a "Delete 'name'? Delete / Cancel". The
+ * confirm copy says the tracks stay, since removing a list keeps every song.
+ */
+function AlbumDelete({ name }: { name: string }) {
+  const confirming = useAlbumsStore((state) => state.confirmingDelete === name)
+  const askDelete = useAlbumsStore((state) => state.askDelete)
+  const cancelDelete = useAlbumsStore((state) => state.cancelDelete)
+  const deleteAlbum = useAlbumsStore((state) => state.deleteAlbum)
+
+  if (!confirming) {
+    return (
+      <button type="button" className="album-row-delete" onClick={() => askDelete(name)}>
+        Delete
+      </button>
+    )
+  }
+
+  return (
+    <div className="album-delete-confirm">
+      <span className="album-delete-prompt">Delete “{name}”? Its tracks stay in the library.</span>
+      <button type="button" className="album-delete-yes" onClick={() => void deleteAlbum(name)}>
+        Delete
+      </button>
+      <button type="button" className="album-delete-cancel" onClick={() => cancelDelete()}>
+        Cancel
+      </button>
+    </div>
   )
 }
 

@@ -356,9 +356,15 @@ Scope:
   shared `tracks_referencing` helper, `DocumentReferenced`, the three commands, and `lyrics_open`
   now takes an optional id; library 92 -> 100. **b-front (the Lyrics Studio document picker: switch
   / New / Delete-document, multi-document store) landed the same day** (architect-direct; frontend
-  399 -> 405). **Producer click-through pending.**
+  399 -> 405). **Producer click-through passed all five steps 2026-09-01. Part b is complete.**
 - **c. Delete an album.** `library::albums::delete_album`, an `album_delete` command, and the
-  affordance in the album panel. Deleting a list never touches the tracks in it.
+  affordance in the album panel. Deleting a list never touches the tracks in it. **The part that
+  breaks the T-408 pattern: an album has no file** -- it is a named entry in `project.albums` -- so
+  this trashes nothing (trap 1 does not apply) and there is no reference to refuse against (nothing
+  points at an album). **Landed 2026-09-01** ([t-408c-brief.md](t-408c-brief.md), architect-direct,
+  three mutations killed): `delete_album` (library 100 -> 103), the `album_delete` command, and an
+  inline-confirm Delete beside Rename in the album panel whose copy says the tracks stay
+  (frontend 405 -> 410). **Producer click-through pending.**
 - **d. Delete a project.** The whole `projects/<slug>/` tree to OS trash -- tracks, sidecars,
   lyrics, `project.json`. Deleting the *selected* project falls through `selected_project`'s
   existing "configured slug that no longer exists" arm (decisions log 2026-08-30); that arm is

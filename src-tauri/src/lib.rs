@@ -94,6 +94,7 @@ pub fn run() {
             albums::albums_list,
             albums::album_create,
             albums::album_rename,
+            albums::album_delete,
             albums::album_add_track,
             albums::album_remove_track,
             albums::album_reorder,

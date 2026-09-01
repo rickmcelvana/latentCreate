@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   addAlbumTrack,
   createAlbum,
+  deleteAlbum as deleteAlbumRequest,
   listAlbums,
   removeAlbumTrack,
   renameAlbum,
@@ -70,6 +71,12 @@ interface AlbumsState {
   albums: AlbumList[]
   /** The album currently opened in the view, by name; `null` when none is. */
   open: string | null
+  /**
+   * The album whose Delete button has been pressed and is awaiting a confirm,
+   * by name; `null` when none is. Store-held so only one row confirms at a time
+   * (the same shape T-408a/b use for their deletes).
+   */
+  confirmingDelete: string | null
   loading: boolean
   error: string | null
   load: () => Promise<void>
@@ -77,6 +84,15 @@ interface AlbumsState {
   create: (name: string) => Promise<boolean>
   /** Rename an album. Resolves `true` on success. */
   rename: (from: string, to: string) => Promise<boolean>
+  /** Ask to delete an album -- shows its inline confirm. */
+  askDelete: (name: string) => void
+  /** Dismiss a pending delete confirm without deleting. */
+  cancelDelete: () => void
+  /**
+   * Delete an album. Removes only the list; its tracks stay in the library.
+   * Resolves `true` on success.
+   */
+  deleteAlbum: (name: string) => Promise<boolean>
   /** Add a track to an album. Resolves `true` on success. */
   addTrack: (album: string, trackId: string) => Promise<boolean>
   /** Remove a track from an album. Resolves `true` on success. */
@@ -90,6 +106,7 @@ interface AlbumsState {
 export const useAlbumsStore = create<AlbumsState>((set, get) => ({
   albums: [],
   open: null,
+  confirmingDelete: null,
   loading: false,
   error: null,
 
@@ -133,6 +150,25 @@ export const useAlbumsStore = create<AlbumsState>((set, get) => ({
       return true
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : String(err) })
+      return false
+    }
+  },
+
+  askDelete: (name) => set({ confirmingDelete: name, error: null }),
+  cancelDelete: () => set({ confirmingDelete: null }),
+
+  // Album delete has no refusal path -- nothing references an album, and the
+  // list has no file to trash. The backend removes the AlbumList and returns
+  // the rest; the tracks it held stay in the library untouched.
+  deleteAlbum: async (name) => {
+    try {
+      const albums = await deleteAlbumRequest(name)
+      // The open album is tracked by name, so deleting the open one closes it.
+      const open = get().open === name ? null : get().open
+      set({ albums, open, confirmingDelete: null, error: null })
+      return true
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), confirmingDelete: null })
       return false
     }
   },

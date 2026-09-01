@@ -61,6 +61,22 @@ pub fn rename_album(
     Ok(project.albums)
 }
 
+/// Deletes an album list, returning the project's remaining albums.
+///
+/// **Removes only the list, never its tracks.** An album is a named view over
+/// `project.tracks` with no file of its own, so -- unlike deleting a track,
+/// document or project -- this trashes nothing and leaves every track it held
+/// in the library. Nothing references an album, so there is no refusal path: an
+/// existing album always deletes. An unknown name is a NotFound error, never a
+/// silent no-op.
+pub fn delete_album(root: &Path, slug: &str, name: &str) -> Result<Vec<AlbumList>, LibraryError> {
+    let mut project = load_project(root, slug)?;
+    let index = find_album(&project, name)?;
+    project.albums.remove(index);
+    save_project(root, &project)?;
+    Ok(project.albums)
+}
+
 /// Adds a track to an album. The id must belong to the project -- adding is
 /// the one moment a dangling id can be prevented; adding an id already present
 /// is a no-op, so a double-click cannot create a duplicate row.
@@ -484,6 +500,62 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, LibraryError::ReorderMismatch));
+    }
+
+    /// Invariant: delete drops exactly the named list, keeps the rest, and
+    /// persists. Deleting "B" (not "A") is what proves it removes the album at
+    /// the found index rather than always the first.
+    #[test]
+    fn test_delete_album_removes_the_list_and_persists() {
+        let root = tempfile::tempdir().unwrap();
+        let project = project_with_tracks(root.path(), &[]);
+        create_album(root.path(), &project.slug, "A").unwrap();
+        create_album(root.path(), &project.slug, "B").unwrap();
+
+        let albums = delete_album(root.path(), &project.slug, "B").unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(albums[0].name, "A");
+
+        let reloaded = list_albums(root.path(), &project.slug).unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].name, "A");
+    }
+
+    /// Invariant: deleting a list never deletes songs. The album is a view over
+    /// `project.tracks`; removing it leaves every id it held in the project.
+    #[test]
+    fn test_delete_album_leaves_its_tracks_in_the_project() {
+        let root = tempfile::tempdir().unwrap();
+        let project = project_with_tracks(root.path(), &["tr-0001", "tr-0002"]);
+        create_album(root.path(), &project.slug, "A").unwrap();
+        for id in ["tr-0001", "tr-0002"] {
+            add_track(root.path(), &project.slug, "A", &TrackId(id.to_string())).unwrap();
+        }
+
+        delete_album(root.path(), &project.slug, "A").unwrap();
+
+        let reloaded = load_project(root.path(), &project.slug).unwrap();
+        assert!(reloaded.albums.is_empty());
+        assert_eq!(
+            reloaded.tracks,
+            vec![
+                TrackId("tr-0001".to_string()),
+                TrackId("tr-0002".to_string())
+            ]
+        );
+    }
+
+    /// Invariant: deleting an album that is not there errors, and nothing
+    /// changes -- never a silent no-op that looks like success.
+    #[test]
+    fn test_delete_album_of_an_unknown_name_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let project = project_with_tracks(root.path(), &[]);
+        create_album(root.path(), &project.slug, "A").unwrap();
+
+        let err = delete_album(root.path(), &project.slug, "nope").unwrap_err();
+        assert!(matches!(err, LibraryError::NotFound { kind: "album", .. }));
+        assert_eq!(list_albums(root.path(), &project.slug).unwrap().len(), 1);
     }
 
     /// Invariant: every mutation names the album it edits, and a name that is
