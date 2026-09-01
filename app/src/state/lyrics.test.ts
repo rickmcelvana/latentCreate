@@ -34,6 +34,9 @@ const mockCancelLyrics = vi.fn()
 const mockSubscribeLyrics = vi.fn()
 const mockOpenLyricDoc = vi.fn()
 const mockSaveLyricDoc = vi.fn()
+const mockListLyricDocs = vi.fn()
+const mockCreateLyricDoc = vi.fn()
+const mockDeleteLyricDoc = vi.fn()
 const mockDeleteLyricVersion = vi.fn()
 const mockLintLyrics = vi.fn()
 let mockIsTauri = true
@@ -49,8 +52,11 @@ vi.mock('../bridge/lyrics', () => ({
 }))
 
 vi.mock('../bridge/lyricdoc', () => ({
-  openLyricDoc: () => mockOpenLyricDoc(),
+  openLyricDoc: (id?: string) => mockOpenLyricDoc(id),
   saveLyricDoc: (doc: unknown) => mockSaveLyricDoc(doc),
+  listLyricDocs: () => mockListLyricDocs(),
+  createLyricDoc: (title?: string) => mockCreateLyricDoc(title),
+  deleteLyricDoc: (docId: string) => mockDeleteLyricDoc(docId),
   deleteLyricVersion: (docId: string, number: number) => mockDeleteLyricVersion(docId, number),
   lintLyrics: (profileId: string, brief: unknown, text: string) =>
     mockLintLyrics(profileId, brief, text),
@@ -107,6 +113,9 @@ beforeEach(() => {
   mockSubscribeLyrics.mockReset()
   mockOpenLyricDoc.mockReset()
   mockSaveLyricDoc.mockReset()
+  mockListLyricDocs.mockReset()
+  mockCreateLyricDoc.mockReset()
+  mockDeleteLyricDoc.mockReset()
   mockDeleteLyricVersion.mockReset()
   mockLintLyrics.mockReset()
   useLyricsStore.setState({
@@ -118,6 +127,10 @@ beforeEach(() => {
     error: null,
     listening: false,
     doc: null,
+    docs: [],
+    selectedDocId: null,
+    confirmingDocDelete: false,
+    deleteDocError: null,
     findings: [],
     linted: false,
     confirmingVersion: null,
@@ -478,11 +491,100 @@ describe('approvedText', () => {
 describe('versioned document store', () => {
   const openDoc = lyricDoc()
 
-  it('test_load_doc_restores_the_latest_version_as_draft', async () => {
+  it('test_load_docs_opens_the_selected_document_and_restores_its_draft', async () => {
+    mockListLyricDocs.mockResolvedValue({ docs: [openDoc], warnings: [] })
     mockOpenLyricDoc.mockResolvedValue(openDoc)
-    await useLyricsStore.getState().loadDoc()
-    expect(useLyricsStore.getState().doc?.id).toBe('ld-0001')
-    expect(useLyricsStore.getState().draft).toBe('first draft')
+    await useLyricsStore.getState().loadDocs()
+    const state = useLyricsStore.getState()
+    expect(state.docs.map((d) => d.id)).toEqual(['ld-0001'])
+    expect(state.selectedDocId).toBe('ld-0001')
+    expect(state.doc?.id).toBe('ld-0001')
+    expect(state.draft).toBe('first draft')
+  })
+
+  it('test_load_docs_creates_one_when_the_project_has_none', async () => {
+    mockListLyricDocs.mockResolvedValue({ docs: [], warnings: [] })
+    mockCreateLyricDoc.mockResolvedValue(openDoc)
+    mockOpenLyricDoc.mockResolvedValue(openDoc)
+    await useLyricsStore.getState().loadDocs()
+    expect(mockCreateLyricDoc).toHaveBeenCalledTimes(1)
+    expect(useLyricsStore.getState().selectedDocId).toBe('ld-0001')
+  })
+
+  /** Protects: switching documents resets the draft, so an unsaved edit in one
+   * document never bleeds into another (a fresh open reads from disk). */
+  it('test_select_doc_swaps_the_draft_to_the_opened_document', async () => {
+    const other = lyricDoc({
+      id: 'ld-0002',
+      versions: [{ number: 1, text: 'other song', created_at: 't', source: { kind: 'human' } }],
+    })
+    useLyricsStore.setState({ docs: [openDoc, other], selectedDocId: 'ld-0001', draft: 'unsaved' })
+    mockOpenLyricDoc.mockResolvedValue(other)
+
+    await useLyricsStore.getState().selectDoc('ld-0002')
+
+    expect(mockOpenLyricDoc).toHaveBeenCalledWith('ld-0002')
+    const state = useLyricsStore.getState()
+    expect(state.selectedDocId).toBe('ld-0002')
+    expect(state.doc?.id).toBe('ld-0002')
+    expect(state.draft).toBe('other song')
+  })
+
+  it('test_create_doc_appends_and_selects_the_new_document', async () => {
+    const created = lyricDoc({ id: 'ld-0002', versions: [] })
+    useLyricsStore.setState({ docs: [openDoc], selectedDocId: 'ld-0001' })
+    mockCreateLyricDoc.mockResolvedValue(created)
+    mockOpenLyricDoc.mockResolvedValue(created)
+
+    await useLyricsStore.getState().createDoc()
+
+    const state = useLyricsStore.getState()
+    expect(state.docs.map((d) => d.id)).toEqual(['ld-0001', 'ld-0002'])
+    expect(state.selectedDocId).toBe('ld-0002')
+    expect(state.draft).toBe('')
+  })
+
+  it('test_ask_and_cancel_delete_doc_toggle_the_marker', () => {
+    useLyricsStore.setState({ deleteDocError: 'old' })
+    useLyricsStore.getState().askDeleteDoc()
+    expect(useLyricsStore.getState().confirmingDocDelete).toBe(true)
+    expect(useLyricsStore.getState().deleteDocError).toBeNull()
+    useLyricsStore.getState().cancelDeleteDoc()
+    expect(useLyricsStore.getState().confirmingDocDelete).toBe(false)
+  })
+
+  /** Protects the happy path (T-405b lesson): deleting the open document lands
+   * on a remaining one, and the list is the backend's returned remainder. */
+  it('test_delete_doc_replaces_the_list_and_reselects', async () => {
+    const kept = lyricDoc({ id: 'ld-0002' })
+    useLyricsStore.setState({ docs: [openDoc, kept], selectedDocId: 'ld-0001' })
+    mockDeleteLyricDoc.mockResolvedValue({ docs: [kept], warnings: [] })
+    mockOpenLyricDoc.mockResolvedValue(kept)
+
+    const ok = await useLyricsStore.getState().deleteDoc('ld-0001')
+
+    expect(ok).toBe(true)
+    expect(mockDeleteLyricDoc).toHaveBeenCalledWith('ld-0001')
+    const state = useLyricsStore.getState()
+    expect(state.docs.map((d) => d.id)).toEqual(['ld-0002'])
+    expect(state.selectedDocId).toBe('ld-0002')
+    expect(state.confirmingDocDelete).toBe(false)
+    expect(state.deleteDocError).toBeNull()
+  })
+
+  /** Protects: a refusal keeps the list and records the message, not a delete
+   * that appears to succeed. */
+  it('test_delete_doc_refusal_keeps_the_list_and_shows_the_message', async () => {
+    useLyricsStore.setState({ docs: [openDoc], selectedDocId: 'ld-0001' })
+    mockDeleteLyricDoc.mockRejectedValue('ld-0001 is still used by 1 track(s): tr-0007')
+
+    const ok = await useLyricsStore.getState().deleteDoc('ld-0001')
+
+    expect(ok).toBe(false)
+    const state = useLyricsStore.getState()
+    expect(state.docs.map((d) => d.id)).toEqual(['ld-0001'])
+    expect(state.deleteDocError).toBe('ld-0001 is still used by 1 track(s): tr-0007')
+    expect(state.confirmingDocDelete).toBe(false)
   })
 
   it('test_commit_pushes_the_draft_and_saves', async () => {

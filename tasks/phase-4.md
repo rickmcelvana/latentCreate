@@ -354,7 +354,9 @@ Scope:
   as (a), applied to the whole file. **Backend landed 2026-09-01**
   ([t-408b-brief.md](t-408b-brief.md), architect-direct, six mutations killed): `delete_doc`, a
   shared `tracks_referencing` helper, `DocumentReferenced`, the three commands, and `lyrics_open`
-  now takes an optional id; library 92 -> 100. The document picker (b-front) is the next run.
+  now takes an optional id; library 92 -> 100. **b-front (the Lyrics Studio document picker: switch
+  / New / Delete-document, multi-document store) landed the same day** (architect-direct; frontend
+  399 -> 405). **Producer click-through pending.**
 - **c. Delete an album.** `library::albums::delete_album`, an `album_delete` command, and the
   affordance in the album panel. Deleting a list never touches the tracks in it.
 - **d. Delete a project.** The whole `projects/<slug>/` tree to OS trash -- tracks, sidecars,

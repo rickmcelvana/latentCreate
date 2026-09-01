@@ -12,8 +12,11 @@ import {
 } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
 import {
+  createLyricDoc,
+  deleteLyricDoc,
   deleteLyricVersion,
   lintLyrics,
+  listLyricDocs,
   openLyricDoc,
   saveLyricDoc,
   type LintFinding,
@@ -212,8 +215,20 @@ const NO_OPTIMIZATION: OptimizerState = {
 interface LyricsState extends LyricsSnapshot, OptimizerState {
   brief: LyricBrief
   listening: boolean
-  /** The working document, opened by [`loadDoc`]. */
+  /** The currently open document; the selected one of [`docs`]. */
   doc: LyricDoc | null
+  /** Every document in the project, for the picker. In creation order. */
+  docs: LyricDoc[]
+  /** The id of the open document, or `null` before the first load. */
+  selectedDocId: string | null
+  /** Whether the open document is awaiting a delete confirmation. */
+  confirmingDocDelete: boolean
+  /**
+   * The message from a refused document delete (it names the tracks), or `null`.
+   * Separate from `error` for the same reason as [`deleteError`]: `error` feeds
+   * `generationPhase`. Shown at the picker, where the delete was requested.
+   */
+  deleteDocError: string | null
   /** Advisory lint findings for the current draft. */
   findings: LintFinding[]
   /**
@@ -251,7 +266,12 @@ interface LyricsState extends LyricsSnapshot, OptimizerState {
   generate: (profileId: string) => Promise<void>
   cancel: () => Promise<void>
   startListening: () => Promise<void>
-  loadDoc: () => Promise<void>
+  loadDocs: () => Promise<void>
+  selectDoc: (id: string) => Promise<void>
+  createDoc: () => Promise<void>
+  askDeleteDoc: () => void
+  cancelDeleteDoc: () => void
+  deleteDoc: (id: string) => Promise<boolean>
   commit: (source: LyricSource) => Promise<void>
   commitGenerated: () => Promise<void>
   commitEdited: () => Promise<void>
@@ -273,6 +293,10 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   error: null,
   listening: false,
   doc: null,
+  docs: [],
+  selectedDocId: null,
+  confirmingDocDelete: false,
+  deleteDocError: null,
   findings: [],
   linted: false,
   confirmingVersion: null,
@@ -353,14 +377,78 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     })
   },
 
-  loadDoc: async () => {
+  // List the project's documents, creating one if it has none, and open the
+  // selection (kept across a reload when it still exists, else the first). A
+  // project the studio shows always has at least one document.
+  loadDocs: async () => {
     if (!isTauri()) return
     try {
-      const doc = await openLyricDoc()
-      const latest = doc.versions[doc.versions.length - 1]
-      set({ doc, draft: latest?.text ?? '' })
+      const listed = await listLyricDocs()
+      let docs = listed.docs
+      if (docs.length === 0) docs = [await createLyricDoc()]
+      const current = get().selectedDocId
+      const targetId = docs.find((d) => d.id === current)?.id ?? docs[0].id
+      set({ docs })
+      await get().selectDoc(targetId)
     } catch (err: unknown) {
       set({ error: String(err) })
+    }
+  },
+
+  // Open a document fresh from disk rather than from the cached `docs` list: a
+  // commit or approval since the list was fetched saved a newer version there,
+  // and reading the stale cache would silently drop it. Resets the draft to the
+  // opened document's latest, so an unsaved edit never bleeds between documents.
+  selectDoc: async (id) => {
+    if (!isTauri()) return
+    try {
+      const doc = await openLyricDoc(id)
+      const latest = doc.versions[doc.versions.length - 1]
+      set({
+        doc,
+        selectedDocId: id,
+        draft: latest?.text ?? '',
+        deleteDocError: null,
+        deleteError: null,
+        confirmingVersion: null,
+        ...NO_LINT,
+      })
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
+  },
+
+  createDoc: async () => {
+    if (!isTauri()) return
+    try {
+      const created = await createLyricDoc()
+      set((state) => ({ docs: [...state.docs, created] }))
+      await get().selectDoc(created.id)
+    } catch (err: unknown) {
+      set({ error: String(err) })
+    }
+  },
+
+  askDeleteDoc: () => set({ confirmingDocDelete: true, deleteDocError: null }),
+  cancelDeleteDoc: () => set({ confirmingDocDelete: false }),
+
+  // The backend refuses when a track references any version, and returns the
+  // remaining documents; the store never edits the project or trashes anything
+  // itself. If the deleted document was the open one, land on another (or a
+  // fresh one -- the studio always shows a document).
+  deleteDoc: async (id) => {
+    if (!isTauri()) return false
+    try {
+      const remaining = await deleteLyricDoc(id)
+      let docs = remaining.docs
+      if (docs.length === 0) docs = [await createLyricDoc()]
+      set({ docs, confirmingDocDelete: false, deleteDocError: null })
+      if (get().selectedDocId === id) await get().selectDoc(docs[0].id)
+      return true
+    } catch (err: unknown) {
+      // The message names the tracks holding a version -- show it at the picker.
+      set({ deleteDocError: String(err), confirmingDocDelete: false })
+      return false
     }
   },
 

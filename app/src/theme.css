@@ -954,6 +954,43 @@ body {
   margin: var(--gap-sm) 0 0;
 }
 
+/* --- Document picker (T-408b) --- */
+
+.doc-picker {
+  margin-bottom: var(--gap-md);
+}
+
+.doc-picker-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--gap-md);
+  flex-wrap: wrap;
+}
+
+.doc-picker-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-picker-actions,
+.doc-picker-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.doc-picker-confirm-prompt {
+  color: var(--warning);
+  font-size: 13px;
+}
+
+.doc-picker .lyrics-error {
+  margin: var(--gap-sm) 0 0;
+}
+
 /* --- The shared prompt diff (LyricsStudio now, audio tags in Phase 3) --- */
 
 .prompt-diff {

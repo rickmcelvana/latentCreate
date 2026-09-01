@@ -13,7 +13,13 @@ import { effectiveProfileId } from '../state/profiles'
 import { getProfileGuide, type ProfileGuide } from '../bridge/profiles'
 import { isTauri, type PointOfView } from '../bridge/lyrics'
 import { PromptDiff } from '../components/PromptDiff'
-import { lintSeverity, type LintFinding, type LyricSource, type LyricVersion } from '../bridge/lyricdoc'
+import {
+  lintSeverity,
+  type LintFinding,
+  type LyricDoc,
+  type LyricSource,
+  type LyricVersion,
+} from '../bridge/lyricdoc'
 
 const POINTS_OF_VIEW: PointOfView[] = ['first_person', 'second_person', 'third_person']
 
@@ -58,7 +64,7 @@ export function LyricsStudio() {
   }, [startListening])
 
   useEffect(() => {
-    void useLyricsStore.getState().loadDoc()
+    void useLyricsStore.getState().loadDocs()
   }, [])
 
   useEffect(() => {
@@ -82,6 +88,8 @@ export function LyricsStudio() {
           ? `Writing for ${guide.display_name}. Describe the song, then generate.`
           : 'Describe the song; your local model writes the words.'}
       </p>
+
+      <DocumentPicker />
 
       <form
         className="panel lyrics-form"
@@ -259,6 +267,78 @@ function PromptReview() {
         Use the brief instead
       </button>
     </p>
+  )
+}
+
+/** How a document reads in the picker: its title, or its id when untitled. */
+function docLabel(doc: LyricDoc): string {
+  return doc.title !== null && doc.title.trim() !== '' ? doc.title : doc.id
+}
+
+/**
+ * Switch between the project's lyric documents, create a new one, or delete the
+ * open one. A document delete is refused when a track was generated from any of
+ * its versions; the refusal shows here, at the picker, not up the page.
+ */
+function DocumentPicker() {
+  const docs = useLyricsStore((state) => state.docs)
+  const selectedDocId = useLyricsStore((state) => state.selectedDocId)
+  const selectDoc = useLyricsStore((state) => state.selectDoc)
+  const createDoc = useLyricsStore((state) => state.createDoc)
+  const confirming = useLyricsStore((state) => state.confirmingDocDelete)
+  const askDeleteDoc = useLyricsStore((state) => state.askDeleteDoc)
+  const cancelDeleteDoc = useLyricsStore((state) => state.cancelDeleteDoc)
+  const deleteDoc = useLyricsStore((state) => state.deleteDoc)
+  const deleteDocError = useLyricsStore((state) => state.deleteDocError)
+
+  if (docs.length === 0) return null
+
+  return (
+    <div className="doc-picker">
+      <div className="doc-picker-row">
+        <label className="doc-picker-field">
+          <span className="lyrics-label">Document</span>
+          <select
+            className="lyrics-input lyrics-select"
+            value={selectedDocId ?? ''}
+            onChange={(event) => void selectDoc(event.target.value)}
+          >
+            {docs.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                {docLabel(doc)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {confirming ? (
+          <div className="doc-picker-confirm">
+            <span className="doc-picker-confirm-prompt">Delete this document?</span>
+            <button
+              type="button"
+              className="setup-button"
+              onClick={() => {
+                if (selectedDocId !== null) void deleteDoc(selectedDocId)
+              }}
+            >
+              Delete
+            </button>
+            <button type="button" className="setup-button" onClick={cancelDeleteDoc}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="doc-picker-actions">
+            <button type="button" className="setup-button" onClick={() => void createDoc()}>
+              New
+            </button>
+            <button type="button" className="setup-button" onClick={askDeleteDoc}>
+              Delete document
+            </button>
+          </div>
+        )}
+      </div>
+      {deleteDocError !== null ? <p className="lyrics-error">{deleteDocError}</p> : null}
+    </div>
   )
 }
 
