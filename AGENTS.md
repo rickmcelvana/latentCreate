@@ -13,10 +13,14 @@ provenance sidecar checked field-for-field against the graph ComfyUI actually ex
 queues N variations by seed, and a fresh Generate re-rolls the seed unless the user pinned it
 (T-316). T-315 landed 2026-08-29 and passed its click-through (the crash path's error copy — one sentence with a next step, diagnostics moved to `session.log`; this also discharges T-314's kill-mid-job check). **T-313 is complete (a-g) and click-through passed.** A person can import their own ComfyUI workflow, confirm what the app guessed about it, save it as a profile indistinguishable from a shipped one, and generate from it -- the milestone line "an imported user workflow generates successfully" is **discharged**, as is the kill-mid-job line (T-315). Import takes the **frontend** format, not API (MCP-SURFACE 29, which corrected ARCHITECTURE 5b), and an imported workflow is **copied**, not referenced, so sidecars cannot go stale. **T-314 ran live 2026-08-30** (the first recorded full-length generations — 185/200 s of audio at
 ~5x realtime) and **T-317 settled `vram_gb_min: 8` by measurement**: a comfort floor, not a gate —
-ComfyUI offloads rather than fails (MCP-SURFACE 31). **Phase 4 (Library & Player) is in progress**
-— [tasks/phase-4.md](tasks/phase-4.md) opened 2026-08-30 with its phase-start check done (the
-mixing/mastering repos are web-first; Send-to stays the v1 link-out) and two owner decisions
-(projects become first-class; milestone-first ordering). **T-401 (projects become first-class) is complete** — T-401a (backend seam) and T-401b (the
+ComfyUI offloads rather than fails (MCP-SURFACE 31). **Phase 4 (Library & Player) is COMPLETE —
+closed 2026-09-02** ([tasks/phase-4.md](tasks/phase-4.md)): T-401 … T-409, every task
+click-through-passed — projects first-class, playback + visualizer, album lists, Send-to, track
+actions, scrollbar styling, delete-for-everything (T-408), the carried song title (T-409), and the
+provenance inspector + "re-use these settings" (T-406). Closed docs-only, **not git-tagged** (the
+Phase 3 precedent). **Next: Phase 5** (cover art, polish, packaging — T-501…), **not yet opened**:
+the next session's first work is the Phase 5 phase-start check (re-verify the image/cover-art
+comfy-mcp surface before any brief) and opening `tasks/phase-5.md`. **T-401 (projects become first-class) is complete** — T-401a (backend seam) and T-401b (the
 picker) landed 2026-08-30 and the click-through passed: a track generated with a second project
 selected lands in `projects/<slug>/tracks/` and the Library shows it under that project. **T-402
 (playback + visualizer) is complete** — click-through passed, the first Phase 4 milestone line
@@ -48,13 +52,10 @@ lanes; lane a landed 2026-09-01** -- **all three lanes landed** -- `GenerationSp
 (serde-default) flows through `ingest.rs` to `Track.title` (ARCHITECTURE §5 doc same commit); a Title
 input in the Lyrics Studio picker; and an Audio Studio Title override + `filenameSafe` sanitising the
 export default name before the dialog. **T-409 is COMPLETE -- click-through passed all six
-steps 2026-09-02.** **T-406 (the provenance inspector) is the last Phase 4 task and is CODE-COMPLETE:**
-briefed ([tasks/t-406-brief.md](tasks/t-406-brief.md)) and both lanes landed 2026-09-02 -- lane a a
-read-only Details inspector over the whole sidecar (`provenanceView` + a `byId` raw-track map the store
-had been discarding), lane b "re-use these settings" (`controlValues`/`stackFromLoras` +
-`paramPanel.hydrate`/`loraPanel.hydrate` + a `reuse(spec)` orchestrator loading a past spec into the
-Audio Studio, seed **pinned** so a reproduction is not re-rolled). Entirely frontend. **Its producer
-click-through is pending; when it passes, T-406 is done and Phase 4 closes.** Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+steps 2026-09-02.** **T-406 (the provenance inspector) is COMPLETE** -- both lanes landed
+2026-09-02 (lane a a read-only Details inspector over the whole sidecar; lane b "re-use these
+settings" loading a past spec into the Audio Studio with the seed **pinned** so a reproduction is not
+re-rolled), **click-through passed 2026-09-02, which closed Phase 4.** Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.

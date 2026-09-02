@@ -1,5 +1,9 @@
 # Phase 4 — Library & Player
 
+> ✅ **COMPLETE — closed 2026-09-02.** All tasks (T-401 … T-409) landed and each passed its own
+> producer click-through. This file is now a record, not a to-do list. Closed docs-only, **not
+> git-tagged** (the Phase 3 precedent). **Next: Phase 5** (cover art, polish, packaging), not yet opened.
+
 Goal: the tracks Phase 3 files become a real library — playable, organisable into albums,
 deletable, renamable, exportable, and handable to the mixing/mastering apps — with the recipe
 that made each one inspectable and reusable.
@@ -309,7 +313,8 @@ Scope:
   `specInputs`/`specLoras`; `paramPanel.hydrate`/`loraPanel.hydrate` load a past spec; a `reuse(spec)`
   orchestrator carries the title and navigates to the Audio Studio, wired to a **Re-use these
   settings** button in the inspector. **Pins the seed** (the trap below) -- mutation-checked. frontend
-  435. **T-406 is code-complete; producer click-through pending, then Phase 4 closes.**
+  435. **T-406 click-through passed 2026-09-02 (re-use loaded the exact seed, Generate reproduced the
+  track); T-406 is complete, and with it PHASE 4 CLOSES.**
 
 **The trap to design against:** "re-use these settings" must not silently re-roll the seed the
 way a fresh Generate does (T-316) -- the user is asking to reproduce a specific track, so the
