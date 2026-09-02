@@ -5760,3 +5760,19 @@ test was the only gate miss -- `cargo fmt` fixed it. Gate green; **mcp-bridge 96
 frontend 435 unchanged. Backend seam only -- **no click-through** until T-505 puts a UI on it. Next:
 **T-505** brief (catalog list + store verdict, curated one-click install reusing `install.rs`, adopt
 via the T-313 path).
+
+### 2026-09-02 (later still) -- T-505 split into four lanes; T-505a (the store) briefed
+
+T-505 is UI-heavy and splits the way the repo splits stateful surfaces (store then view, as T-403 /
+T-309 / T-310 did): **a** the browse/readiness store, **b** the `<ModelCatalog>` component + Setup
+wiring (Music-models audio, a new Cover-art step image), **c** curated one-click install reusing the
+existing `models_install`/`models_progress` path, **d** adopt an installed gallery row into a profile
+via the T-313 import path. **T-505a briefed** ([tasks/t-505a-brief.md](tasks/t-505a-brief.md)):
+`bridge/catalog.ts` (the TS mirrors of `CatalogKind`/`TemplateInfo`/`CatalogPage`/`LocalCheck` + the
+two invoke wrappers) and `state/catalog.ts` (a pure `verdictFor(LocalCheck)` -> Ready/Not-ready/
+Unknown, `rowViewFor`, and the store: open/search/reload/lazy `checkReadiness`), fully unit-tested
+against a mocked bridge -- no component. The verdict derives in TS because `create-core` has no
+mcp-bridge dep (T-504); `not_ready` carries `local_check.errors` **verbatim** (never parsed for a
+URL, §33); `unknown` is "can't tell", never "not installed" (the models-step rule). Verified while
+briefing: no existing TS mirror of these types, `isTauri` is in `bridge/comfy.ts`, and the
+store-test mock pattern is `state/projects.test.ts`'s. Docs/brief only; gate unaffected.

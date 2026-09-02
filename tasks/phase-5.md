@@ -107,14 +107,20 @@ Headlines:
   Verified by the live scoping (browse returned 163 image / 19 audio rows; readiness on a
   not-installed template decided) + unit/`#[ignore]`-live tests; **no click-through** possible until
   T-505 wires the UI. mcp-bridge 96→98, app 114→117; gate green.
-- **T-505 — Catalog UI, curated one-click install, adopt-to-profile.** The browse list on Setup
-  (Music-models step filtered to audio, Cover-art step to image), one shared component; the store
-  that derives the readiness verdict from `LocalCheck`. **Curated set:** an app-curated audio+image
-  list with hand-verified URLs → one-click install reusing `install.rs` (`models_install`/
-  `models_progress`). **Gallery rows:** installed → **adopt** via the T-313 import-to-profile path;
-  not-installed → show the missing files verbatim (no auto-download, no URL-from-prose). **Likely
-  splits** (list+store / curated install / adopt). An image curated entry also gives T-506 its
-  profile.
+- **T-505 — Catalog UI, curated one-click install, adopt-to-profile.** Split into lanes:
+  - **T-505a — the browse/readiness store (`state/catalog.ts` + `bridge/catalog.ts`). 📝 BRIEFED**
+    ([t-505a-brief.md](t-505a-brief.md)). Drives the two T-504 commands; derives the Ready/Not-ready/
+    Unknown verdict from `LocalCheck` in TS; per-row readiness resolved lazily. Fully unit-tested,
+    no UI. Three new files.
+  - **T-505b — the `<ModelCatalog>` component + Setup wiring** (Music-models step audio, a new
+    Cover-art step image). Renders the store: rows, search box, readiness pills, "what's missing".
+  - **T-505c — curated one-click install** reusing `models_install`/`models_progress` (already in
+    `bridge/models.ts`/`state/models.ts`), so the curated shipped profiles install from the catalog.
+  - **T-505d — adopt an installed gallery row into a profile** via the T-313 import path. This is
+    the "bring it in" action for a model the user already downloaded.
+  **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
+  pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
+  auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.
 
 ### Cover art — generation over an image profile
 - **T-506 — CoverArt generation.** Generate single/album artwork over the adopted image profile,
