@@ -179,6 +179,31 @@ impl LocalComfy {
         self.call("search_templates", args).await
     }
 
+    /// Browse the gallery for one output type (`audio`/`image`), local rows only.
+    ///
+    /// Unlike [`search_templates`], the whole kind lists with no text query --
+    /// `type` + `exclude_api` is the browse surface the catalog is built on
+    /// (MCP-SURFACE 32.1). `query` narrows within the kind when the user types;
+    /// `None` lists the kind. `exclude_api` is always true: the paid hosted tier
+    /// (`api: true`) is out of the v1 catalog.
+    pub async fn browse_templates(
+        &self,
+        output_type: &str,
+        query: Option<&str>,
+        offset: u32,
+        limit: u32,
+    ) -> Result<TemplateSearch, ComfyError> {
+        let mut args = Map::new();
+        args.insert("type".into(), Value::String(output_type.to_string()));
+        args.insert("exclude_api".into(), Value::Bool(true));
+        args.insert("offset".into(), Value::Number(offset.into()));
+        args.insert("limit".into(), Value::Number(limit.into()));
+        if let Some(query) = query {
+            args.insert("query".into(), Value::String(query.to_string()));
+        }
+        self.call("search_templates", args).await
+    }
+
     /// Inspect one template, writing nothing to disk.
     pub async fn get_template(&self, name: &str) -> Result<TemplateDetail, ComfyError> {
         let mut args = Map::new();
@@ -405,5 +430,42 @@ mod tests {
             json!("audio_ace_step1_5_xl_turbo")
         );
         assert_eq!(log[0]["arguments"]["out_path"], json!("C:/out/wf.json"));
+    }
+
+    #[tokio::test]
+    async fn test_browse_sends_type_and_excludes_api_with_no_query() {
+        let (client, recorded) = client_and_log(vec![Reply::Json(json!({
+            "total": 163, "shown": 100, "offset": 0, "rows": []
+        }))])
+        .await;
+        let _: TemplateSearch = client
+            .browse_templates("image", None, 0, 100)
+            .await
+            .expect("browse");
+        let log = recorded.lock().expect("recorded calls");
+        assert_eq!(log[0]["name"], json!("search_templates"));
+        assert_eq!(log[0]["arguments"]["type"], json!("image"));
+        assert_eq!(log[0]["arguments"]["exclude_api"], json!(true));
+        assert_eq!(log[0]["arguments"]["offset"], json!(0));
+        assert_eq!(log[0]["arguments"]["limit"], json!(100));
+        // No text query means the whole kind lists -- the `query` key must be absent,
+        // not an empty string (an empty query is a different comfy-cli code path).
+        assert!(log[0]["arguments"].get("query").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_browse_forwards_a_narrowing_query() {
+        let (client, recorded) = client_and_log(vec![Reply::Json(json!({
+            "total": 1, "shown": 1, "offset": 0, "rows": []
+        }))])
+        .await;
+        let _: TemplateSearch = client
+            .browse_templates("audio", Some("ace"), 20, 100)
+            .await
+            .expect("browse");
+        let log = recorded.lock().expect("recorded calls");
+        assert_eq!(log[0]["arguments"]["type"], json!("audio"));
+        assert_eq!(log[0]["arguments"]["query"], json!("ace"));
+        assert_eq!(log[0]["arguments"]["offset"], json!(20));
     }
 }

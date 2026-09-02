@@ -98,12 +98,15 @@ Headlines:
   a canvas/`requestAnimationFrame` draw is a click-through item (WORKFLOW §5).
 
 ### Model catalog (§10a) — the phase's backbone. **Curated-first + gallery browse** (owner decision 2026-09-02, from the live surface: comfy-mcp gives readiness but **no download URLs**, MCP-SURFACE §33)
-- **T-504 — Gallery browse + bare-row readiness (backend seam). 📝 BRIEFED** ([t-504-brief.md](t-504-brief.md)).
+- **T-504 — Gallery browse + bare-row readiness (backend seam). ✅ LANDED 2026-09-02** ([t-504-brief.md](t-504-brief.md)).
   `browse_templates` (a `search_templates` variant: `type` + `exclude_api:true` + `offset`) and two
   Tauri commands — `catalog_browse(kind, query, offset)` and `catalog_readiness(name)` returning the
   raw `LocalCheck` tri-state. The Ready/Not-ready/Unknown **verdict is derived in the T-505 store
   (TS)**, matching the repo; `create-core` stays pure (it has no mcp-bridge dep). Three files:
   `mcp-bridge/templates.rs`, new `src-tauri/catalog.rs`, `lib.rs`. **Install is not here** — see below.
+  Verified by the live scoping (browse returned 163 image / 19 audio rows; readiness on a
+  not-installed template decided) + unit/`#[ignore]`-live tests; **no click-through** possible until
+  T-505 wires the UI. mcp-bridge 96→98, app 114→117; gate green.
 - **T-505 — Catalog UI, curated one-click install, adopt-to-profile.** The browse list on Setup
   (Music-models step filtered to audio, Cover-art step to image), one shared component; the store
   that derives the readiness verdict from `LocalCheck`. **Curated set:** an app-curated audio+image

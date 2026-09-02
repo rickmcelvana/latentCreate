@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 mod albums;
+mod catalog;
 mod comfy;
 mod generate;
 mod import;
@@ -68,6 +69,8 @@ pub fn run() {
             comfy::comfy_status,
             comfy::comfy_launch,
             models::models_status,
+            catalog::catalog_browse,
+            catalog::catalog_readiness,
             generate::generate_audio,
             llm::llm_probe,
             llm::llm_test,
