@@ -7,6 +7,7 @@ import {
   type TrackWarning,
 } from '../bridge/library'
 import { isTauri } from '../bridge/jobs'
+import type { InputValue } from './params'
 
 /** Shown in place of the list when nothing has been generated yet. */
 export const EMPTY_LIBRARY =
@@ -93,6 +94,62 @@ export function trackRows(set: TrackSet): TrackRow[] {
   }))
 }
 
+/** One labelled fact in the provenance inspector. */
+export interface ProvenanceFact {
+  label: string
+  value: string
+}
+
+/** One titled group of facts in the inspector; omitted entirely when empty. */
+export interface ProvenanceSection {
+  title: string
+  facts: ProvenanceFact[]
+}
+
+/**
+ * One tagged value as a string. **`v.value`, never `String(v)`** -- an
+ * `InputValue` is `{ type, value }`, so stringifying the wrapper prints
+ * `[object Object]`. A seed reads as its number, text/enum/int/float as theirs.
+ */
+function formatValue(v: InputValue): string {
+  return String(v.value)
+}
+
+/**
+ * The full sidecar as inspector sections (T-406): every semantic input, the
+ * lyric ref, the resolved slots ComfyUI received, and the server that ran it.
+ * The Library card already shows the summary (model/licence/seed/LoRAs/run);
+ * this is the rest. A section with nothing in it is omitted, so an older sidecar
+ * with no `prompt_id`, no resolved slots and no comfy info still renders cleanly.
+ */
+export function provenanceView(track: Track): ProvenanceSection[] {
+  const p = track.provenance
+  const sections: ProvenanceSection[] = []
+
+  const inputs = Object.entries(p.spec.inputs).map(([label, v]) => ({ label, value: formatValue(v) }))
+  if (inputs.length > 0) sections.push({ title: 'Inputs', facts: inputs })
+
+  if (p.spec.lyrics !== null) {
+    const ref = p.spec.lyrics
+    sections.push({
+      title: 'Lyrics',
+      facts: [{ label: 'Document', value: `${ref.doc_id}, v${ref.version}` }],
+    })
+  }
+
+  const slots = Object.entries(p.resolved_slots).map(([label, v]) => ({ label, value: formatValue(v) }))
+  if (slots.length > 0) sections.push({ title: 'Resolved slots', facts: slots })
+
+  const server: ProvenanceFact[] = []
+  if (p.comfy?.comfyui_version) server.push({ label: 'ComfyUI', value: p.comfy.comfyui_version })
+  if (p.comfy?.comfy_cli_version) server.push({ label: 'comfy-cli', value: p.comfy.comfy_cli_version })
+  if (p.comfy?.url) server.push({ label: 'Endpoint', value: p.comfy.url })
+  if (p.template !== null) server.push({ label: 'Template', value: p.template })
+  if (server.length > 0) sections.push({ title: 'Server', facts: server })
+
+  return sections
+}
+
 /**
  * A single sentence describing warnings, or `null` when there are none.
  *
@@ -107,6 +164,11 @@ export function warningLine(warnings: TrackWarning[]): string | null {
 
 interface LibraryState {
   tracks: TrackRow[]
+  /**
+   * The raw tracks by id, kept so the provenance inspector and "re-use these
+   * settings" (T-406) can read the full sidecar the flattened `TrackRow` drops.
+   */
+  byId: Record<string, Track>
   warnings: string | null
   loading: boolean
   error: string | null
@@ -117,6 +179,7 @@ interface LibraryState {
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   tracks: [],
+  byId: {},
   warnings: null,
   loading: false,
   error: null,
@@ -128,6 +191,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const trackSet = await listTracks()
       set({
         tracks: trackRows(trackSet),
+        byId: Object.fromEntries(trackSet.tracks.map((track) => [track.id, track])),
         warnings: warningLine(trackSet.warnings),
         loading: false,
       })

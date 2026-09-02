@@ -6,7 +6,12 @@ import {
   useProjectsStore,
   type ProjectRow,
 } from '../state/projects'
-import { EMPTY_LIBRARY, useLibraryStore, type TrackRow } from '../state/library'
+import {
+  EMPTY_LIBRARY,
+  provenanceView,
+  useLibraryStore,
+  type TrackRow,
+} from '../state/library'
 import { Player } from '../components/Player'
 import { usePlayerStore } from '../state/player'
 import { AlbumPanel } from '../components/AlbumPanel'
@@ -290,6 +295,8 @@ function TrackCard({ row }: { row: TrackRow }) {
         ) : null}
       </dl>
 
+      <TrackDetails trackId={row.id} />
+
       <p className="track-file">{row.file}</p>
 
       {renaming ? (
@@ -343,6 +350,49 @@ function TrackCard({ row }: { row: TrackRow }) {
       {actionError !== null ? <p className="track-action-error">{actionError}</p> : null}
       {sendError !== null ? <p className="track-send-error">{sendError}</p> : null}
     </li>
+  )
+}
+
+/**
+ * The full recipe behind a track, revealed on demand (T-406): every input, the
+ * resolved slots ComfyUI received, the lyric ref, and the server that ran it.
+ * Open/closed is local state -- a read-only disclosure needs no cross-row
+ * exclusivity, unlike the delete/rename confirms the store holds.
+ */
+function TrackDetails({ trackId }: { trackId: string }) {
+  const track = useLibraryStore((state) => state.byId[trackId])
+  const [open, setOpen] = useState(false)
+
+  if (track === undefined) return null
+  const sections = provenanceView(track)
+
+  return (
+    <div className="track-details">
+      <button
+        type="button"
+        className="track-details-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+      >
+        {open ? 'Hide details' : 'Details'}
+      </button>
+
+      {open ? (
+        <div className="track-details-body">
+          {sections.map((section) => (
+            <dl className="track-details-section" key={section.title}>
+              <dt className="track-details-title">{section.title}</dt>
+              {section.facts.map((fact) => (
+                <div className="track-details-fact" key={`${section.title}:${fact.label}`}>
+                  <span className="track-details-label">{fact.label}</span>
+                  <span className="track-details-value">{fact.value}</span>
+                </div>
+              ))}
+            </dl>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 

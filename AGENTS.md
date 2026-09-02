@@ -48,9 +48,12 @@ lanes; lane a landed 2026-09-01** -- **all three lanes landed** -- `GenerationSp
 (serde-default) flows through `ingest.rs` to `Track.title` (ARCHITECTURE §5 doc same commit); a Title
 input in the Lyrics Studio picker; and an Audio Studio Title override + `filenameSafe` sanitising the
 export default name before the dialog. **T-409 is COMPLETE -- click-through passed all six
-steps 2026-09-02.** **Only T-406 (the provenance inspector) remains -- the last task in Phase 4, not
-yet briefed.** A read-only "how was this made" view over a track's sidecar plus a "re-use these
-settings" affordance; when it lands and passes, Phase 4 closes. Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+steps 2026-09-02.** **T-406 (the provenance inspector) is the last Phase 4 task and is IN PROGRESS:**
+briefed ([tasks/t-406-brief.md](tasks/t-406-brief.md)) and split -- **lane a landed 2026-09-02** (a
+read-only Details inspector over the whole sidecar: `provenanceView` + a `byId` raw-track map the store
+had been discarding; entirely frontend). **Lane b remains: "re-use these settings"** (load a past
+spec into the Audio Studio panels; the trap is that it **pins the seed** rather than re-rolling it).
+When lane b lands and passes, Phase 4 closes. Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.

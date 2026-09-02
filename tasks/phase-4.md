@@ -291,7 +291,9 @@ the file is *not* hard-deleted (the `trash` call is made, not `fs::remove_file`)
 deleted track's id is not handed to the next generation.
 
 ### T-406 — provenance inspector — "re-use these settings"
-The recipe that made a track, shown and reusable.
+The recipe that made a track, shown and reusable. **Briefed and split into two lanes 2026-09-02**
+([t-406-brief.md](t-406-brief.md)); **entirely frontend** -- `listTracks()` already returns the full
+sidecar, and the library store was discarding all but the flattened `TrackRow`.
 
 Scope:
 - **Frontend**: a provenance panel per track — the `GenerationSpec` (semantic inputs), the
@@ -299,6 +301,13 @@ Scope:
   "re-use these settings" action loads the spec back into the Audio Studio's param panel and
   LoRA stack (the `GenerationSpec` is already the shape `specFor` builds, so this is a store
   handoff, not a new type).
+- **Lane a — the read-only inspector — landed 2026-09-02.** The store keeps `byId` (the raw tracks
+  it had been discarding); `provenanceView(track)` builds omit-when-empty sections (Inputs / Lyrics /
+  Resolved slots / Server); a **Details** disclosure on each track card renders them. `formatValue`
+  reads a tagged `InputValue` by its `.value` (never `String(v)` -> `[object Object]`). frontend 430.
+- **Lane b — "re-use these settings" — remains.** `controlValues`/`stackFromLoras` reverse
+  `specInputs`/`specLoras`; `paramPanel.hydrate`/`loraPanel.hydrate` load a past spec; a `reuse(spec)`
+  orchestrator carries the title and navigates to the Audio Studio. **Pins the seed** (below).
 
 **The trap to design against:** "re-use these settings" must not silently re-roll the seed the
 way a fresh Generate does (T-316) -- the user is asking to reproduce a specific track, so the
