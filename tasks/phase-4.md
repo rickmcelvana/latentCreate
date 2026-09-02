@@ -405,10 +405,13 @@ A title named once in Lyrics Studio reaches the track, the Library and the expor
 2026-09-01 by owner decision 5. The field exists at both ends and connects to nothing: `Track.title`
 is hardcoded `None` at ingest and `LyricDoc.title` has never been writable.
 
-**Briefed and split into three lanes 2026-09-01** ([t-409-brief.md](t-409-brief.md)); **lane a
-landed.** Two surfaces the brief found already wired shrank the task: the export default name already
-flows from the title (`Library.tsx` passes ``${row.name}.${ext}``, and `row.name` is already
-`title ?? id`), and `specFor` already threads the selected `doc` in.
+**COMPLETE.** Briefed and split into three lanes 2026-09-01 ([t-409-brief.md](t-409-brief.md)); all
+three landed architect-direct, and the **producer click-through passed all six steps 2026-09-02**
+(title -> track -> Library -> sanitised export filename; an untitled track exports by its id;
+retitling the source doc leaves an existing track alone). Two surfaces the brief found already wired
+shrank the task: the export default name already flows from the title (`Library.tsx` passes
+``${row.name}.${ext}``, and `row.name` is already `title ?? id`), and `specFor` already threads the
+selected `doc` in.
 
 Scope:
 - **`LyricDoc.title` gets a UI** in Lyrics Studio. The field is already in the schema and in

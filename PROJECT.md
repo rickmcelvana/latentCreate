@@ -5387,9 +5387,12 @@ makes, each to the OS trash (except the album, which has no file), each refusing
 the reference graph demands.
 
 **Where the phase stands:** the milestone check was already met at T-405; T-408 was the scope
-owner-decision-4 added. **Remaining: T-409 click-through, then T-406.** **T-409 (the song title, carried)** is
-**code-complete -- briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)), split into three lanes, all
-three landed 2026-09-01 architect-direct; its producer click-through is pending.** -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
+owner-decision-4 added. **Remaining: T-406 (the last task).** **T-409 (the song title, carried) is COMPLETE** --
+briefed ([tasks/t-409-brief.md](tasks/t-409-brief.md)), split into three lanes, all three landed
+2026-09-01 architect-direct, and its **producer click-through passed all six steps 2026-09-02** (a
+titled document's title reached the track and its export filename; a `/`- and `:`-bearing title
+exported to a legal filename; an untitled track still exported by its id; and retitling the source
+document left an existing track's title alone). -- `GenerationSpec` gained `title: Option<String>` (`#[serde(default)]`,
 so every pre-T-409 sidecar stays readable), `ingest.rs` now copies it to `Track.title` instead of
 hardcoding `None`, the TS type and ARCHITECTURE §5 interface doc match, and `specFor` carries the
 selected doc's title onto the spec. The ~30 `GenerationSpec` construction sites (nearly all tests)
@@ -5511,6 +5514,30 @@ snapshot on the spec, copied at ingest). **Its producer click-through is pending
 filename, and an untitled track still exporting by its id. When it passes, the phase moves to **T-406**
 (provenance inspector, the last task -- it will surface the new `title` field), after which Phase 4
 closes.
+
+Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 426.
+Tree clean.
+
+### 2026-09-02 -- T-409 click-through passed; only T-406 remains in Phase 4
+
+The producer reported **T-409 passed all six steps**: a document titled in Lyrics Studio carried its
+title to the generated track and to the Library; the Audio Studio Title prefilled from it and was
+editable; a title with a `/` and a `:` exported to a **legal** filename (sanitised before the dialog);
+an **untitled** track still showed and exported by its id; and **retitling the source document left an
+existing track's title unchanged** -- the snapshot-not-a-link property, confirmed live. **T-409 is
+complete.**
+
+**Where Phase 4 stands:** the milestone check was met back at T-405, and everything owner-decision-4
+and -5 added (T-408 delete-for-everything, T-409 the title) is now done. **Only T-406 (the provenance
+inspector) remains, and it is the last task in the phase.** It has **no brief yet** -- write it first
+(one brief at a time). Scope, from tasks/phase-4.md: a read-only "how was this made" view over a
+track's sidecar -- the `GenerationSpec` (profile, inputs, LoRA stack, lyric ref, and now the
+**title** T-409 just added), the resolved slots, the Comfy server info and `prompt_id` -- and a
+"re-use these settings" affordance that seeds a new generation from a past track's spec. Verify the
+sidecar surface (`create_core::provenance::Track`/`Provenance`) against the code before briefing, as
+always. When T-406 lands and passes, **Phase 4 closes.** Two noted-not-scheduled items still stand:
+the Library player below-the-fold layout (docs/CSS-TODO.md) and persisting the selected lyric document
+across restarts.
 
 Gate green: create-core 175, library 109, mcp-bridge 96, llm-bridge 35, src-tauri 114, frontend 426.
 Tree clean.
