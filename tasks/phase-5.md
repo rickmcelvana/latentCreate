@@ -112,8 +112,12 @@ Headlines:
     ([t-505a-brief.md](t-505a-brief.md)). Drives the two T-504 commands; derives the Ready/Not-ready/
     Unknown verdict from `LocalCheck` in TS; per-row readiness resolved lazily. Fully unit-tested
     (13 tests), no UI. Three new files; frontend 435→448, gate green.
-  - **T-505b — the `<ModelCatalog>` component + Setup wiring** (Music-models step audio, a new
-    Cover-art step image). Renders the store: rows, search box, readiness pills, "what's missing".
+  - **T-505b — the `<ModelCatalog>` component + Setup wiring. 📝 BRIEFED** ([t-505b-brief.md](t-505b-brief.md)).
+    **One "Model catalog" Setup step with an Audio | Image toggle** (not two steps) — the T-505a store
+    is a singleton, so one kind shows at a time; that both keeps the store correct and delivers the
+    owner's "both on the setup page". Renders rows, a debounced search, and per-row readiness pills
+    resolved lazily via an IntersectionObserver. No install/adopt buttons yet (c/d). First catalog
+    lane with a producer click-through. Three files: new `ModelCatalog.tsx`, `Setup.tsx`, `theme.css`.
   - **T-505c — curated one-click install** reusing `models_install`/`models_progress` (already in
     `bridge/models.ts`/`state/models.ts`), so the curated shipped profiles install from the catalog.
   - **T-505d — adopt an installed gallery row into a profile** via the T-313 import path. This is

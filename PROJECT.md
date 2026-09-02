@@ -5787,5 +5787,20 @@ uncheckable row "Not installed"; the store guards on `isTauri`, sends `undefined
 resets readiness when rows change, dedupes `checkReadiness`, and maps a failed readiness poll to
 `unknown` not not-installed. 13 tests (5 verdict / 2 row-view / 6 store). Gate green (frontend-only;
 gate:rust unaffected), **frontend 435->448**. No click-through -- still no UI. Next: **T-505b** (the
-`<ModelCatalog>` component + Setup wiring: Music-models step audio, a new Cover-art step image), where
-the catalog first becomes visible and clickable.
+`<ModelCatalog>` component + Setup wiring), where the catalog first becomes visible and clickable.
+
+### 2026-09-02 (later still) -- T-505b briefed: the catalog component + Setup wiring
+
+Briefed ([tasks/t-505b-brief.md](tasks/t-505b-brief.md)). One design call the store shape forced:
+T-505a's store is a **singleton** (one kind's page), but the owner wants **both audio and image on
+the Setup page**. Rather than refactor the just-landed store or run two instances (rules-of-hooks
+awkward), the catalog is **one "Model catalog" step with an Audio | Image toggle** -- one kind shown
+at a time, singleton stays correct, requirement met. The step renders the store's rows with a
+debounced search and per-row readiness pills resolved **lazily via an IntersectionObserver** (the
+image gallery is ~163 rows; checking all on load would be 163 `get_template` calls -- so a row checks
+itself when it first scrolls into view, store dedupes). No install/adopt buttons yet (c/d). Three
+files: new `components/ModelCatalog.tsx`, `views/Setup.tsx` (one line after `ModelsStep`, which stays
+as the curated set), `theme.css` (verified the referenced tokens exist). **First catalog lane with a
+producer click-through.** Consequence to record when it lands: ARCHITECTURE §10 currently names a
+separate step-4 Cover-art model picker; the toggle catalog supersedes it, so §10/§10a get a wording
+pass at T-505b close. Docs/brief only; gate unaffected.
