@@ -5804,3 +5804,19 @@ as the curated set), `theme.css` (verified the referenced tokens exist). **First
 producer click-through.** Consequence to record when it lands: ARCHITECTURE §10 currently names a
 separate step-4 Cover-art model picker; the toggle catalog supersedes it, so §10/§10a get a wording
 pass at T-505b close. Docs/brief only; gate unaffected.
+
+### 2026-09-02 (later still) -- T-505b landed: the catalog is on screen (awaiting click-through)
+
+Ran Aider on T-505b; the tree was **the brief's three files and nothing else**, matched faithfully.
+Review: `<ModelCatalog>` renders the singleton store with an Audio | Image toggle (one kind at a
+time), a debounced search, and per-row readiness pills resolved lazily via an IntersectionObserver
+(disconnect-after-first, store dedupes); rows show the missing files verbatim; no install/adopt
+buttons (c/d). Wiring is one import + `<ModelCatalog />` after `<ModelsStep />` (which stays as the
+curated set). CSS reuses existing tokens; `status-pill-neutral` has no dedicated rule and falls back
+to the base muted pill -- the same thing the models step already does, so consistent, not a gap. Gate
+green (view component, not unit-tested per WORKFLOW §5; **frontend 448 unchanged**, 86 modules).
+**ARCHITECTURE §10/§10a updated in the same commit** to the toggle-step layout (the separate step-4
+Cover-art picker is gone; image models come via the catalog's Image tab, and the CoverArt view
+generates -- T-506). **Awaiting the producer click-through** (toggle, 163-image gallery, search,
+readiness pills, stopped-ComfyUI reads "Can't check"). Next after it passes: **T-505c** (curated
+one-click install on a catalog row, reusing `install.rs`).

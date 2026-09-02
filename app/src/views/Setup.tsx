@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ModelCatalog } from '../components/ModelCatalog'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
@@ -74,6 +75,7 @@ export function Setup() {
       </section>
 
       <ModelsStep />
+      <ModelCatalog />
       <LlmStep />
     </>
   )

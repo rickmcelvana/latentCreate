@@ -506,6 +506,98 @@ body {
   color: var(--text-muted);
 }
 
+/* --- Model catalog (Setup) --- */
+
+.catalog-kinds {
+  display: flex;
+  gap: var(--gap-xs);
+}
+
+.catalog-kind {
+  padding: var(--gap-xs) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.catalog-kind-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.catalog-search {
+  width: 100%;
+  margin: var(--gap-sm) 0;
+}
+
+.catalog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  /* The gallery is long; keep the step from taking over the page. */
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.catalog-row {
+  padding: var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.catalog-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.catalog-row-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.catalog-row-desc {
+  margin: var(--gap-xs) 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.catalog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  margin-top: var(--gap-sm);
+}
+
+.catalog-tag {
+  padding: 2px var(--gap-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.catalog-row-reasons {
+  margin: var(--gap-sm) 0 0;
+  padding-left: var(--gap-lg);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* --- Setup wizard, lyrics model step --- */
 
 .llm-endpoint-row,

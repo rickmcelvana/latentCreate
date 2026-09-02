@@ -1,0 +1,173 @@
+import { useEffect, useRef } from 'react'
+import type { CatalogKind, TemplateInfo } from '../bridge/catalog'
+import { rowViewFor, useCatalogStore } from '../state/catalog'
+
+const KINDS: { kind: CatalogKind; label: string }[] = [
+  { kind: 'audio', label: 'Audio' },
+  { kind: 'image', label: 'Image' },
+]
+
+/** Debounce the search so a browse does not fire on every keystroke. */
+const SEARCH_DEBOUNCE_MS = 300
+
+/**
+ * The Setup "Model catalog" step: browse the gallery for one kind at a time,
+ * search within it, and see per-row readiness. One step with an Audio | Image
+ * toggle -- the store is a singleton, so one kind is shown at a time (T-505b
+ * brief). Installing a curated model (T-505c) and adopting a row into a profile
+ * (T-505d) are not here; rows carry no action button yet.
+ */
+export function ModelCatalog() {
+  const kind = useCatalogStore((s) => s.kind)
+  const query = useCatalogStore((s) => s.query)
+  const page = useCatalogStore((s) => s.page)
+  const busy = useCatalogStore((s) => s.busy)
+  const error = useCatalogStore((s) => s.error)
+  const open = useCatalogStore((s) => s.open)
+  const search = useCatalogStore((s) => s.search)
+  const reload = useCatalogStore((s) => s.reload)
+
+  // Load the default kind once on mount. Switching kinds is the toggle below.
+  useEffect(() => {
+    void open('audio')
+  }, [open])
+
+  // Debounced search: hold the timer across renders, fire the store call once
+  // typing settles, and clear it on unmount so a late browse cannot land after
+  // the step is gone.
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (timer.current !== null) clearTimeout(timer.current)
+  }, [])
+  const onSearch = (value: string) => {
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = setTimeout(() => void search(value), SEARCH_DEBOUNCE_MS)
+  }
+
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">Model catalog</h2>
+        <div className="catalog-kinds" role="tablist" aria-label="Model kind">
+          {KINDS.map((k) => (
+            <button
+              key={k.kind}
+              type="button"
+              role="tab"
+              aria-selected={kind === k.kind}
+              className={`catalog-kind ${kind === k.kind ? 'catalog-kind-active' : ''}`}
+              onClick={() => void open(k.kind)}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <p className="setup-next-step">
+        Browse the models your ComfyUI can run, and see which you already have. Bringing a new one in
+        comes next.
+      </p>
+
+      <input
+        type="search"
+        className="lyrics-input catalog-search"
+        defaultValue={query}
+        // `key` on the kind resets the field when the kind changes, since `open`
+        // clears the query and this is an uncontrolled input.
+        key={kind}
+        placeholder={`Search ${kind} models`}
+        aria-label={`Search ${kind} models`}
+        onChange={(e) => onSearch(e.target.value)}
+      />
+
+      {error !== null ? (
+        <p className="setup-next-step">
+          {error}{' '}
+          <button type="button" className="setup-button" onClick={() => void reload()}>
+            Retry
+          </button>
+        </p>
+      ) : null}
+
+      {busy && page === null ? <p className="setup-next-step">Loading...</p> : null}
+
+      {page !== null && page.widened ? (
+        <p className="setup-next-step">No exact match -- showing the closest models.</p>
+      ) : null}
+
+      {page !== null && page.rows.length === 0 && !busy ? (
+        <p className="setup-next-step">No {kind} models match.</p>
+      ) : null}
+
+      {page !== null && page.rows.length > 0 ? (
+        <ul className="catalog-list">
+          {page.rows.map((row) => (
+            <CatalogRow key={row.name} row={row} />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  )
+}
+
+/** One gallery row: its title, blurb, tags, and a readiness pill resolved when
+ *  the row first comes into view. */
+function CatalogRow({ row }: { row: TemplateInfo }) {
+  const verdict = useCatalogStore((s) => s.readiness[row.name])
+  const check = useCatalogStore((s) => s.checkReadiness)
+  const ref = useRef<HTMLLIElement | null>(null)
+
+  // Resolve readiness once, when the row first scrolls into view. The store
+  // dedupes, so a re-observe is harmless; disconnect after the first hit keeps
+  // it to one call per row.
+  useEffect(() => {
+    const el = ref.current
+    if (el === null) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        void check(row.name)
+        observer.disconnect()
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [check, row.name])
+
+  // No pill until the row has been checked; the observer populates it.
+  const view = verdict === undefined ? null : rowViewFor(verdict)
+
+  return (
+    <li className="catalog-row" ref={ref}>
+      <div className="catalog-row-head">
+        <span className="catalog-row-title">{row.title || row.name}</span>
+        {view !== null ? (
+          <span className={`status-pill status-pill-${view.tone}`}>{view.label}</span>
+        ) : null}
+      </div>
+
+      {row.description !== '' ? <p className="catalog-row-desc">{row.description}</p> : null}
+
+      {row.tags.length > 0 ? (
+        <div className="catalog-tags">
+          {row.tags.map((tag) => (
+            <span key={tag} className="catalog-tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {/* What's missing, when a row is not runnable here -- the filenames from
+          local_check.errors, shown verbatim (third-party prose, never parsed
+          for a URL -- MCP-SURFACE 33). */}
+      {view !== null && view.reasons.length > 0 ? (
+        <ul className="catalog-row-reasons">
+          {view.reasons.map((reason, i) => (
+            <li key={i}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  )
+}
