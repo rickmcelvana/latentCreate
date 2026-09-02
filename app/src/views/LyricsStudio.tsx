@@ -297,7 +297,7 @@ function DocumentPicker() {
   if (docs.length === 0) return null
 
   return (
-    <div className="doc-picker">
+    <section className="panel doc-picker">
       <div className="doc-picker-row">
         <label className="doc-picker-field">
           <span className="lyrics-label">Document</span>
@@ -354,7 +354,7 @@ function DocumentPicker() {
         )}
       </div>
       {deleteDocError !== null ? <p className="lyrics-error">{deleteDocError}</p> : null}
-    </div>
+    </section>
   )
 }
 

@@ -5702,3 +5702,23 @@ the phase-start record, owner decisions, a "what already exists" audit, and a sc
 (T-501…T-510) -- **no Aider briefs yet** (one at a time). No code this session; docs-only, so the
 gate and counts are unchanged from the Phase 4 close. Next: owner sets build order, then the first
 brief.
+
+### 2026-09-02 (later still) -- build order: polish first; T-501/T-502/T-503 landed architect-direct
+
+Owner set build order to **polish first**. All three Phase-4 carryover items landed in one green tree
+(architect-direct -- CSS + small view edits, no Aider), awaiting a single producer click-through:
+
+- **T-501** -- lyrics doc-picker is now a `panel` card capped at `max-width: 720px`. Root cause of
+  "sticks out to the side": it was a bare `<div>` with no width cap while its sibling cards
+  (`lyrics-form`/`lyrics-output`) cap at 720px, so at full width it alone ran edge-to-edge.
+- **T-502** -- `.player` is `position: sticky; bottom: 0; z-index: 5` with a lift shadow. The
+  transport stays docked at the foot of the scroll pane while a track plays; it pins only when a
+  track is loaded (Player returns null otherwise), so nothing is pinned when idle.
+- **T-503** -- the visualizer canvas backing store is sized to client-size × `devicePixelRatio` via a
+  `ResizeObserver`, ending the full-screen blur (was a fixed `640x120` bitmap upscaled to
+  `width:100%`). Draw upgraded to gradient bars + a centered oscilloscope line; audio-graph wiring
+  untouched.
+
+Gate green (Rust + app; frontend **435** tests unchanged -- no new tests, a canvas draw and CSS are
+click-through items per WORKFLOW §5, and T-501/502 add no logic). **Awaiting producer click-through**
+on the Library player/visualizer and the Lyrics doc-picker; then the catalog (T-504) is next.

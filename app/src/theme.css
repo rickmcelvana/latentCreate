@@ -957,6 +957,7 @@ body {
 /* --- Document picker (T-408b) --- */
 
 .doc-picker {
+  max-width: 720px;
   margin-bottom: var(--gap-md);
 }
 
@@ -2163,6 +2164,14 @@ body {
   flex-direction: column;
   gap: var(--gap-md);
   margin-top: var(--gap-lg);
+  /* Dock the transport to the foot of the scroll pane so it stays on screen
+     with the playing track instead of sitting below a long track list
+     (T-502). `.player` carries the opaque `panel` background, and the Player
+     renders nothing when no track is loaded, so nothing is pinned when idle. */
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  box-shadow: var(--shadow-card), 0 -8px 24px -12px rgba(0, 0, 0, 0.6);
 }
 
 .player-now-playing {

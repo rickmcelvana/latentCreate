@@ -82,17 +82,20 @@ Headlines:
 
 ## Task map (scoped; briefed one at a time)
 
-### Polish — Phase-4 carryover (small, independent, gate-visible where logic moves to a store)
-- **T-501 — Lyrics document picker in its own card.** Wrap `DocumentPicker` in a `panel` so it
-  reads as a card like `lyrics-form`/`lyrics-output` instead of floating edge-to-edge with the
-  New/Delete actions pushed to the far side at full width. CSS + one wrapper; no store change.
-- **T-502 — Player docked on screen with the file.** Make the transport stay visible while a track
-  plays instead of living at the page foot. Sticky/fixed dock; keep it clear of the nav rail and
-  the scroll area. Decide: dock only while a track is loaded (`track !== null`) vs always.
-- **T-503 — Sharp visualizer + a better visual.** Size the canvas backing store to its client size
-  × `devicePixelRatio` (ResizeObserver), redraw on resize — kills the full-screen blur. Then a
-  visual-quality pass on the draw itself (the owner wants better than the current bars+line). Any
-  sizing math that can be pure goes in a helper a test can reach.
+### Polish — Phase-4 carryover (small, independent) — **all three LANDED 2026-09-02, architect-direct; awaiting one producer click-through**
+- **T-501 — Lyrics document picker in its own card. ✅ landed.** `DocumentPicker` is now a
+  `<section className="panel doc-picker">` capped at `max-width: 720px` to line up with the
+  `lyrics-form`/`lyrics-output` cards below it — it had no width cap, which is why it "stuck out to
+  the side" at full width. CSS + wrapper only; no store change.
+- **T-502 — Player docked on screen with the file. ✅ landed.** `.player` is `position: sticky;
+  bottom: 0; z-index: 5` with a lift shadow, so the transport stays at the foot of the scroll pane
+  while a track plays. It docks only when loaded — the Player renders nothing when `track === null`,
+  so nothing is pinned when idle.
+- **T-503 — Sharp visualizer + a better visual. ✅ landed.** The canvas backing store is sized to
+  its client size × `devicePixelRatio` via a `ResizeObserver` (kills the full-screen blur); the
+  draw was upgraded to gradient bars from the floor + a centered oscilloscope line. The audio-graph
+  wiring (`createMediaElementSource` once, analyser → `destination`) is unchanged. Not unit-tested —
+  a canvas/`requestAnimationFrame` draw is a click-through item (WORKFLOW §5).
 
 ### Model catalog (§10a) — the phase's backbone
 - **T-504 — Catalog backend seam.** `search_templates` browse (filtered `api:false`, split by
