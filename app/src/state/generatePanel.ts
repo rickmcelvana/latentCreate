@@ -1,10 +1,18 @@
 import { create } from 'zustand'
 import { isTauri } from '../bridge/comfy'
-import { generateAudio, type Submission } from '../bridge/generate'
-import { approvedFill, blockers, seedControl, specsFor } from './generate'
+import { generateAudio, type GenerationSpec, type Submission } from '../bridge/generate'
+import {
+  approvedFill,
+  blockers,
+  controlValues,
+  seedControl,
+  specsFor,
+  stackFromLoras,
+} from './generate'
 import { useJobsStore } from './jobs'
 import { useLoraPanelStore } from './loraPanel'
 import { useLyricsStore } from './lyrics'
+import { useNavStore } from './nav'
 import { freshSeed, useParamPanelStore } from './paramPanel'
 
 /**
@@ -37,6 +45,13 @@ interface GenerateState {
   submit: () => Promise<void>
   setCount: (n: number) => void
   setTitle: (title: string) => void
+  /**
+   * Load a past track's spec into the Audio Studio and switch to it (T-406
+   * "re-use these settings"): the param panel (seed pinned), the LoRA stack, and
+   * the title override. The inverse of `submit` reading the panels to build a
+   * spec.
+   */
+  reuse: (spec: GenerationSpec) => Promise<void>
   useApprovedLyric: () => void
 }
 
@@ -117,6 +132,15 @@ export const useGenerateStore = create<GenerateState>((set, get) => ({
   // Any keystroke is an override, `''` included -- an empty field means the user
   // wants this generation untitled, not "fall back to the document".
   setTitle: (title) => set({ title }),
+
+  reuse: async (spec) => {
+    await useParamPanelStore.getState().hydrate(spec.profile_id, controlValues(spec.inputs))
+    await useLoraPanelStore.getState().hydrate(spec.profile_id, stackFromLoras(spec.loras))
+    // The title the track was made with becomes the Audio Studio override; `''`
+    // for an untitled spec, which the field shows empty (T-409).
+    set({ title: spec.title ?? '' })
+    useNavStore.getState().setView('audio')
+  },
 
   /** Fill the lyrics field from the approved version. */
   useApprovedLyric: () => {

@@ -6,6 +6,7 @@ import { useGenerateStore } from './generatePanel'
 import { applyJobEvent, useJobsStore } from './jobs'
 import { useLoraPanelStore } from './loraPanel'
 import { useLyricsStore } from './lyrics'
+import { useNavStore } from './nav'
 import { defaults, panelModel } from './params'
 import { useParamPanelStore } from './paramPanel'
 
@@ -25,6 +26,18 @@ let inFlight = 0
 let maxInFlight = 0
 
 vi.mock('../bridge/comfy', () => ({ isTauri: () => true }))
+// paramPanel.hydrate reads a profile's inputs; the ace profile answers, an
+// unknown id does not (the "profile was removed" path).
+vi.mock('../bridge/profiles', () => ({
+  getProfileInputs: (id: string) =>
+    Promise.resolve(id === 'ace-step-1.5-turbo' ? aceProfile.inputs : null),
+  getEnumChoices: () => Promise.resolve({}),
+}))
+// loraPanel.hydrate loads the catalog; a null panel is fine -- the stack it set
+// stands, and missingFrom would flag anything the live list lacks.
+vi.mock('../bridge/loras', () => ({
+  getLoraPanel: () => Promise.resolve(null),
+}))
 vi.mock('../bridge/generate', () => ({
   generateAudio: async (spec: GenerationSpec) => {
     sent = spec
@@ -381,5 +394,51 @@ describe('useGenerateStore.useApprovedLyric', () => {
     useGenerateStore.getState().useApprovedLyric()
 
     expect(useParamPanelStore.getState().values.lyrics).toBe('mine')
+  })
+})
+
+describe('useGenerateStore.reuse', () => {
+  const pastSpec: GenerationSpec = {
+    profile_id: 'ace-step-1.5-turbo',
+    inputs: {
+      seed: { type: 'seed', value: 4242 },
+      tags: { type: 'text', value: 'synthwave' },
+    },
+    loras: [{ file: 'dir\\adapter_model.safetensors', strength: 1.0, enabled: true }],
+    lyrics: null,
+    title: 'Midnight Drive',
+  }
+
+  it('test_reuse_loads_the_spec_with_the_seed_pinned_and_navigates', async () => {
+    useNavStore.setState({ activeView: 'library' })
+
+    await useGenerateStore.getState().reuse(pastSpec)
+
+    const pp = useParamPanelStore.getState()
+    expect(pp.profileId).toBe('ace-step-1.5-turbo')
+    expect(pp.values.seed).toBe(4242) // the sidecar's seed, verbatim
+    expect(pp.seedPinned).toBe(true) // THE trap: not re-rolled on Generate
+    expect(pp.values.tags).toBe('synthwave')
+
+    expect(useLoraPanelStore.getState().stack).toEqual([
+      { path: 'dir\\adapter_model.safetensors', label: 'adapter_model', strength: 1.0, enabled: true },
+    ])
+    expect(useGenerateStore.getState().title).toBe('Midnight Drive')
+    expect(useNavStore.getState().activeView).toBe('audio')
+  })
+
+  /** Protects: the reproduced track uses the sidecar's seed, not a fresh one. */
+  it('test_a_submit_after_reuse_sends_the_reused_seed', async () => {
+    await useGenerateStore.getState().reuse(pastSpec)
+    await useGenerateStore.getState().submit()
+    expect(sent?.inputs.seed).toEqual({ type: 'seed', value: 4242 })
+  })
+
+  /** Protects: re-using a track whose profile was removed shows the panel's
+   * error, not a blank or broken form. */
+  it('test_reuse_of_a_removed_profile_surfaces_the_panel_error', async () => {
+    await useGenerateStore.getState().reuse({ ...pastSpec, profile_id: 'gone' })
+    expect(useParamPanelStore.getState().model).toBeNull()
+    expect(useParamPanelStore.getState().error).toContain('No profile answers to gone')
   })
 })

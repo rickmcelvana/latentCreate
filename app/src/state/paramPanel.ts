@@ -77,6 +77,12 @@ interface ParamPanelState {
   error: string | null
   busy: boolean
   load: (profileId: string) => Promise<void>
+  /**
+   * Load a profile and set the panel to a past track's values, seed **pinned**
+   * (T-406 "re-use these settings"). Unlike `load`, it overwrites the values
+   * even when the same profile is already selected, and never re-rolls the seed.
+   */
+  hydrate: (profileId: string, values: Record<string, ControlValue>) => Promise<void>
   setValue: (name: string, value: ControlValue) => void
   rerollSeed: () => void
   /** Set the seed value without pinning it -- Generate's own re-roll. */
@@ -119,6 +125,38 @@ export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
       }
       const model = panelModel(inputs)
       set({ profileId, model, values: initialValues(model), seedPinned: false, error: null })
+    } finally {
+      set({ busy: false })
+    }
+    await get().refreshChoices()
+  },
+
+  hydrate: async (profileId, values) => {
+    if (!isTauri()) return
+
+    set({ busy: true })
+    try {
+      const inputs = await getProfileInputs(profileId)
+      if (inputs === null) {
+        set({
+          profileId,
+          model: null,
+          values: {},
+          error: `No profile answers to ${profileId}, so there are no settings to show. Pick another model profile.`,
+        })
+        return
+      }
+      const model = panelModel(inputs)
+      // Defaults for controls the spec never set, the spec's own values over
+      // them; `seedPinned: true` so the next Generate reproduces this track
+      // rather than re-rolling the seed the sidecar recorded (T-316's opposite).
+      set({
+        profileId,
+        model,
+        values: { ...initialValues(model), ...values },
+        seedPinned: true,
+        error: null,
+      })
     } finally {
       set({ busy: false })
     }

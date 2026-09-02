@@ -14,6 +14,7 @@ import {
 } from '../state/library'
 import { Player } from '../components/Player'
 import { usePlayerStore } from '../state/player'
+import { useGenerateStore } from '../state/generatePanel'
 import { AlbumPanel } from '../components/AlbumPanel'
 import { useAlbumsStore } from '../state/albums'
 import {
@@ -361,6 +362,7 @@ function TrackCard({ row }: { row: TrackRow }) {
  */
 function TrackDetails({ trackId }: { trackId: string }) {
   const track = useLibraryStore((state) => state.byId[trackId])
+  const reuse = useGenerateStore((state) => state.reuse)
   const [open, setOpen] = useState(false)
 
   if (track === undefined) return null
@@ -390,6 +392,14 @@ function TrackDetails({ trackId }: { trackId: string }) {
               ))}
             </dl>
           ))}
+
+          <button
+            type="button"
+            className="track-reuse"
+            onClick={() => void reuse(track.provenance.spec)}
+          >
+            Re-use these settings
+          </button>
         </div>
       ) : null}
     </div>

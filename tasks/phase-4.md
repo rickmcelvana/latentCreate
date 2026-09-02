@@ -305,9 +305,11 @@ Scope:
   it had been discarding); `provenanceView(track)` builds omit-when-empty sections (Inputs / Lyrics /
   Resolved slots / Server); a **Details** disclosure on each track card renders them. `formatValue`
   reads a tagged `InputValue` by its `.value` (never `String(v)` -> `[object Object]`). frontend 430.
-- **Lane b — "re-use these settings" — remains.** `controlValues`/`stackFromLoras` reverse
+- **Lane b — "re-use these settings" — landed 2026-09-02.** `controlValues`/`stackFromLoras` reverse
   `specInputs`/`specLoras`; `paramPanel.hydrate`/`loraPanel.hydrate` load a past spec; a `reuse(spec)`
-  orchestrator carries the title and navigates to the Audio Studio. **Pins the seed** (below).
+  orchestrator carries the title and navigates to the Audio Studio, wired to a **Re-use these
+  settings** button in the inspector. **Pins the seed** (the trap below) -- mutation-checked. frontend
+  435. **T-406 is code-complete; producer click-through pending, then Phase 4 closes.**
 
 **The trap to design against:** "re-use these settings" must not silently re-roll the seed the
 way a fresh Generate does (T-316) -- the user is asking to reproduce a specific track, so the

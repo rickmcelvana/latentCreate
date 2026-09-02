@@ -28,6 +28,14 @@ interface LoraPanelState {
   showSuperseded: boolean
   busy: boolean
   load: (profileId: string) => Promise<void>
+  /**
+   * Load a profile's LoRA support and set the stack to a past track's LoRAs
+   * (T-406 "re-use these settings"). Unlike `load`, it sets the given stack
+   * instead of clearing, and overwrites even when the profile is already loaded.
+   * A re-used LoRA the catalog no longer offers stays in the stack and is
+   * reported by `missingFrom`, exactly as any stale row is.
+   */
+  hydrate: (profileId: string, stack: StackRow[]) => Promise<void>
   refresh: () => Promise<void>
   addPath: (path: string) => void
   removeRow: (index: number) => void
@@ -60,6 +68,17 @@ export const useLoraPanelStore = create<LoraPanelState>((set, get) => ({
     if (get().profileId === profileId) return
 
     set({ profileId, stack: [], busy: true })
+    try {
+      set({ panel: await getLoraPanel(profileId) })
+    } finally {
+      set({ busy: false })
+    }
+  },
+
+  hydrate: async (profileId, stack) => {
+    if (!isTauri()) return
+
+    set({ profileId, stack, busy: true })
     try {
       set({ panel: await getLoraPanel(profileId) })
     } finally {

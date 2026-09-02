@@ -12,16 +12,18 @@ import {
   approvedOffer,
   blockers,
   canBatch,
+  controlValues,
   effectiveCount,
   lyricRefFor,
   notesFor,
   queueingLabel,
   specFor,
   specsFor,
+  stackFromLoras,
   submissionNotes,
 } from './generate'
-import type { StackRow } from './loras'
-import { defaults, panelModel, type PanelModel } from './params'
+import { specLoras, type StackRow } from './loras'
+import { defaults, panelModel, specInputs, type PanelModel } from './params'
 
 const model = panelModel(aceProfile.inputs as unknown as ProfileInputs)
 
@@ -337,6 +339,37 @@ describe('specsFor', () => {
     expect(specs[1].inputs.seed).toEqual({ type: 'seed', value: 2222 })
     expect(specs[2].inputs.seed).toEqual({ type: 'seed', value: 3333 })
     expect(specs[3].inputs.seed).toEqual({ type: 'seed', value: 4444 })
+  })
+
+  /** Protects: controlValues inverts specInputs -- the re-use round trip (T-406). */
+  it('test_control_values_inverts_spec_inputs', () => {
+    const spec = specFor(
+      'ace-step-1.5-turbo',
+      model,
+      values({ seed: 4242, tags: 'synthwave' }),
+      [],
+      null,
+      null,
+    )
+    const back = controlValues(spec.inputs)
+    expect(back.seed).toBe(4242)
+    expect(back.tags).toBe('synthwave')
+    // And round-trips: rebuilt inputs equal the originals.
+    expect(specInputs(model, back)).toEqual(spec.inputs)
+  })
+
+  /** Protects: stackFromLoras inverts specLoras, label derived, flags preserved. */
+  it('test_stack_from_loras_inverts_spec_loras', () => {
+    const loras = [
+      { file: 'dir\\adapter_model.safetensors', strength: 1.0, enabled: true },
+      { file: 'solo.safetensors', strength: 0.8, enabled: false },
+    ]
+    const rows = stackFromLoras(loras)
+    expect(rows).toEqual([
+      { path: 'dir\\adapter_model.safetensors', label: 'adapter_model', strength: 1.0, enabled: true },
+      { path: 'solo.safetensors', label: 'solo', strength: 0.8, enabled: false },
+    ])
+    expect(specLoras(rows)).toEqual(loras)
   })
 
   /** Protects: a batch shares one title -- variations are takes of one song. */

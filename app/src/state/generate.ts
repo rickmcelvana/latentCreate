@@ -1,8 +1,14 @@
-import type { GenerationSpec, LyricRef, Submission } from '../bridge/generate'
+import type { GenerationSpec, LoraRef, LyricRef, Submission } from '../bridge/generate'
 import type { LyricDoc } from '../bridge/lyricdoc'
 import { specLoras, type StackRow } from './loras'
 import { approvedText } from './lyrics'
-import { seedError, specInputs, type ControlValue, type PanelModel } from './params'
+import {
+  seedError,
+  specInputs,
+  type ControlValue,
+  type InputValue,
+  type PanelModel,
+} from './params'
 
 /**
  * Assembling one generation: what is sent, and why Generate is sometimes off.
@@ -242,6 +248,37 @@ export function specsFor(
     specs.push(specFor(profileId, model, { ...values, [name]: nextSeed() }, stack, doc, title))
   }
   return specs
+}
+
+/**
+ * A spec's tagged inputs back to raw panel values -- the inverse of `specInputs`
+ * (T-406 "re-use these settings"). Each `InputValue.value` is already a
+ * `ControlValue` (a string or a number), so this just unwraps the tag.
+ */
+export function controlValues(inputs: Record<string, InputValue>): Record<string, ControlValue> {
+  const values: Record<string, ControlValue> = {}
+  for (const [name, input] of Object.entries(inputs)) {
+    // A `ControlValue` is a string or a number; the panel has no boolean control
+    // (`specInputs` emits none), so a bool input has no field to land in.
+    if (typeof input.value === 'boolean') continue
+    values[name] = input.value
+  }
+  return values
+}
+
+/**
+ * A spec's LoRA refs back to stack rows -- the inverse of `specLoras`. The label
+ * is derived from the file (the stem), the same way the Library summary renders
+ * it; a re-used LoRA the current catalog no longer offers stays in the stack and
+ * is reported by `missingFrom`, exactly as any stale row is.
+ */
+export function stackFromLoras(loras: LoraRef[]): StackRow[] {
+  return loras.map((lora) => ({
+    path: lora.file,
+    label: (lora.file.split(/[\\/]/).pop() ?? lora.file).replace(/\.safetensors$/i, ''),
+    strength: lora.strength,
+    enabled: lora.enabled,
+  }))
 }
 
 /** The button's label while a batch is in flight. */
