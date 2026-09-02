@@ -2437,8 +2437,46 @@ orthogonal to the local download catalog: no file lands on disk, generation happ
 
 **Design consequence (full write-up lands in ARCHITECTURE §10 + tasks/phase-5.md):** the "model
 catalog" is *surfacing the template gallery* (`api:false`, split by `output_type` into audio and
-image) as a searchable browse-and-install list on the Setup page, with `local_check` driving the
-Ready/Install state and `download_model` doing the install -- then feeding the chosen workflow
-through the **existing T-313 import-to-profile machinery** (a gallery template is just a workflow
-we did not have to ask the user to find). No raw HTTP is introduced, so **OQ-3 stays NO**; no
-models are shipped. The paid partner/cloud tier (32.4) is a later, separate decision.
+image) as a searchable browse list on the Setup page, with `local_check` driving the Ready/Not-ready
+state -- then feeding the chosen workflow through the **existing T-313 import-to-profile machinery**
+(a gallery template is just a workflow we did not have to ask the user to find). No raw HTTP is
+introduced, so **OQ-3 stays NO**; no models are shipped. The paid partner/cloud tier (32.4) is a
+later, separate decision. **The install half is constrained -- see §33.**
+
+## 33. The catalog can browse and check readiness, but cannot auto-install an arbitrary gallery model -- 2026-09-02
+
+Scoping T-504 (catalog backend), verified live against the running server. The naive design --
+"browse the gallery, and `download_model` installs whatever a row needs" -- **does not hold**,
+because comfy-mcp exposes **no download URL** for a gallery template's model files.
+
+33.1 **`get_template`/`fetch_template` name the missing file but not its source.** `get_template`
+on `flux_schnell` (not installed) returned `template.models: ["Flux.1", "Flux"]` -- model *family
+labels*, not filenames and not URLs -- plus a `local_check` with
+`runnable: false` and one error: `"node 30: 'flux1-schnell-fp8.safetensors' is unavailable: the
+server reports 0 installed options for ckpt_name"`. So the errors DO name the **missing filename**
+(`flux1-schnell-fp8.safetensors`) and the **slot/folder** (`ckpt_name` -> checkpoints), which is
+enough for a precise *readiness* verdict and a precise "you are missing X" message -- but there is
+**no URL** to hand `download_model`.
+
+33.2 **`download_model` is URL-only** (§32.3 confirmed it: "Fetches a known URL, no hub search"),
+and **`search_models` returns `source_url: null`** on the local surface (models.rs already documents
+this). So neither the template nor the model tools yield a downloadable source.
+
+33.3 **The notes do not reliably carry URLs either.** `list_workflow_notes` on the fetched
+`flux_schnell` returned two notes -- CFG/steps usage guidance and a "Learn more" doc link -- and
+**no model download URL**. Even where a template's notes *do* carry a link (the tool's own docs warn
+they "routinely contain model download links"), it is **untrusted third-party prose**, not
+structured data, and the tool explicitly says never to fetch a URL it names without checking with
+the user. Parsing a download target out of note text and feeding it to `download_model` is exactly
+the move the surface warns against.
+
+**Consequence for the catalog design.** The reliable, safe one-click install path is the one the
+shipped profiles already use: an **app-curated** model list where each file carries a
+hand-verified `source_url` (create-core `ModelFileSpec`, the ACE-Step/MiniMax pattern -- readiness.rs).
+So the catalog is **curated-first**: one-click install for the curated audio+image set (known URLs),
+and a **gallery readiness browser** over the wider `api:false` gallery where a non-curated row shows
+*what it needs* (the missing filenames from `local_check.errors`) rather than a download button it
+cannot honour. This keeps "ship no models" and "no executing untrusted URLs" intact. Readiness for a
+curated row still uses the profile-file-list match (readiness.rs), **not** `local_check.runnable`
+(the MiniMax slot-override lesson, §6) -- `local_check` drives readiness only for a *bare gallery
+row* that has no profile yet.

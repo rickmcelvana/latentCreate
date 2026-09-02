@@ -5722,3 +5722,28 @@ Owner set build order to **polish first**. All three Phase-4 carryover items lan
 Gate green (Rust + app; frontend **435** tests unchanged -- no new tests, a canvas draw and CSS are
 click-through items per WORKFLOW §5, and T-501/502 add no logic). **Awaiting producer click-through**
 on the Library player/visualizer and the Lyrics doc-picker; then the catalog (T-504) is next.
+
+### 2026-09-02 (later still) -- polish click-through passed; T-504 scoped from a second live check and briefed
+
+Producer click-through **passed** -- T-501/502/503 complete. Moved to the catalog and did the live
+scoping the "verify before briefing" rule demands, which **found a second constraint** and reshaped
+the feature (recorded [MCP-SURFACE §33](docs/MCP-SURFACE.md)): a not-installed gallery template's
+`local_check` names the **missing file** (`flux1-schnell-fp8.safetensors`) but comfy-mcp gives **no
+download URL** -- `template.models` is just family labels, notes carry only usage prose, and
+`download_model` is URL-only. So auto-installing an arbitrary gallery model is impossible; the honest
+design is **curated-first + gallery browse** (owner picked it): one-click install only for an
+app-curated set with hand-verified URLs (the shipped-profile pattern, reusing `install.rs`), and the
+wider gallery is a **readiness browser** (browse by kind via `search_templates` `type`+`exclude_api`
+-- 163 image / 19 audio rows live; adopt an installed row via the T-313 path; show missing files for
+the rest). ARCHITECTURE §10a rewritten to this; the earlier "install is `download_model` on the
+template's manifest URLs" line was wrong and is gone.
+
+**T-504 briefed** ([tasks/t-504-brief.md](tasks/t-504-brief.md)) as the backend seam only:
+`browse_templates` (a `search_templates` variant sending `type`+`exclude_api:true`+`offset`) and two
+thin Tauri commands (`catalog_browse`, `catalog_readiness` returning the raw `LocalCheck`). The
+Ready/Not-ready/Unknown **verdict derives in the T-505 store (TS)** -- `create-core` has no mcp-bridge
+dep, and the repo derives display state in stores. Three files, mock-tested + one `#[ignore]` live
+test. Verified while briefing: the template types are re-exported at the mcp-bridge crate root (not
+`mcp_bridge::templates::`), `search_templates`/`get_template` have **no callers yet** (only
+`fetch_template`, in generate.rs), and the models step must **stay** off `local_check` (an acceptance
+grep guards it). Curated install + adopt + the UI are **T-505**. Docs-only commit; gate unaffected.

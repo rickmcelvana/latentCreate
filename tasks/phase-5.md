@@ -82,7 +82,7 @@ Headlines:
 
 ## Task map (scoped; briefed one at a time)
 
-### Polish — Phase-4 carryover (small, independent) — **all three LANDED 2026-09-02, architect-direct; awaiting one producer click-through**
+### Polish — Phase-4 carryover (small, independent) — ✅ **COMPLETE: all three landed architect-direct 2026-09-02, producer click-through passed 2026-09-02**
 - **T-501 — Lyrics document picker in its own card. ✅ landed.** `DocumentPicker` is now a
   `<section className="panel doc-picker">` capped at `max-width: 720px` to line up with the
   `lyrics-form`/`lyrics-output` cards below it — it had no width cap, which is why it "stuck out to
@@ -97,16 +97,21 @@ Headlines:
   wiring (`createMediaElementSource` once, analyser → `destination`) is unchanged. Not unit-tested —
   a canvas/`requestAnimationFrame` draw is a click-through item (WORKFLOW §5).
 
-### Model catalog (§10a) — the phase's backbone
-- **T-504 — Catalog backend seam.** `search_templates` browse (filtered `api:false`, split by
-  `output_type` audio/image) + per-row readiness via `fetch_template`/`local_check` + install via
-  `download_model`/`download`, exposed as Tauri commands with a testable store-facing shape. Pure
-  classification (Ready / installable / missing-files) in `create-core` or a store, mock transport
-  in tests. **Likely splits** (backend seam / install path) when briefed.
-- **T-505 — Catalog UI + adopt-to-profile.** The browse-and-install list on Setup (Music-models
-  step filtered to audio, Cover-art step filtered to image), one shared component. "Adopt" feeds
-  the chosen workflow through the **T-313 import-to-profile** path so the result is a profile
-  indistinguishable from a shipped one. **Likely splits** (list / install-progress / adopt).
+### Model catalog (§10a) — the phase's backbone. **Curated-first + gallery browse** (owner decision 2026-09-02, from the live surface: comfy-mcp gives readiness but **no download URLs**, MCP-SURFACE §33)
+- **T-504 — Gallery browse + bare-row readiness (backend seam). 📝 BRIEFED** ([t-504-brief.md](t-504-brief.md)).
+  `browse_templates` (a `search_templates` variant: `type` + `exclude_api:true` + `offset`) and two
+  Tauri commands — `catalog_browse(kind, query, offset)` and `catalog_readiness(name)` returning the
+  raw `LocalCheck` tri-state. The Ready/Not-ready/Unknown **verdict is derived in the T-505 store
+  (TS)**, matching the repo; `create-core` stays pure (it has no mcp-bridge dep). Three files:
+  `mcp-bridge/templates.rs`, new `src-tauri/catalog.rs`, `lib.rs`. **Install is not here** — see below.
+- **T-505 — Catalog UI, curated one-click install, adopt-to-profile.** The browse list on Setup
+  (Music-models step filtered to audio, Cover-art step to image), one shared component; the store
+  that derives the readiness verdict from `LocalCheck`. **Curated set:** an app-curated audio+image
+  list with hand-verified URLs → one-click install reusing `install.rs` (`models_install`/
+  `models_progress`). **Gallery rows:** installed → **adopt** via the T-313 import-to-profile path;
+  not-installed → show the missing files verbatim (no auto-download, no URL-from-prose). **Likely
+  splits** (list+store / curated install / adopt). An image curated entry also gives T-506 its
+  profile.
 
 ### Cover art — generation over an image profile
 - **T-506 — CoverArt generation.** Generate single/album artwork over the adopted image profile,
