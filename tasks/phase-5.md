@@ -108,10 +108,10 @@ Headlines:
   not-installed template decided) + unit/`#[ignore]`-live tests; **no click-through** possible until
   T-505 wires the UI. mcp-bridge 96→98, app 114→117; gate green.
 - **T-505 — Catalog UI, curated one-click install, adopt-to-profile.** Split into lanes:
-  - **T-505a — the browse/readiness store (`state/catalog.ts` + `bridge/catalog.ts`). 📝 BRIEFED**
+  - **T-505a — the browse/readiness store (`state/catalog.ts` + `bridge/catalog.ts`). ✅ LANDED 2026-09-02**
     ([t-505a-brief.md](t-505a-brief.md)). Drives the two T-504 commands; derives the Ready/Not-ready/
-    Unknown verdict from `LocalCheck` in TS; per-row readiness resolved lazily. Fully unit-tested,
-    no UI. Three new files.
+    Unknown verdict from `LocalCheck` in TS; per-row readiness resolved lazily. Fully unit-tested
+    (13 tests), no UI. Three new files; frontend 435→448, gate green.
   - **T-505b — the `<ModelCatalog>` component + Setup wiring** (Music-models step audio, a new
     Cover-art step image). Renders the store: rows, search box, readiness pills, "what's missing".
   - **T-505c — curated one-click install** reusing `models_install`/`models_progress` (already in
