@@ -2388,3 +2388,57 @@ takes eleven minutes" is a different answer from "will not run") turned out to b
 **`minimax-music-3.json` declares `vram_gb_min: 16` on a 15.93 GiB card it has generated on
 repeatedly** (30.3) -- so that number is already known to be wrong in the *other* direction, and
 this bisect does not touch it. Both fields remain display text only (30.3); nothing gates on them.
+
+## 32. Phase 5 phase-start -- the image / model-catalog surface, verified live -- 2026-09-02
+
+Re-verified before opening Phase 5, against the running local server (`server_info`): ComfyUI up
+on `127.0.0.1:8188`, **RTX 5060 Ti, 15.93 GiB VRAM**, comfy-cli **1.16.0**, core **v0.34.2**
+(current, `freshness.core.outdated: false`). comfy-cli 1.16.0 is above the v1.15.0 floor, so
+`search_models` query tokens match word-order-independently across every folder (not just
+`checkpoints`).
+
+**The catalog finding, and it reshapes the feature: comfy-mcp exposes no live model-hub search.**
+There is no CivitAI/HuggingFace "search a registry and download" tool. What exists is four
+surfaces, and only one of them is browsable-before-install:
+
+32.1 **`search_templates` is the browsable catalog** -- the built-in workflow-template gallery
+(~558 rows, **cached 24h**, `comfy templates refresh` to force). Each row is a *workflow + model*
+bundle, not a bare weight file. `output_type` and `category_title` classify them; the derived
+`api` boolean splits **local/free** (`api:false`) from **hosted/paid** (`api:true`, spends the
+signed-in account's credits). A query of `flux text to image` + `exclude_api:true` returned **13
+local image templates**: Flux.2 Dev, Flux.2 Klein 4B/9B (distilled + base, sub-second), Chroma,
+Flux.1 Krea Dev, Flux.1 Dev full + fp8, Flux.1 Schnell fp8 (4-step, low-VRAM). This is the same
+gallery Phases 1-3 already used for **audio** (ACE-Step, MiniMax), so both sides of "search for
+audio and image models" ride one verified surface. The on-ramp is the one in the server
+instructions: `search_templates` -> `fetch_template` (writes the workflow, returns `local_check`)
+-> if `local_check.runnable` is false, install the missing model files -> run. **`local_check` is
+the readiness oracle for a catalog row**, not a separate check we build.
+
+32.2 **`search_models` is LOCAL-only readiness, not discovery.** A no-arg call listed **27 model
+folders**, every image folder present: `checkpoints`, `diffusion_models`, `vae`, `text_encoders`,
+`clip_vision`, `style_models`, `controlnet`, `loras`, `upscale_models`, `embeddings`,
+`photomaker`, plus the audio `audio_encoders`. Filenames only -- no base-model/hash/description
+enrichment, no registry. It answers "is this file on disk?", which is what `local_check` leans on;
+it cannot answer "what could I install?".
+
+32.3 **`download_model` needs a known URL** -- "Fetches a known URL, no hub search." So one-click
+install works only when the catalog row already carries the file's URL. For gallery templates the
+URL comes from the template's own model manifest via the fetch/`local_check` path; for anything
+off-gallery it would have to be a URL the app ships (the shipped-profile pattern from Phase 1's
+ACE-Step install, generalized). `relative_path`'s first segment must be `models` (e.g.
+`models/diffusion_models`); it **refuses outright when a remote ComfyUI target is configured**.
+
+32.4 **`list_partner_models` is a separate paid CLOUD tier**, not downloads. 40 hosted aliases
+(filtered to `image`: BFL Flux 2 Pro / Flux Pro 1.1 / Ultra / Kontext Max, Ideogram v3
+generate/edit/remix/reframe, ByteDance Seedance) run via `partner_generate` and **spend the
+account's credits** -- `category` spans text-to-image, image-edit, controlnet, inpaint, outpaint,
+text-to-video. This is the "Cloud" arm ARCHITECTURE §10 step 1 already anticipates, and it is
+orthogonal to the local download catalog: no file lands on disk, generation happens remotely.
+
+**Design consequence (full write-up lands in ARCHITECTURE §10 + tasks/phase-5.md):** the "model
+catalog" is *surfacing the template gallery* (`api:false`, split by `output_type` into audio and
+image) as a searchable browse-and-install list on the Setup page, with `local_check` driving the
+Ready/Install state and `download_model` doing the install -- then feeding the chosen workflow
+through the **existing T-313 import-to-profile machinery** (a gallery template is just a workflow
+we did not have to ask the user to find). No raw HTTP is introduced, so **OQ-3 stays NO**; no
+models are shipped. The paid partner/cloud tier (32.4) is a later, separate decision.

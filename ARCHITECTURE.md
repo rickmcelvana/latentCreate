@@ -346,11 +346,22 @@ comfy-mcp itself, so such a gate would leave the button dead on every cold start
 
 Step order, each with live health checks and "why/how" help text:
 1. **ComfyUI** — choose Local or Cloud. Local: detect `comfy-mcp` on PATH (offer install instructions `pip install comfy-mcp` if missing), detect/launch ComfyUI (`launch_comfyui`), show server info. Cloud: API key entry (keychain), verify with a discovery call.
-2. **Music models** — installed models (`search_models(folder=…)`) filtered against shipped profiles → show "ready" ✅ / "not installed" with one-click install (`download_model` + `download` progress streamed; note it refuses outright when a remote ComfyUI target is configured). Curated catalog first (profiles we ship), full `search_models` search behind an "advanced" expander. Upgrades: profile knows current recommended file; if local differs, show non-nagging "update available".
+2. **Music models** — the shipped audio profiles show "ready" ✅ / "not installed" by matching their declared files against the local install (`search_models`), with one-click install (`download_model` + `download` progress streamed; refuses outright when a remote ComfyUI target is configured). Below the shipped rows sits the **model catalog** (§10a) filtered to audio.
 3. **Lyrics LLM (optional, skippable)** — provider pick, base URL/key, `list_models`, test call. Models the suite recommends for lyrics (docs/MODELS.md — currently Gemma 4 12B, and 26B/31B for high-VRAM users) get a "recommended for lyrics" chip in the list and the 12B is preselected when nothing is chosen; the recommendation list is read as data, and the app never auto-pulls an LLM.
-4. **Cover art (optional, skippable)** — pick an installed image model/template.
+4. **Cover art (optional, skippable)** — the **model catalog** (§10a) filtered to image (`output_type: image`), so a user brings in an image model the same way they bring in an audio one; the chosen template becomes the CoverArt view's profile.
 
 Config edits never block the main UI after first run; degraded states show as status pills (e.g. "ComfyUI offline — reconnect") not modal walls.
+
+### 10a. Model catalog (Setup, shared by the Music-models and Cover-art steps)
+
+**The reason the Setup page exists beyond LLM selection: a user brings in new audio and image models without hand-importing a workflow.** Verified live 2026-09-02 ([docs/MCP-SURFACE.md §32](docs/MCP-SURFACE.md)) — comfy-mcp has **no model-hub search** (no CivitAI/HuggingFace registry tool), so the catalog is not a registry browser. The one browsable-before-install surface is the **built-in workflow-template gallery** (`search_templates`, ~558 rows, 24h cache), where each row is a *workflow + model* bundle carrying its own model manifest. The catalog surfaces that gallery:
+
+- **Browse/search** `search_templates`, filtered `api:false` (local/free — the paid `api:true` hosted tier is deliberately out of v1; see Non-goals) and split by `output_type` (`audio` for step 2, `image` for step 4). One shared component, two filters.
+- **Readiness per row** is `fetch_template` → `local_check`: `runnable: true` = Ready; otherwise the row lists what is missing. `local_check` is the oracle — the app never re-derives readiness.
+- **Install** is `download_model` on the URLs the template's manifest names, streamed through the existing `download` progress path (same seam as Phase 1's ACE-Step install).
+- **Adopt** runs the fetched workflow through the **existing T-313 import-to-profile machinery** — a gallery template is just a workflow the user did not have to find, so role-suggestion, the confirm screen, and copy-not-reference all apply unchanged. The result is a profile indistinguishable from a shipped one.
+
+This introduces **no raw HTTP** (OQ-3 stays NO) and ships **no models** — the app only invokes comfy-mcp against the user's own ComfyUI. The paid **hosted/cloud tier** (`list_partner_models` / `partner_generate` — Flux Pro, Ideogram, Seedance; spends the account's credits, no download) is a documented later addition, not v1 (backlog, ROADMAP).
 
 ## 11. Frontend rules
 

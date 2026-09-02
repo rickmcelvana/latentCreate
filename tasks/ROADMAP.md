@@ -30,9 +30,10 @@ Library views (project/track lists, album lists), player with AnalyserNode spect
 **Milestone check (live):** generate → play with visualizer → album list → send-to opens site with file revealed.
 **All four discharged by 2026-09-01**, each by its own dated click-through (T-311, T-402, T-403, T-404).
 
-## Phase 5 — Cover art, polish, packaging (T-501 …)
-Cover-art view over the image profile, first-run polish pass, empty/degraded states audit, installer builds (Windows first: NSIS/MSIX; then macOS dmg + Linux AppImage via CI), THIRD-PARTY-LICENSES generation, public-repo readiness (CONTRIBUTING, issue templates).
-**Milestone check:** installable build on a machine that never had the dev toolchain.
+## Phase 5 — Model catalog, cover art, polish, packaging (T-501 …) — **OPEN 2026-09-02** — [phase-5.md](phase-5.md)
+**Model catalog** on Setup (browse the built-in template gallery, install audio *and* image models via `download_model`, adopt through the T-313 import-to-profile path — **local-only for v1**, ARCHITECTURE §10a; surface **re-verified live 2026-09-02**, docs/MCP-SURFACE.md §32), cover-art view over the adopted image profile, three Phase-4 polish carryovers (lyrics doc-picker card, on-screen player, sharp/better visualizer), first-run polish pass, empty/degraded states audit, installer builds (Windows first: NSIS/MSIX; then macOS dmg + Linux AppImage via CI), THIRD-PARTY-LICENSES generation, public-repo readiness (CONTRIBUTING, issue templates).
+**Phase-start check — done 2026-09-02:** the catalog rides `search_templates` (no model-hub search exists in comfy-mcp); the gallery is the same one used for audio, so one surface serves both. Owner decisions: catalog is first-class and was dropped from the plan; local-only for v1; reuse T-313's import-to-profile machinery.
+**Milestone check:** installable build on a machine that never had the dev toolchain; from it, search the catalog → install an image model → generate cover art with a provenance sidecar.
 
 ## Future (backlog, PROJECT.md)
-Bulk send-to-mastering (needs mastering bulk import) · latentPlayer hand-off · audio-to-audio (extend/cover/remix) profiles · community profile sharing · model-news surface.
+Bulk send-to-mastering (needs mastering bulk import) · latentPlayer hand-off · audio-to-audio (extend/cover/remix) profiles · community profile sharing · model-news surface · **paid hosted/cloud generation tier** (`list_partner_models` / `partner_generate` — Flux Pro, Ideogram, Seedance; spends account credits, no download; the "Cloud" arm of ARCHITECTURE §10 step 1, deferred from the v1 local-only catalog).
