@@ -188,7 +188,7 @@ Headlines:
       tags→`75/74.text`, negative→`75/67.text` (`Strong`, reason naming the negative conditioning),
       seed/steps/cfg to its subgraph controls; ACE-Step and MiniMax suggestions unchanged with
       `Negative` still absent. create-core 176→184.
-    - **T-505d-d — the "Bring in" button + adopt mapping UI. 📋 BRIEFED 2026-09-03**
+    - **T-505d-d — the "Bring in" button + adopt mapping UI. ✅ LANDED 2026-09-03, click-through pending**
       ([t-505d-d-brief.md](t-505d-d-brief.md)) (frontend, **has the click-through**). A ready **bare**
       row gets a "Bring in" action → an `adopt(name, title)` import-store action driving
       `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/
@@ -205,6 +205,15 @@ Headlines:
       the model after a temp file. An adopted profile is `workflow`-backed (`template: None`), so it
       does **not** join the T-505c curated index — the row stays bare after adopt, which is expected;
       marking it "adopted" across a reload needs a backend field and is out of scope.
+      Landed matching the brief. Fixed in review: a `tsc` unused-import failure; a test guard that was
+      vacuous because vitest is not configured to clear mocks between tests (call counts accumulated
+      down the file, so `not.toHaveBeenCalled` was reading earlier tests); the lifted `failed` branch
+      had picked up the saved branch's button label ("Import another" after a failure); an ASCII-ed
+      em dash in an existing **UI string**, where CONVENTIONS allows Unicode; and **a dead end the
+      brief missed** — switching the kind toggle or searching unmounts the row that owns an open
+      bring-in, taking its mapping screen with it, and since the store allows one flow at a time the
+      user could then reach neither Cancel nor any new import. The step now keeps the screen, named,
+      when its row is no longer listed. frontend 453→459.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
   pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.

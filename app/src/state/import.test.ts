@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
-import type { Candidate, RoleSuggestion } from '../bridge/import'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Candidate, ImportReport, RoleSuggestion } from '../bridge/import'
+import { importWorkflow } from '../bridge/import'
+import { catalogAdoptBegin } from '../bridge/catalog'
 import {
   canSave,
   initialSelection,
@@ -7,8 +9,31 @@ import {
   roleRows,
   saveNotes,
   toggleAddress,
+  useImportStore,
   type Selection,
 } from './import'
+
+vi.mock('../bridge/import', () => ({
+  importWorkflow: vi.fn(),
+  saveImportedProfile: vi.fn(),
+}))
+
+vi.mock('../bridge/catalog', () => ({
+  catalogAdoptBegin: vi.fn(),
+}))
+
+/** The report an adopt returns. The `workflow_id` is the real shape: the slug of
+ *  `catalog_adopt_begin`'s temp file, which must never become the profile name. */
+function emptyReport(overrides: Partial<ImportReport> = {}): ImportReport {
+  return {
+    workflow_id: 'latentcreate-adopt-image-flux2-text-to-image-9b',
+    stored_path: '/tmp/adopt.json',
+    slots: [],
+    suggestions: [],
+    warnings: [],
+    ...overrides,
+  }
+}
 
 function strong(address: string, nodeType = 'TextEncodeAceStepAudio1.5'): Candidate {
   return { address, node_type: nodeType, confidence: 'strong', reason: `on ${nodeType}` }
@@ -36,6 +61,20 @@ function aceSuggestions(): RoleSuggestion[] {
     { role: 'steps', candidates: [strong('3.steps', 'KSampler')] },
   ]
 }
+
+beforeEach(() => {
+  // Vitest is not configured to clear mocks between tests, so the call counts
+  // would accumulate down the file -- which is exactly what the
+  // "refuses a second adopt" guard asserts on.
+  vi.clearAllMocks()
+  useImportStore.setState({
+    phase: { kind: 'idle' },
+    report: null,
+    selected: {},
+    name: '',
+    adopting: null,
+  })
+})
 
 describe('initialSelection', () => {
   /**
@@ -186,5 +225,59 @@ describe('saveNotes', () => {
     const selected: Selection = { tags: ['94.tags'] }
     expect(saveNotes(selected)).not.toEqual([])
     expect(canSave('My Import', selected)).toBe(true)
+  })
+})
+
+describe('useImportStore', () => {
+  it('seeds the name from the gallery title, not the temp workflow id', async () => {
+    vi.mocked(catalogAdoptBegin).mockResolvedValue(emptyReport())
+    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
+
+    expect(useImportStore.getState().name).toBe('Klein 9B: Text to Image')
+  })
+
+  it('falls back to the row name when the gallery has no title', async () => {
+    vi.mocked(catalogAdoptBegin).mockResolvedValue(emptyReport())
+    await useImportStore.getState().adopt('image_flux2', '')
+
+    expect(useImportStore.getState().name).toBe('image_flux2')
+  })
+
+  it('marks the row that owns the flow', async () => {
+    vi.mocked(catalogAdoptBegin).mockResolvedValue(emptyReport())
+    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
+
+    expect(useImportStore.getState().adopting).toBe('image_flux2')
+    expect(useImportStore.getState().phase.kind).toBe('mapping')
+  })
+
+  it('keeps the row marked when the adopt fails', async () => {
+    vi.mocked(catalogAdoptBegin).mockRejectedValue(new Error('not runnable'))
+    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
+
+    expect(useImportStore.getState().adopting).toBe('image_flux2')
+    expect(useImportStore.getState().phase.kind).toBe('failed')
+  })
+
+  it('refuses a second adopt while a flow is open', async () => {
+    useImportStore.setState({ phase: { kind: 'mapping' } })
+    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
+
+    expect(catalogAdoptBegin).not.toHaveBeenCalled()
+    expect(useImportStore.getState().adopting).toBeNull()
+  })
+
+  it('clears the adopt marker on a file import and on reset', async () => {
+    vi.mocked(importWorkflow).mockResolvedValue(
+      emptyReport({ workflow_id: 'my-workflow', stored_path: '/tmp/workflow.json' }),
+    )
+
+    useImportStore.setState({ adopting: 'image_flux2' })
+    await useImportStore.getState().begin('/path/to/workflow.json')
+    expect(useImportStore.getState().adopting).toBeNull()
+
+    useImportStore.setState({ adopting: 'image_flux2' })
+    useImportStore.getState().reset()
+    expect(useImportStore.getState().adopting).toBeNull()
   })
 })

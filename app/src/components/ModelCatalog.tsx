@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { CatalogKind, TemplateInfo } from '../bridge/catalog'
 import type { ProfileStatus } from '../bridge/models'
+import { RoleMapping } from './RoleMapping'
 import { curatedIndex, rowViewFor, useCatalogStore } from '../state/catalog'
+import { useImportStore } from '../state/import'
 import { installView, rowFor, useModelsStore } from '../state/models'
 
 const KINDS: { kind: CatalogKind; label: string }[] = [
@@ -16,8 +18,8 @@ const SEARCH_DEBOUNCE_MS = 300
  * The Setup "Model catalog" step: browse the gallery for one kind at a time,
  * search within it, and see per-row readiness. One step with an Audio | Image
  * toggle -- the store is a singleton, so one kind is shown at a time (T-505b
- * brief). Installing a curated model (T-505c) and adopting a row into a profile
- * (T-505d) are not here; rows carry no action button yet.
+ * brief). Curated rows install with one click (T-505c); ready bare rows are
+ * brought in as user profiles (T-505d).
  */
 export function ModelCatalog() {
   const kind = useCatalogStore((s) => s.kind)
@@ -35,6 +37,14 @@ export function ModelCatalog() {
     void refreshModels()
   }, [refreshModels])
   const curated = useMemo(() => curatedIndex(modelsView), [modelsView])
+
+  // The row that owns an open bring-in can leave the page: the kind toggle and
+  // a search both replace `page`. Its mapping screen would go with it, and
+  // because the store allows one flow at a time, the user could then reach
+  // neither Cancel nor any new import -- a dead end needing a restart. So when
+  // the row is gone, the step keeps the screen.
+  const adopting = useImportStore((s) => s.adopting)
+  const orphaned = adopting !== null && !(page?.rows ?? []).some((r) => r.name === adopting)
 
   // Load the default kind once on mount. Switching kinds is the toggle below.
   useEffect(() => {
@@ -126,6 +136,16 @@ export function ModelCatalog() {
           })}
         </ul>
       ) : null}
+
+      {/* The open bring-in whose row is no longer listed. Named, because a
+          mapping screen with no row above it says nothing about what it is
+          mapping. */}
+      {orphaned ? (
+        <>
+          <p className="setup-next-step">Bringing in {adopting}.</p>
+          <RoleMapping savedLabel="It is in the Models step above." />
+        </>
+      ) : null}
     </section>
   )
 }
@@ -135,6 +155,9 @@ export function ModelCatalog() {
 function BareRow({ row }: { row: TemplateInfo }) {
   const verdict = useCatalogStore((s) => s.readiness[row.name])
   const check = useCatalogStore((s) => s.checkReadiness)
+  const adopt = useImportStore((s) => s.adopt)
+  const adopting = useImportStore((s) => s.adopting)
+  const phase = useImportStore((s) => s.phase)
   const ref = useRef<HTMLLIElement | null>(null)
 
   // Resolve readiness once, when the row first scrolls into view. The store
@@ -186,6 +209,31 @@ function BareRow({ row }: { row: TemplateInfo }) {
             <li key={i}>{reason}</li>
           ))}
         </ul>
+      ) : null}
+
+      {/* Only a row this install can already run, and only when no other import
+          flow is open -- the store refuses a second one, and a live button that
+          silently does nothing is worse than a disabled one. */}
+      {view !== null &&
+      verdict !== undefined &&
+      verdict !== 'checking' &&
+      verdict.kind === 'ready' &&
+      adopting === null ? (
+        <div className="setup-actions">
+          <button
+            type="button"
+            className="setup-button setup-button-primary"
+            onClick={() => void adopt(row.name, row.title)}
+            disabled={phase.kind !== 'idle'}
+          >
+            Bring in
+          </button>
+        </div>
+      ) : null}
+
+      {/* The mapping screen, under the row it belongs to. */}
+      {adopting === row.name ? (
+        <RoleMapping savedLabel="It is in the Models step above." />
       ) : null}
     </li>
   )

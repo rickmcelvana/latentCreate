@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { catalogAdoptBegin } from '../bridge/catalog'
 import {
   importWorkflow,
   saveImportedProfile,
@@ -186,11 +187,22 @@ interface ImportState {
   report: ImportReport | null
   selected: Selection
   name: string
+  /**
+   * The gallery row `name` whose "Bring in" started this flow, or `null` for a
+   * file import.
+   *
+   * `ImportWorkflow` (Audio Studio) and the catalog step (Setup) render the
+   * same singleton store from different views. Without this, a file import
+   * would draw a mapping screen under a catalog row it has nothing to do with.
+   */
+  adopting: string | null
   begin: (source: string) => Promise<void>
   toggle: (role: Role, address: string) => void
   setName: (name: string) => void
   save: () => Promise<void>
   reset: () => void
+  /** Adopt a gallery row: fetch it through the import path and map its inputs. */
+  adopt: (name: string, title: string) => Promise<void>
 }
 
 export const useImportStore = create<ImportState>((set, get) => ({
@@ -198,9 +210,10 @@ export const useImportStore = create<ImportState>((set, get) => ({
   report: null,
   selected: {},
   name: '',
+  adopting: null,
 
   begin: async (source: string) => {
-    set({ phase: { kind: 'importing' } })
+    set({ phase: { kind: 'importing' }, adopting: null })
     try {
       const report = await importWorkflow(source)
       set({
@@ -233,5 +246,32 @@ export const useImportStore = create<ImportState>((set, get) => ({
     }
   },
 
-  reset: () => set({ phase: { kind: 'idle' }, report: null, selected: {}, name: '' }),
+  reset: () => set({ phase: { kind: 'idle' }, report: null, selected: {}, name: '', adopting: null }),
+
+  adopt: async (name: string, title: string) => {
+    // One import flow at a time. A second adopt would replace the report the
+    // user is still mapping, losing their ticks with nothing on screen saying
+    // so. The buttons are disabled too; this is the guard that matters.
+    if (get().phase.kind !== 'idle') return
+    set({ phase: { kind: 'importing' }, adopting: name })
+    try {
+      const report = await catalogAdoptBegin(name)
+      set({
+        phase: { kind: 'mapping' },
+        report,
+        selected: initialSelection(report.suggestions),
+        // **Not `report.workflow_id`.** `catalog_adopt_begin` fetches to a temp
+        // file named `latentcreate-adopt-<row>.json`, so `workflow_id` is the
+        // slug of *that* -- and `emit_profile` derives the profile id from the
+        // display name, so seeding it would produce a model called
+        // `latentcreate-adopt-image-flux2-text-to-image-9b`. The gallery title
+        // is what the user just clicked.
+        name: title.trim() !== '' ? title : name,
+      })
+    } catch (e) {
+      // `adopting` deliberately survives a failure, so the message lands on the
+      // row the user clicked rather than in the studio's import panel.
+      set({ phase: { kind: 'failed', message: String(e) } })
+    }
+  },
 }))

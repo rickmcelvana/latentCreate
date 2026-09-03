@@ -6033,3 +6033,33 @@ Also noted as expected-not-a-defect for the click-through: the role list is the 
 so an image adopt shows "Lyrics" and "Duration (s)" with the "no input looks like this" note. That is
 the deliberate T-313 design (a person must see what was *not* matched); a kind-aware role list is a
 later question. Docs/brief only; gate unaffected.
+
+### 2026-09-03 (last) -- T-505d-d landed: Bring in, pending the click-through
+
+Ran Aider on T-505d-d; the diff matched the brief across all five files -- the `adopting` marker and
+`adopt` action, the lifted `RoleMapping` component, both surfaces rendering it, and six store tests.
+Review found five things, fixed before commit.
+
+Two were gate failures, caught by running it rather than by reading: an unused import (`tsc`), and a
+**vacuous test guard** -- vitest is not configured to clear mocks between tests, so call counts
+accumulated down the file and `expect(catalogAdoptBegin).not.toHaveBeenCalled()` was reading the four
+earlier tests' calls, not this one's. `vi.clearAllMocks()` in `beforeEach`, matching what
+`catalog.test.ts` already does by hand.
+
+Two were unrequested changes to existing behaviour, made while lifting code that was supposed to move
+verbatim: the `failed` branch picked up the saved branch's button label, so a *failed* import offered
+"Import another" for something that had not happened (restored to "Back"); and an em dash in an
+existing **UI string** was ASCII-ed to `--`, where CONVENTIONS explicitly allows Unicode in UI strings
+(it is code and comments that must be ASCII). The executor strips non-ASCII on every run, which is
+correct for comments and wrong here -- worth watching whenever a lane moves user-facing prose.
+
+The fifth was **a dead end my brief did not anticipate.** The mapping screen renders under the row
+that owns it, but `open`/`search` replace `page` -- so switching the Audio|Image toggle, or searching
+past the row, unmounts it and takes the screen with it. Because the store deliberately allows one
+flow at a time, the user could then reach neither Cancel nor any new import, in the studio or the
+catalog: a restart. The step now keeps the screen, with a line naming the row, whenever the row it
+belongs to is not listed. My gap, not Aider's -- the brief specified row-level placement without
+asking what happens when the row leaves.
+
+frontend 453->459; full gate green. **The click-through is the producer's next step** -- it is the
+first in this chain that exercises the whole path, against the installed Klein 9B row.
