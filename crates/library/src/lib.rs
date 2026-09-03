@@ -4,6 +4,7 @@
 //! Secrets live in the OS keychain, never in config. Populated by T-004.
 
 pub mod albums;
+pub mod art;
 mod atomic;
 pub mod config;
 pub mod lyrics;
@@ -12,6 +13,10 @@ pub mod projects;
 pub mod secrets;
 pub mod tracks;
 
+/// Re-export of [`art::ArtSet`].
+pub use art::ArtSet;
+/// Re-export of [`art::ArtWarning`].
+pub use art::ArtWarning;
 /// Re-export of [`config::Config`].
 pub use config::Config;
 /// Re-export of [`config::ConfigWarning`].

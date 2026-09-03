@@ -6,6 +6,11 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct TrackId(pub String);
 
+/// Stable id for one generated artwork, e.g. `"ar-0001"`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ArtId(pub String);
+
 /// Where a lyric version came from. Records whether the user accepted an optimised
 /// prompt, which must never happen silently (ARCHITECTURE 6).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -130,6 +135,10 @@ pub struct Project {
     /// Ordered; newest last.
     #[serde(default)]
     pub tracks: Vec<TrackId>,
+    /// Artwork generated in this project. Ids only, same rule as `tracks`:
+    /// every fact about an artwork lives in its sidecar (ARCHITECTURE 8).
+    #[serde(default)]
+    pub art: Vec<ArtId>,
     /// Lyric documents belonging to this project.
     #[serde(default)]
     pub lyrics: Vec<LyricDocId>,
@@ -151,6 +160,13 @@ pub struct Project {
     /// unrelated audio.
     #[serde(default = "default_track_seq")]
     pub next_track_seq: u32,
+    /// Sequence number the next artwork in this project will be minted from.
+    ///
+    /// Monotonic and **never reused**, for the same reason `next_track_seq` is:
+    /// a freed id handed to a later artwork would silently re-point whatever
+    /// referenced the old one.
+    #[serde(default = "default_art_seq")]
+    pub next_art_seq: u32,
 }
 
 fn default_lyric_seq() -> u32 {
@@ -158,6 +174,10 @@ fn default_lyric_seq() -> u32 {
 }
 
 fn default_track_seq() -> u32 {
+    1
+}
+
+fn default_art_seq() -> u32 {
     1
 }
 
@@ -174,10 +194,12 @@ impl Project {
             name: name.into(),
             created_at: created_at.into(),
             tracks: Vec::new(),
+            art: Vec::new(),
             lyrics: Vec::new(),
             albums: Vec::new(),
             next_lyric_seq: default_lyric_seq(),
             next_track_seq: default_track_seq(),
+            next_art_seq: default_art_seq(),
         }
     }
 }
@@ -390,5 +412,15 @@ mod tests {
         let project: Project = serde_json::from_str(json).unwrap();
         assert_eq!(project.next_track_seq, 1);
         assert!(project.tracks.is_empty());
+    }
+
+    /// Invariant: a project file written before artwork existed still loads,
+    /// with an empty art list and the counter starting at 1.
+    #[test]
+    fn test_art_defaults_for_a_project_written_before_it_existed() {
+        let json = r#"{"slug":"demo","name":"Demo","created_at":"2026-08-25T10:00:00Z"}"#;
+        let project: Project = serde_json::from_str(json).unwrap();
+        assert!(project.art.is_empty());
+        assert_eq!(project.next_art_seq, 1);
     }
 }

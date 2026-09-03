@@ -251,12 +251,21 @@ Headlines:
     **role-suggestion** problem of exactly the T-505d-c kind (read the graph, do not match the
     name), not a UI one. Deferred with its evidence rather than guessed at; the owner's call
     whether it joins this phase.
-  - **T-506a — the artwork record and its storage. BRIEFED 2026-09-03** ([t-506a-brief.md](t-506a-brief.md))
+  - **T-506a — the artwork record and its storage. ✅ LANDED 2026-09-03** ([t-506a-brief.md](t-506a-brief.md))
     (`create-core` + `library`, no MCP, no UI).
     `ArtId`, `Artwork` (reusing `Provenance` verbatim — it is already asset-agnostic), a
     `library::art` module mirroring `tracks.rs` (dir/paths/mint/save/load/list/delete-to-trash),
     and `Project.art` + `next_art_seq`, both `serde(default)` so every existing `project.json`
-    still loads. Fully unit-tested; no click-through possible.
+    still loads. Fully unit-tested; no click-through possible. Landed matching the brief, with two
+    executor additions that were right: `#[serde(transparent)]` on `ArtId` (mirroring `TrackId`,
+    which the brief's reference code had dropped) and `pub mod art;` **after** `albums`, which is
+    where alphabetical order actually puts it — the brief said "before". Three defects fixed in
+    review: an invented `pub use albums::AlbumSet;` for a type that does not exist and two
+    test-only imports left at module scope (**both compile errors — the gate had not been run**),
+    and a vacuous test, a fully-populated `Artwork` serialised and read straight back, which cannot
+    fail unless a derive is removed; it now strips `title`/`width`/`height` from the JSON so the
+    `serde(default)`s are what is under test. Eight mutations, eight killed. create-core 184→191,
+    library 109→124; gate green.
   - **T-506b — `generate_image` + art ingest** (`src-tauri`). The pending record learns which kind
     of asset it is waiting for, and the pump dispatches to an `ingest_art` that files
     `art/<id>.png` + its sidecar and emits `art://saved`. A profile-kind guard on each command, so

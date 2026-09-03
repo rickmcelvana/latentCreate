@@ -1,5 +1,5 @@
 use crate::generation::{GenerationSpec, ResolvedSlots};
-use crate::project::TrackId;
+use crate::project::{ArtId, TrackId};
 use serde::{Deserialize, Serialize};
 
 /// Which ComfyUI produced a track, for when a result cannot be reproduced later.
@@ -73,6 +73,33 @@ pub struct Track {
     #[serde(default)]
     pub duration_s: Option<f64>,
     /// Full generation recipe for this track.
+    pub provenance: Provenance,
+}
+
+/// One generated image: the contents of `art/<id>.json`, the sidecar that is the
+/// single source of truth for this artwork (ARCHITECTURE 8).
+///
+/// `Provenance` is reused verbatim rather than forked. It records a *generated
+/// asset* -- profile, licence, the spec the user chose, the resolved slots the
+/// engine received, the server, the prompt id -- and none of that is audio. A
+/// second near-identical struct would be two things to keep in step for no gain,
+/// and the "re-use these settings" path (T-406) already reads this shape.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Artwork {
+    /// Artwork id, minted by `library`.
+    pub id: ArtId,
+    /// User-facing title, if the user has set one.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Path relative to the project directory, e.g. `"art/ar-0001.png"`.
+    pub file: String,
+    /// Pixel size, when it could be read from the file's header.
+    #[serde(default)]
+    pub width: Option<u32>,
+    /// Pixel size, when it could be read from the file's header.
+    #[serde(default)]
+    pub height: Option<u32>,
+    /// Full generation recipe for this image.
     pub provenance: Provenance,
 }
 
@@ -237,5 +264,82 @@ mod tests {
             Some(&InputValue::Float(120.0))
         );
         assert_eq!(parsed.resolved_slots.len(), 2);
+    }
+
+    /// Invariant: an artwork sidecar carries the whole record, and its three
+    /// optional fields are genuinely optional -- a sidecar written without
+    /// `title`, `width` or `height` still loads, with `None` for each and its
+    /// provenance intact.
+    ///
+    /// The round-trip alone would not prove that. A fully populated struct
+    /// serialised and read straight back cannot fail unless a derive is
+    /// removed, so the three keys are stripped from the JSON and it is the
+    /// `serde(default)`s that are under test -- the reason a size that could
+    /// not be read never stops an artwork from being recorded.
+    #[test]
+    fn test_an_artwork_sidecar_loads_without_its_optional_fields() {
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            "prompt".to_string(),
+            InputValue::Text("synthwave album cover, neon city".to_string()),
+        );
+        inputs.insert("seed".to_string(), InputValue::Seed(7));
+
+        let spec = GenerationSpec {
+            title: Some("Klein Cover".to_string()),
+            profile_id: "klein".to_string(),
+            inputs,
+            loras: vec![],
+            lyrics: None,
+        };
+
+        let mut resolved_slots = BTreeMap::new();
+        resolved_slots.insert(
+            SlotAddress("5.text".to_string()),
+            InputValue::Text("synthwave album cover, neon city".to_string()),
+        );
+        resolved_slots.insert(SlotAddress("17.value".to_string()), InputValue::Seed(7));
+
+        let original = Artwork {
+            id: ArtId("ar-0001".to_string()),
+            title: Some("Neon City".to_string()),
+            file: "art/ar-0001.png".to_string(),
+            width: Some(768),
+            height: Some(768),
+            provenance: Provenance {
+                profile_id: "klein".to_string(),
+                profile_display_name: "Klein".to_string(),
+                model_license: "Apache-2.0".to_string(),
+                template: Some("image_klein".to_string()),
+                spec,
+                resolved_slots,
+                comfy: Some(ComfyServerInfo {
+                    comfyui_version: Some("0.3.26".to_string()),
+                    comfy_cli_version: Some("0.1.0".to_string()),
+                    url: Some("http://127.0.0.1:8188".to_string()),
+                }),
+                created_at: "2026-09-03T12:00:00Z".to_string(),
+                prompt_id: Some("a1b2c3d4-e5f6-7890-abcd-ef1234567890".to_string()),
+            },
+        };
+
+        let json = serde_json::to_string_pretty(&original).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Artwork>(&json).unwrap(),
+            original,
+            "the whole record must survive a round trip"
+        );
+
+        let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let object = value.as_object_mut().unwrap();
+        for key in ["title", "width", "height"] {
+            assert!(object.remove(key).is_some(), "{key} must have been written");
+        }
+
+        let parsed: Artwork = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed.title, None);
+        assert_eq!(parsed.width, None);
+        assert_eq!(parsed.height, None);
+        assert_eq!(parsed.provenance, original.provenance);
     }
 }
