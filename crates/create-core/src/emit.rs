@@ -21,7 +21,7 @@ use serde_json::Value;
 use crate::profile::{ComfySpec, InputSpec, ModelKind, ModelProfile, OutputSpec, SlotAddress};
 use crate::roles::Role;
 
-/// The save node an emitted profile writes through, matching both shipped
+/// The save node an emitted audio profile writes through, matching both shipped
 /// profiles. `prefer_lossless` is what stops a lossy file reaching the
 /// mastering stage.
 const SAVE_NODE: &str = "SaveAudioAdvanced";
@@ -36,6 +36,17 @@ const SAVE_NODE_TYPES: [&str; 4] = [
     "SaveAudioOpus",
     "SaveAudioAdvanced",
 ];
+
+/// Node classes that write an image (core ComfyUI). Unlike the audio list,
+/// these have no lossless-swap behind them -- `graph::ensure_lossless_output`
+/// is audio-only and never sees an image profile (T-506 owns image output). So
+/// this list lives only here.
+const IMAGE_SAVE_NODE_TYPES: [&str; 2] = ["SaveImage", "SaveImageWebP"];
+
+/// The save node an emitted image profile records. Just what the graph already
+/// uses -- there is no swap to a canonical node the way audio swaps to
+/// `SaveAudioAdvanced`. T-506 refines how the image pipeline reads this.
+const IMAGE_SAVE_NODE: &str = "SaveImage";
 
 /// Numeric bounds for one input, from the live node registry.
 #[derive(Debug, Clone, PartialEq)]
@@ -67,8 +78,8 @@ pub enum EmitError {
     /// A role present in the mapping but pointing at nothing.
     #[error("{role:?} was accepted but mapped to no slot")]
     NoSlots { role: Role },
-    /// The graph has no node this app can save audio through.
-    #[error("This workflow has no audio save node, so latentCreate cannot collect what it produces. Add a Save Audio node in ComfyUI, then import it again.")]
+    /// The graph has no save node this app recognises, of either kind.
+    #[error("This workflow has no save node latentCreate recognises. Add a Save Image or Save Audio node in ComfyUI, then import it again.")]
     NoSaveNode,
 }
 
@@ -100,30 +111,50 @@ fn label_for(role: Role) -> &'static str {
     }
 }
 
-/// Whether `workflow` has a node the pipeline can save audio through.
-pub fn has_audio_save_node(workflow: &Value) -> bool {
-    fn scan(nodes: Option<&Vec<Value>>) -> bool {
+/// Whether `workflow` -- top-level nodes or any subgraph interior -- has a node
+/// whose `type` is in `types`.
+fn graph_has_save_node(workflow: &Value, types: &[&str]) -> bool {
+    fn scan(nodes: Option<&Vec<Value>>, types: &[&str]) -> bool {
         nodes.is_some_and(|nodes| {
             nodes.iter().any(|n| {
                 n.get("type")
                     .and_then(Value::as_str)
-                    .is_some_and(|t| SAVE_NODE_TYPES.contains(&t))
+                    .is_some_and(|t| types.contains(&t))
             })
         })
     }
-
-    if scan(workflow.get("nodes").and_then(Value::as_array)) {
+    if scan(workflow.get("nodes").and_then(Value::as_array), types) {
         return true;
     }
     // Subgraph interiors count: MiniMax's save node lives inside one, and
-    // `ensure_lossless_output` rewrites both levels.
+    // Klein's controls do too.
     workflow
         .pointer("/definitions/subgraphs")
         .and_then(Value::as_array)
         .is_some_and(|subs| {
             subs.iter()
-                .any(|s| scan(s.get("nodes").and_then(Value::as_array)))
+                .any(|s| scan(s.get("nodes").and_then(Value::as_array), types))
         })
+}
+
+/// Whether `workflow` has a node the pipeline can save audio through.
+pub fn has_audio_save_node(workflow: &Value) -> bool {
+    graph_has_save_node(workflow, &SAVE_NODE_TYPES)
+}
+
+/// The output kind an emitted profile should declare, decided by its save node.
+///
+/// Audio wins when a graph somehow has both -- this is a music app first, and a
+/// graph with both save kinds is not a real case worth a knob. `None` when
+/// neither is present, which `build_profile` refuses.
+fn detect_output_kind(workflow: &Value) -> Option<ModelKind> {
+    if graph_has_save_node(workflow, &SAVE_NODE_TYPES) {
+        Some(ModelKind::Music)
+    } else if graph_has_save_node(workflow, &IMAGE_SAVE_NODE_TYPES) {
+        Some(ModelKind::Image)
+    } else {
+        None
+    }
 }
 
 /// Build a runnable profile from accepted mappings.
@@ -134,9 +165,7 @@ pub fn build_profile(
     workflow_path: &str,
     mappings: &[(Role, Vec<MappedSlot>)],
 ) -> Result<ModelProfile, EmitError> {
-    if !has_audio_save_node(workflow) {
-        return Err(EmitError::NoSaveNode);
-    }
+    let kind = detect_output_kind(workflow).ok_or(EmitError::NoSaveNode)?;
 
     let mut inputs: BTreeMap<String, InputSpec> = BTreeMap::new();
     for (role, slots) in mappings {
@@ -149,7 +178,7 @@ pub fn build_profile(
     Ok(ModelProfile {
         id: id.to_string(),
         display_name: display_name.to_string(),
-        kind: ModelKind::Music,
+        kind,
         // The app has no idea what someone's own graph is licensed under and
         // must not imply one. The field is required and shown wherever a model
         // is chosen, so it says exactly what is known.
@@ -164,9 +193,17 @@ pub fn build_profile(
             vram_gb_min: None,
             slot_overrides: BTreeMap::new(),
             models: Vec::new(),
-            output: OutputSpec {
-                save_node: SAVE_NODE.to_string(),
-                prefer_lossless: true,
+            output: match kind {
+                ModelKind::Music => OutputSpec {
+                    save_node: SAVE_NODE.to_string(),
+                    prefer_lossless: true,
+                },
+                // No lossless swap for images (PNG is already lossless); record
+                // what the graph uses and let T-506's pipeline decide.
+                ModelKind::Image => OutputSpec {
+                    save_node: IMAGE_SAVE_NODE.to_string(),
+                    prefer_lossless: false,
+                },
             },
         },
         loras: None,
@@ -317,6 +354,7 @@ mod tests {
     fn test_an_emitted_profile_never_declares_both_sources() {
         let profile =
             build(&[(Role::Seed, vec![slot("109.value", "INT", json!(0))])]).expect("builds");
+        assert_eq!(profile.kind, ModelKind::Music);
         assert_eq!(profile.comfy.template, None);
         assert_eq!(
             profile.comfy.workflow.as_deref(),
@@ -411,7 +449,7 @@ mod tests {
     /// Protects: caught here, where it can still be explained, rather than at
     /// generate time as `GraphError::NoSaveNode`.
     #[test]
-    fn test_a_graph_with_no_audio_save_node_is_refused() {
+    fn test_a_graph_with_no_save_node_of_either_kind_is_refused() {
         let err = build_profile(
             "x",
             "X",
@@ -423,6 +461,7 @@ mod tests {
 
         assert_eq!(err, EmitError::NoSaveNode);
         assert!(err.to_string().contains("Save Audio"), "{err}");
+        assert!(err.to_string().contains("Save Image"), "{err}");
     }
 
     /// Protects: a save node inside a subgraph counts.
@@ -446,5 +485,30 @@ mod tests {
     fn test_a_role_mapped_to_nothing_is_refused() {
         let err = build(&[(Role::Tags, Vec::new())]).expect_err("nothing to write to");
         assert_eq!(err, EmitError::NoSlots { role: Role::Tags });
+    }
+
+    /// Protects: an image graph emits an image profile with the right output
+    /// spec, so CoverArt can use it.
+    #[test]
+    fn test_an_image_graph_emits_an_image_profile() {
+        let workflow = serde_json::json!({ "nodes": [{ "type": "SaveImage" }] });
+        let mappings = [(
+            Role::Tags,
+            vec![MappedSlot {
+                address: "6.text".to_string(),
+                widget_type: "STRING".to_string(),
+                current_value: serde_json::json!("a neon album cover"),
+                bounds: None,
+            }],
+        )];
+        let profile = build_profile("klein", "Klein 9B", &workflow, "/x/klein.json", &mappings)
+            .expect("an image graph emits");
+        assert_eq!(profile.kind, ModelKind::Image);
+        assert_eq!(profile.comfy.output.save_node, "SaveImage");
+        assert!(!profile.comfy.output.prefer_lossless);
+        assert!(profile.inputs.contains_key("tags"));
+        // Adopted, so workflow-backed, never a gallery template.
+        assert_eq!(profile.comfy.template, None);
+        assert!(profile.comfy.workflow.is_some());
     }
 }

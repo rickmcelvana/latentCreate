@@ -5934,3 +5934,25 @@ image output). Verified Klein's `SaveImage` sits at the **top level** (its promp
 subgraph, MiniMax-shaped -- a T-505d-c role-suggestion concern, not this lane's). Adopt lanes renumbered:
 a (seam, landed), **b (emit, briefed)**, c (adopt UI, has the click-through, now verifiable against
 Klein). Docs/brief only; gate unaffected.
+
+### 2026-09-03 (later) -- T-505d-b landed: emit generalized for images
+
+Ran Aider on T-505d-b; the diff matched the brief exactly and touched only `emit.rs` as scoped.
+`graph_has_save_node` factors the top-level/subgraph node scan that `has_audio_save_node` and the new
+`detect_output_kind` both use; `detect_output_kind` returns `Music` when an audio save node is present
+(even alongside an image one -- audio wins on the rare graph with both, not worth a knob), `Image` when
+only an image save node (`SaveImage`/`SaveImageWebP`) is present, `None` otherwise. `build_profile`
+now emits `kind: image` with `output.save_node: "SaveImage"`, `prefer_lossless: false` for an image
+graph, and unchanged `Music`/`SaveAudioAdvanced`/lossless for audio; `EmitError::NoSaveNode`'s message
+now names both Save Image and Save Audio. Tests: the no-save-node test renamed and now asserts both
+substrings, a new `test_an_image_graph_emits_an_image_profile` (Klein-shaped minimal graph, confirms
+`kind`, `output`, `template: None`/`workflow: Some`), and a `kind: Music` guard added to the existing
+no-both-sources test. `graph.rs`, `import.rs`, the bridge, and the frontend are all untouched, as
+required -- the audio lossless-swap still never sees an image profile. Review found no defects; nothing
+to fix. create-core emit tests 8→10; full gate (`gate:rust` + `gate:app`) green, tree otherwise clean.
+
+Both T-505d-c prerequisites are now landed (the fetch→import seam, and emit accepting/kinding an image
+graph correctly). Next: **T-505d-c** -- the "Bring in" button + adopt mapping UI, click-through-ready
+against the installed Klein 9B row. Its two open questions, carried from scoping: whether
+`suggest_roles` finds Klein's prompt/seed/steps inside its subgraph, and whether/how an adopted row
+(workflow-backed, not in the T-505c curated index) should read as "adopted" in the catalog.
