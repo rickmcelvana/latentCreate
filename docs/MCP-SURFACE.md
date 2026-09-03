@@ -2525,3 +2525,56 @@ an imported or adopted profile declares no model files and its readiness is `Und
 check"). The filenames are right there, and their folders are resolvable via `search_models`, which
 is the fix logged against T-507 -- with `source_url` left `None`, since knowing a file's *name* is
 not knowing where to download it (§33).
+
+## 35. The image pipeline, run end to end outside the app -- 2026-09-03
+
+Scoping T-506 (cover art). The adopted Klein profile
+(`%APPDATA%/com.latentbeats.create/profiles/flux-2-klein-9b-text-to-image.json`) points at its own
+stored workflow copy; that copy was put through **the same sequence `build_and_submit` performs** --
+`set_workflow_slot` -> `validate_workflow` -> `run_workflow` -> `fetch_outputs` -- and then
+`GET /history/<prompt_id>` was read, because that is the only surface that says what executed
+(17.2). Nothing in the app was involved, so this measures the *surface*, not our code.
+
+35.1 **The prompt, negative, seed and steps writes all land on an image graph.** The executed prompt
+carries `75:74.text` = the prompt written, `75:67.text` = the negative written, `75:73.noise_seed`
+= 424242, `75:62.steps` = 8. All four are boundary-fed subgraph inputs or plain widgets, and
+34.4's classification is now confirmed **live** on an image graph rather than inferred from
+MiniMax's audio one. The five addresses the adopted profile declares are all effective.
+
+35.2 **Every address that looks like the image size is inert; the effective one is a
+`PrimitiveInt`.** Klein exposes four size-shaped slots -- `75/62.width|height` (`Flux2Scheduler`)
+and `75/66.width|height` (`EmptyFlux2LatentImage`) -- and both consumers are link-fed from interior
+`PrimitiveInt` nodes `75/68` and `75/69`, which are themselves boundary-fed from the subgraph input
+(the host node's promoted `width`/`height` widgets). Proved in one run rather than argued: `1536`
+was written to `75/62.width` **and** `75/66.width` while `768` went to `75/68.value` / `75/69.value`.
+The executed prompt shows both consumers still reading `LINK['75:68'|'75:69', 0]`, and **the PNG on
+disk is 768x768**. This is 18.1 exactly -- ACE-Step's seed, one model over -- and `create-core`'s
+`audit_slots` already gets it right without a change: `PrimitiveInt` is a real backend node, so
+`75/62.width` classifies `Backend` -> inert, and the pipeline **refuses** such a profile instead of
+recording a size the engine ignored.
+
+35.3 **Emission declares no size role, so an adopted image profile has no size control.** The role
+table (`roles.rs`) has no `width`/`height` role, so the emitted Klein profile carries tags,
+negative, seed, steps and cfg and nothing else -- generation runs at whatever the graph shipped
+(1024x1024 for Klein, which is square and therefore fine for cover art v1). Adding the role is
+cheap but is **not** a name match: on this graph the name `width` appears on two nodes where it is
+inert and the effective address is called `value`. Any size role must be decided the way polarity
+was (T-505d-c) -- by reading the graph -- or it will write 1536 into a slot the engine ignores.
+
+35.4 **`fetch_outputs` yields a `.png`, and today's ingest silently drops it.** One file came back,
+`98267fc7_000.png` (414 KB, 768x768, 8-bit truecolour), named `<prompt-prefix>_<index>.png` the same
+way audio outputs are (26). `src-tauri/src/ingest.rs` filters on `AUDIO_EXTS` and returns `None` for
+anything else **without error**, so an image job run through the app as it stands today would
+complete, report Done, and save nothing anywhere. That is the ingest half of T-506, and the silence
+is why it is a task rather than a detail.
+
+35.5 **No graph edit is needed for an image profile.** `ensure_lossless_output` returns a clean
+no-op when `prefer_lossless` is false (which is what T-505d-b emits for an image graph), and the
+LoRA splice is skipped because an adopted image profile declares no `loras` block. So
+`build_and_submit` is reusable **verbatim** for images: the only Rust that has to change is what
+happens to the outputs afterwards. `validate_workflow` returned `valid: true` with
+`converted_from_ui: true` over 15 nodes.
+
+35.6 **Cost of one cover.** 22.0 s wall for 8 steps at 768x768 with the loaders already warm
+(`execution_cached` listed the sampler and all three loaders). The card is the same RTX 5060 Ti
+(15.93 GiB) as every other measurement in this file.

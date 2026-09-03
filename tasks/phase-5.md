@@ -229,10 +229,52 @@ Headlines:
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.
 
 ### Cover art — generation over an image profile
-- **T-506 — CoverArt generation.** Generate single/album artwork over the adopted image profile,
-  reusing the Phase 3 pipeline shape (spec → per-job workflow copy → validate → run → ingest with a
-  provenance sidecar). Attach artwork to a track/album. **Depends on** an image profile existing,
-  i.e. T-504/T-505. **Will split** — this is the largest single feature.
+- **T-506 — CoverArt generation. SPLIT INTO FIVE LANES 2026-09-03**, scoped against a **live
+  end-to-end run of the adopted Klein profile outside the app** — the same sequence
+  `build_and_submit` performs, then `GET /history` to read what actually executed
+  ([docs/MCP-SURFACE.md §35](../docs/MCP-SURFACE.md)). Three findings decide where the split falls:
+  - **The Rust generation half already works, unchanged.** `ensure_lossless_output` is a clean
+    no-op at `prefer_lossless: false` (what T-505d-b emits for an image graph), the LoRA splice is
+    skipped for a profile with no `loras` block, `validate_workflow` passed, and the prompt,
+    negative, seed and steps writes **all reached the engine** (§35.1) — so `build_and_submit` is
+    reusable verbatim and the only Rust that must change is what happens to the outputs. 22 s for a
+    768×768 cover with warm loaders.
+  - **What is missing is everything *after* the output.** `ingest.rs` filters on `AUDIO_EXTS` and
+    returns `None` for a PNG **without error** (§35.4): an image job run through the app today
+    completes, reports Done, and saves nothing, anywhere. The library has no artwork record and
+    `Project` has no art list. So the first lanes are storage and ingest, not generation.
+  - **Image size stays the graph's own for v1** — 1024×1024 on Klein, which is the right shape for
+    cover art anyway. Every size-shaped slot Klein exposes is **inert**: `75/62.width|height` and
+    `75/66.width|height` are link-fed from `PrimitiveInt`s, and the effective addresses are
+    `75/68.value` / `75/69.value` — proved by writing 1536 to the obvious ones and 768 to the
+    primitives and measuring the PNG at 768×768 (§35.2). A size control is therefore a
+    **role-suggestion** problem of exactly the T-505d-c kind (read the graph, do not match the
+    name), not a UI one. Deferred with its evidence rather than guessed at; the owner's call
+    whether it joins this phase.
+  - **T-506a — the artwork record and its storage. BRIEFED 2026-09-03** ([t-506a-brief.md](t-506a-brief.md))
+    (`create-core` + `library`, no MCP, no UI).
+    `ArtId`, `Artwork` (reusing `Provenance` verbatim — it is already asset-agnostic), a
+    `library::art` module mirroring `tracks.rs` (dir/paths/mint/save/load/list/delete-to-trash),
+    and `Project.art` + `next_art_seq`, both `serde(default)` so every existing `project.json`
+    still loads. Fully unit-tested; no click-through possible.
+  - **T-506b — `generate_image` + art ingest** (`src-tauri`). The pending record learns which kind
+    of asset it is waiting for, and the pump dispatches to an `ingest_art` that files
+    `art/<id>.png` + its sidecar and emits `art://saved`. A profile-kind guard on each command, so
+    a music profile cannot be queued into `art/` and an image profile cannot be filed as a track.
+  - **T-506c — the art generation store** (frontend, no UI). The image profile selection
+    (`default_image_profile_id` on `Config`), the spec assembly reusing `specInputs`, and the
+    param-panel **store factory**: `paramPanel.ts` is a module-level singleton today, so a
+    CoverArt view loading an image profile into it would reset the Audio Studio's values on every
+    view switch (the T-505d-d singleton lesson, one store over).
+  - **T-506d — the CoverArt view** (frontend; **this lane has the click-through**). Image profile
+    picker, param panel, Generate, the shared job queue, and a grid of what has been made.
+  - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
+    sidecar** (`Track.cover: Option<ArtId>`) and an album's in its `AlbumList`, per ARCHITECTURE §8's
+    one-source-of-truth rule; the artwork sidecar stays a pure provenance record. **`delete_art`
+    lands here, not in a**, because deleting an artwork has to decide what a cover reference means --
+    the T-408 shape (to OS trash, the trasher injected so `cargo test` never fills a Recycle Bin,
+    plus a `tracks_referencing`-style check). Artwork is the first new *kind of created content*
+    since T-408, so the delete rule follows it.
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start
