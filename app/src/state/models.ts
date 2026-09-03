@@ -158,7 +158,7 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
   progress: [],
 
   refresh: async () => {
-    if (!isTauri()) return
+    if (!isTauri() || get().busy) return
     set({ busy: true })
     try {
       set({ view: await modelsStatus() })

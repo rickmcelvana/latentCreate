@@ -45,6 +45,12 @@ export interface ProfileStatus {
   license_notes: string | null
   source: ProfileSource
   vram_gb_min: number | null
+  /**
+   * The gallery template this profile rides (Rust `ComfySpec.template`), or null
+   * for an imported-workflow profile. The model catalog joins a gallery row to a
+   * profile on this: a row whose `name` equals it is the same model.
+   */
+  template: string | null
   readiness: Readiness
 }
 

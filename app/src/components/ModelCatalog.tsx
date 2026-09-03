@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { CatalogKind, TemplateInfo } from '../bridge/catalog'
-import { rowViewFor, useCatalogStore } from '../state/catalog'
+import type { ProfileStatus } from '../bridge/models'
+import { curatedIndex, rowViewFor, useCatalogStore } from '../state/catalog'
+import { installView, rowFor, useModelsStore } from '../state/models'
 
 const KINDS: { kind: CatalogKind; label: string }[] = [
   { kind: 'audio', label: 'Audio' },
@@ -26,6 +28,13 @@ export function ModelCatalog() {
   const open = useCatalogStore((s) => s.open)
   const search = useCatalogStore((s) => s.search)
   const reload = useCatalogStore((s) => s.reload)
+
+  const modelsView = useModelsStore((s) => s.view)
+  const refreshModels = useModelsStore((s) => s.refresh)
+  useEffect(() => {
+    void refreshModels()
+  }, [refreshModels])
+  const curated = useMemo(() => curatedIndex(modelsView), [modelsView])
 
   // Load the default kind once on mount. Switching kinds is the toggle below.
   useEffect(() => {
@@ -102,18 +111,28 @@ export function ModelCatalog() {
 
       {page !== null && page.rows.length > 0 ? (
         <ul className="catalog-list">
-          {page.rows.map((row) => (
-            <CatalogRow key={row.name} row={row} />
-          ))}
+          {page.rows.map((row) => {
+            // Branch here, not inside a row: a curated and a bare row call
+            // different hooks, so they must be different components. When the
+            // models view lands and a row turns curated, this swaps the whole
+            // component (same key), a clean remount -- never a change in the
+            // hook order of one instance (rules of hooks).
+            const profile = curated.get(row.name)
+            return profile !== undefined ? (
+              <CuratedRow key={row.name} row={row} profile={profile} />
+            ) : (
+              <BareRow key={row.name} row={row} />
+            )
+          })}
         </ul>
       ) : null}
     </section>
   )
 }
 
-/** One gallery row: its title, blurb, tags, and a readiness pill resolved when
- *  the row first comes into view. */
-function CatalogRow({ row }: { row: TemplateInfo }) {
+/** A bare gallery row -- no shipped profile: its title, blurb, tags, and a
+ *  readiness pill resolved from `local_check` when it first comes into view. */
+function BareRow({ row }: { row: TemplateInfo }) {
   const verdict = useCatalogStore((s) => s.readiness[row.name])
   const check = useCatalogStore((s) => s.checkReadiness)
   const ref = useRef<HTMLLIElement | null>(null)
@@ -167,6 +186,71 @@ function CatalogRow({ row }: { row: TemplateInfo }) {
             <li key={i}>{reason}</li>
           ))}
         </ul>
+      ) : null}
+    </li>
+  )
+}
+
+/** A gallery row the app ships a profile for: readiness and one-click install
+ *  come from the profile via the shared models store, never local_check. */
+function CuratedRow({ row, profile }: { row: TemplateInfo; profile: ProfileStatus }) {
+  const install = useModelsStore((s) => s.install)
+  const installing = useModelsStore((s) => s.installing)
+  const progress = useModelsStore((s) => s.progress)
+
+  const view = rowFor(profile.readiness)
+  const active = installing === profile.id
+  const live = active ? installView(progress) : null
+
+  return (
+    <li className="catalog-row">
+      <div className="catalog-row-head">
+        <span className="catalog-row-title">{row.title || row.name}</span>
+        <span className={`status-pill status-pill-${view.tone}`}>{view.label}</span>
+      </div>
+
+      {row.description !== '' ? <p className="catalog-row-desc">{row.description}</p> : null}
+
+      {row.tags.length > 0 ? (
+        <div className="catalog-tags">
+          {row.tags.map((tag) => (
+            <span key={tag} className="catalog-tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Shown wherever a model is installed -- some weights are open with
+          conditions the user takes on by generating (CONVENTIONS). */}
+      <p className="model-row-license">
+        <span className="model-row-license-name">{profile.license}</span>
+        {profile.license_notes !== null ? ` -- ${profile.license_notes}` : null}
+      </p>
+
+      {view.nextStep !== null && !active ? (
+        <p className="setup-next-step">{view.nextStep}</p>
+      ) : null}
+
+      {live !== null ? (
+        <p className="setup-next-step">
+          Downloading {live.done} of {live.total} files
+          {live.percent === null ? '' : ` -- ${live.percent}%`}
+          {live.failed.length > 0 ? ` -- ${live.failed.length} failed` : ''}
+        </p>
+      ) : null}
+
+      {profile.readiness.state === 'missing' && profile.readiness.installable ? (
+        <div className="setup-actions">
+          <button
+            type="button"
+            className="setup-button setup-button-primary"
+            onClick={() => void install(profile.id)}
+            disabled={installing !== null}
+          >
+            {active ? 'Downloading...' : 'Install'}
+          </button>
+        </div>
       ) : null}
     </li>
   )

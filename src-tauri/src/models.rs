@@ -78,6 +78,12 @@ pub struct ProfileStatus {
     /// directory, so an override is visible rather than mysterious.
     pub source: ProfileSource,
     pub vram_gb_min: Option<u32>,
+    /// The gallery template this profile rides, when it rides one
+    /// (`ComfySpec.template`). The model catalog joins on it: a gallery row whose
+    /// `name` equals this is the same model, so the catalog shows this profile's
+    /// readiness and install instead of the row's own `local_check`. `None` for a
+    /// profile that uses an imported workflow rather than a gallery template.
+    pub template: Option<String>,
     pub readiness: Readiness,
 }
 
@@ -177,6 +183,7 @@ fn row(
         license_notes: profile.license_notes,
         source,
         vram_gb_min: profile.comfy.vram_gb_min,
+        template: profile.comfy.template,
         readiness,
     }
 }
@@ -282,6 +289,19 @@ mod tests {
                 files.iter().map(|f| (*f).to_string()).collect(),
             )
         }))
+    }
+
+    /// Protects: the row carries its gallery template name, the key the model
+    /// catalog joins a gallery row to a shipped profile on. A drift here (or a
+    /// dropped field) silently un-curates every catalog row -- it falls back to
+    /// `local_check`, resurrecting the MiniMax `runnable: false` bug.
+    #[test]
+    fn test_a_row_carries_its_gallery_template() {
+        let ace = row(profile(ACE_STEP), ProfileSource::Shipped, None);
+        assert_eq!(ace.template.as_deref(), Some("audio_ace_step1_5_xl_turbo"));
+
+        let minimax = row(profile(MINIMAX), ProfileSource::Shipped, None);
+        assert_eq!(minimax.template.as_deref(), Some("audio_minimax_music_3"));
     }
 
     /// Protects: the row carries the licence. CONVENTIONS requires per-model

@@ -1,6 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileProgress, ProfileStatus, Readiness } from '../bridge/models'
-import { curatedFirst, formatBytes, installView, isTerminal, rowFor } from './models'
+import { useModelsStore, curatedFirst, formatBytes, installView, isTerminal, rowFor } from './models'
+
+const mockModelsStatus = vi.fn()
+let mockIsTauri = true
+
+vi.mock('../bridge/models', () => ({
+  modelsStatus: () => mockModelsStatus(),
+  modelsInstall: vi.fn(),
+  modelsProgress: vi.fn(),
+}))
+
+vi.mock('../bridge/comfy', () => ({
+  isTauri: () => mockIsTauri,
+}))
 
 /** The four ACE-Step files, as captured from Hugging Face on 2026-08-25. */
 const ACE_FILES = [
@@ -27,10 +40,22 @@ function profile(over: Partial<ProfileStatus>): ProfileStatus {
     license_notes: null,
     source: 'shipped',
     vram_gb_min: null,
+    template: null,
     readiness: { state: 'ready' },
     ...over,
   }
 }
+
+beforeEach(() => {
+  mockModelsStatus.mockReset()
+  mockIsTauri = true
+  useModelsStore.setState({
+    view: null,
+    busy: false,
+    installing: null,
+    progress: [],
+  })
+})
 
 describe('rowFor', () => {
   /**
@@ -203,5 +228,28 @@ describe('installView', () => {
     const view = installView([at('failed', 0, 100), at('completed', 100, 100)])
     expect(view.failed).toHaveLength(1)
     expect(view.done).toBe(1)
+  })
+})
+
+describe('useModelsStore', () => {
+  /** Protects: two mount-time refreshes collapse to one round trip. */
+  it('dedupes a second refresh while one is in flight', async () => {
+    mockModelsStatus.mockResolvedValue({
+      profiles: [],
+      warnings: [],
+      inventory_available: true,
+      inventory_detail: null,
+    })
+    const first = useModelsStore.getState().refresh()
+    const second = useModelsStore.getState().refresh()
+    await Promise.all([first, second])
+    expect(mockModelsStatus).toHaveBeenCalledTimes(1)
+  })
+
+  /** Protects: the busy guard is the early-return path, not the bridge. */
+  it('returns early when busy is already true', async () => {
+    useModelsStore.setState({ busy: true })
+    await useModelsStore.getState().refresh()
+    expect(mockModelsStatus).not.toHaveBeenCalled()
   })
 })

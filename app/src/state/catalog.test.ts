@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ModelsView, ProfileStatus } from '../bridge/models'
 import type { CatalogPage, LocalCheck } from '../bridge/catalog'
-import { rowViewFor, useCatalogStore, verdictFor } from './catalog'
+import { curatedIndex, rowViewFor, useCatalogStore, verdictFor } from './catalog'
 
 const mockBrowse = vi.fn()
 const mockReadiness = vi.fn()
@@ -89,6 +90,67 @@ describe('rowViewFor', () => {
     const warn = rowViewFor({ kind: 'not_ready', reasons: ['missing X'] })
     expect(warn.tone).toBe('warn')
     expect(warn.reasons).toEqual(['missing X'])
+  })
+})
+
+describe('curatedIndex', () => {
+  it('maps profiles by their gallery template', () => {
+    const ace: ProfileStatus = {
+      id: 'ace',
+      display_name: 'ACE-Step',
+      kind: 'music',
+      license: 'Apache-2.0',
+      license_notes: null,
+      source: 'shipped',
+      vram_gb_min: null,
+      template: 'audio_ace_step1_5_xl_turbo',
+      readiness: { state: 'ready' },
+    }
+    const minimax: ProfileStatus = {
+      id: 'minimax',
+      display_name: 'MiniMax',
+      kind: 'music',
+      license: 'MiniMax-Music3 Community License',
+      license_notes: null,
+      source: 'shipped',
+      vram_gb_min: null,
+      template: 'audio_minimax_music_3',
+      readiness: { state: 'ready' },
+    }
+    const view: ModelsView = {
+      profiles: [ace, minimax],
+      warnings: [],
+      inventory_available: true,
+      inventory_detail: null,
+    }
+    const index = curatedIndex(view)
+    expect(index.get('audio_ace_step1_5_xl_turbo')).toBe(ace)
+    expect(index.get('audio_minimax_music_3')).toBe(minimax)
+  })
+
+  it('skips profiles that do not ride a gallery template', () => {
+    const imported: ProfileStatus = {
+      id: 'import',
+      display_name: 'Import',
+      kind: 'music',
+      license: 'MIT',
+      license_notes: null,
+      source: 'user',
+      vram_gb_min: null,
+      template: null,
+      readiness: { state: 'ready' },
+    }
+    const index = curatedIndex({
+      profiles: [imported],
+      warnings: [],
+      inventory_available: true,
+      inventory_detail: null,
+    })
+    expect(index.size).toBe(0)
+  })
+
+  it('returns an empty map for a null view', () => {
+    expect(curatedIndex(null).size).toBe(0)
   })
 })
 

@@ -27,6 +27,7 @@ function profile(overrides: Partial<ProfileStatus> & { id: string }): ProfileSta
     license_notes: null,
     source: 'shipped',
     vram_gb_min: null,
+    template: null,
     readiness: { state: 'unknown' },
     ...overrides,
     id: overrides.id,

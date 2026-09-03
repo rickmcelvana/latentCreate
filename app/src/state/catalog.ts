@@ -7,6 +7,7 @@ import {
   type CatalogPage,
   type LocalCheck,
 } from '../bridge/catalog'
+import type { ModelsView, ProfileStatus } from '../bridge/models'
 
 /**
  * The Ready / Not-ready / Unknown verdict for one gallery row.
@@ -70,6 +71,25 @@ export function rowViewFor(verdict: CatalogVerdict | 'checking'): CatalogRowView
     case 'unknown':
       return { tone: 'neutral', label: "Can't check", reasons: [] }
   }
+}
+
+/**
+ * Index the shipped/user profiles by the gallery template they ride, so the
+ * catalog can find a profile for a gallery row by its `name`.
+ *
+ * A profile with no `template` (an imported-workflow profile) is not in the
+ * gallery and is skipped. A curated row is one whose `name` this map has: it
+ * shows the profile's readiness and install, never the row's own `local_check`
+ * (the MiniMax lesson -- MCP-SURFACE 6). Pure so the join is testable without a
+ * bridge or a running ComfyUI.
+ */
+export function curatedIndex(view: ModelsView | null): Map<string, ProfileStatus> {
+  const index = new Map<string, ProfileStatus>()
+  if (view === null) return index
+  for (const profile of view.profiles) {
+    if (profile.template !== null) index.set(profile.template, profile)
+  }
+  return index
 }
 
 interface CatalogState {

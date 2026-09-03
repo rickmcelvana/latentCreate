@@ -120,8 +120,20 @@ Headlines:
     `ModelCatalog.tsx`, `Setup.tsx` (one line after `ModelsStep`), `theme.css`. Gate green (view
     component, not unit-tested per WORKFLOW §5; frontend 448 unchanged). ARCHITECTURE §10/§10a updated
     to the toggle-step layout in the same commit.
-  - **T-505c — curated one-click install** reusing `models_install`/`models_progress` (already in
-    `bridge/models.ts`/`state/models.ts`), so the curated shipped profiles install from the catalog.
+  - **T-505c — curated one-click install. ✅ LANDED 2026-09-02 (awaiting click-through)** ([t-505c-brief.md](t-505c-brief.md)).
+    A gallery row whose `name` matches a shipped profile's `comfy.template` (verified live: the
+    profiles' `audio_ace_step1_5_xl_turbo` / `audio_minimax_music_3` are the exact gallery `name`s)
+    gets the profile's readiness pill + an **Install** button, reusing the Models step's singleton
+    `useModelsStore` (`install`/`installView`/`rowFor`) unchanged — an install from the catalog *is*
+    the Models step's install. **Curated readiness comes from the profile, never `local_check`** (the
+    MiniMax lesson). One new field surfaces the join key: `ProfileStatus.template` (Rust + TS mirror);
+    the join `curatedIndex(view)` is a pure, tested TS helper. Bare rows keep T-505b's `local_check`
+    path. No new Tauri command, no new install code. Review caught a **rules-of-hooks** bug the gate
+    could not (a `CatalogRow` early-returning before its hooks — a race-dependent crash when a row
+    turns curated as the models view lands); fixed by branching in the parent between sibling
+    `BareRow`/`CuratedRow` components. The required `template` field also needed a `template: null`
+    line in an untouched fixture (`profiles.test.ts`) — an eighth file. src-tauri 118→119, frontend
+    448→453; gate green. **Awaiting producer click-through.**
   - **T-505d — adopt an installed gallery row into a profile** via the T-313 import path. This is
     the "bring it in" action for a model the user already downloaded.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
