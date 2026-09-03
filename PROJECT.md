@@ -5982,3 +5982,32 @@ lane (captured live data is architect work, not executor work): `testdata/workfl
 + `testdata/mcp/list_workflow_slots.flux2-klein-9b.json`, with a README section recording provenance
 and why the file is worth keeping. Adopt lanes renumbered again: a (seam, landed), b (emit, landed),
 **c (polarity, briefed)**, d (adopt UI, has the click-through). Docs/fixtures only; gate unaffected.
+
+### 2026-09-03 (last) -- T-505d-c landed: the prompt reaches the right encoder
+
+Ran Aider on T-505d-c; the diff matched the brief and touched only the two files scoped.
+`audit::output_targets` walks one hop forward to the input names a node drives, handling both link
+shapes (top-level positional arrays, interior objects) through a `target_input_name` helper, and the
+subgraph hop is now a shared `resolve_subgraph` that `resolve_in_subgraph` also uses -- a factoring
+the brief asked for and Aider did without changing the original's behaviour. `roles.rs` computes
+polarity once per slot before the role loop and lets it outrank the name table for `Tags` and
+`Negative` only.
+
+Review found **one latent defect and one bit of churn**, both fixed before commit. The defect:
+`output_targets` compared `origin_id` as an `Option<i64>` built with `parse().ok()`, so a
+non-numeric instance id would have matched every link whose origin field was *missing* rather than
+returning nothing -- the exact opposite of the "no opinion" the function documents. Not reachable
+from comfy-cli's numeric ids, but it made the doc false; now parsed up front with an early return,
+and the unresolvable-instance test covers `"abc"` and `"75/abc"`. The churn: Aider reworded an
+untouched sentence of the module header ("dropped on conversion"), reverted; the new paragraph was
+also rewritten to state the rule in both directions and to record *why* it matters (both encoders
+score `Strong`, so the import screen pre-ticks both).
+
+Klein now maps tags→`75/74.text`, negative→`75/67.text` (`Strong`, reason naming the negative
+conditioning), and seed/steps/cfg to its subgraph controls; ACE-Step and MiniMax are unchanged with
+`Negative` still absent, which is the guard that makes this safe. create-core 176→184; full gate
+green, fmt and clippy clean.
+
+All three backend prerequisites for adopting an image model are now landed. Next: **T-505d-d** --
+the "Bring in" button + adopt mapping UI, the first lane in this chain with a real click-through,
+against the installed Klein 9B row.

@@ -169,7 +169,7 @@ Headlines:
       (create-core, no UI) — proven by tests: the new `test_an_image_graph_emits_an_image_profile`,
       the renamed no-save-node-of-either-kind test, and a `kind: Music` guard added to the existing
       no-both-sources test. create-core 10 emit tests (was 8); gate green.
-    - **T-505d-c — conditioning polarity in role suggestion (create-core). 📋 BRIEFED 2026-09-03**
+    - **T-505d-c — conditioning polarity in role suggestion (create-core). ✅ LANDED 2026-09-03**
       ([t-505d-c-brief.md](t-505d-c-brief.md)). **Found by verifying the subgraph risk, which turned
       out fine and revealed a worse one.** Subgraph slots do reach `suggest_roles` (addressed
       `A/B.name`), so Klein's controls are all found — but its **two `CLIPTextEncode` nodes both
@@ -181,7 +181,13 @@ Headlines:
       forward one hop to the input names a node drives) and lets that outrank the name table for the
       two prompt roles. **Inert for audio** and regression-tested so: both shipped models drive their
       negative from `ConditioningZeroOut`, which exposes no `STRING` slot. Fixtures
-      `flux2_klein_9b.json` + its slot capture are committed ahead of the lane. No click-through.
+      `flux2_klein_9b.json` + its slot capture were committed ahead of the lane. No click-through.
+      Landed matching the brief: `output_targets` (one hop, exact names, empty on anything
+      unresolvable), a `resolve_subgraph` helper now shared with `resolve_in_subgraph`, and polarity
+      computed once per slot outranking the name table for `Tags`/`Negative` only. Klein now maps
+      tags→`75/74.text`, negative→`75/67.text` (`Strong`, reason naming the negative conditioning),
+      seed/steps/cfg to its subgraph controls; ACE-Step and MiniMax suggestions unchanged with
+      `Negative` still absent. create-core 176→184.
     - **T-505d-d — the "Bring in" button + adopt mapping UI** (frontend, has click-through). A ready
       bare row gets a "Bring in" action → an `adopt(name)` import-store action driving
       `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/

@@ -171,6 +171,64 @@ pub fn link_origin(workflow: &Value, address: &str) -> Option<String> {
     Some(origin.to_string())
 }
 
+/// The input names that `instance`'s outputs drive.
+///
+/// The mirror of [`link_origin`]: that walks from a fed input back to its
+/// origin, this walks from a node forward to what it feeds. Role suggestion
+/// needs it because an image graph's two `CLIPTextEncode` nodes are
+/// indistinguishable by name -- both expose `text` -- and the only thing that
+/// separates the prompt from the negative prompt is which sampler input each
+/// one lands on.
+///
+/// **One hop, and exact input names.** A deeper walk would follow ACE-Step's
+/// encoder through `ConditioningZeroOut` and report that it drives the negative
+/// side too; one hop reports `positive` and `conditioning`, which is the truth.
+///
+/// Unresolvable addresses return an empty list rather than an error: "no
+/// opinion" is the safe answer here, and leaves the caller on its name table.
+/// Nesting deeper than one subgraph level is unresolvable, matching
+/// [`audit_slots`].
+pub fn output_targets(workflow: &Value, instance: &str) -> Vec<String> {
+    let Some(nodes) = workflow.get("nodes").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    if instance.contains('/') {
+        let Some((outer, inner)) = instance.split_once('/') else {
+            return Vec::new();
+        };
+        let Some((subgraph, interior)) = resolve_subgraph(workflow, nodes, outer, inner) else {
+            return Vec::new();
+        };
+        // Parsed up front, not compared as an `Option`: an unparseable id
+        // would otherwise match every link whose `origin_id` is missing,
+        // which is the opposite of the "no opinion" this returns.
+        let Ok(origin_id) = inner.parse::<i64>() else {
+            return Vec::new();
+        };
+        subgraph
+            .get("links")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|l| l.get("origin_id").and_then(Value::as_i64) == Some(origin_id))
+            .filter_map(|l| target_input_name(interior, l))
+            .collect()
+    } else {
+        let Ok(origin_id) = instance.parse::<i64>() else {
+            return Vec::new();
+        };
+        workflow
+            .get("links")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|l| l.get(1).and_then(Value::as_i64) == Some(origin_id))
+            .filter_map(|l| target_input_name(nodes, l))
+            .collect()
+    }
+}
+
 /// Resolve `"94.duration"` against the top-level graph.
 fn resolve_top_level(workflow: &Value, nodes: &[Value], instance: &str, field: &str) -> Resolution {
     let Some(node) = node_with_id(nodes, instance) else {
@@ -182,6 +240,32 @@ fn resolve_top_level(workflow: &Value, nodes: &[Value], instance: &str, field: &
     Resolution::Fed(LinkSource::of_node_type(
         top_level_origin_type(workflow, nodes, link).as_deref(),
     ))
+}
+
+/// The subgraph definition and its interior node array for `outer/inner`.
+///
+/// One level only: a nested `A/B/C` address is unresolvable, matching
+/// [`audit_slots`].
+fn resolve_subgraph<'a>(
+    workflow: &'a Value,
+    nodes: &'a [Value],
+    outer: &str,
+    inner: &str,
+) -> Option<(&'a Value, &'a [Value])> {
+    if inner.contains('/') {
+        return None;
+    }
+    let definition = node_with_id(nodes, outer)
+        .and_then(|host| host.get("type"))
+        .and_then(Value::as_str)?;
+    let subgraph = workflow
+        .pointer("/definitions/subgraphs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|s| s.get("id").and_then(Value::as_str) == Some(definition))?;
+    let interior = subgraph.get("nodes").and_then(Value::as_array)?;
+    Some((subgraph, interior))
 }
 
 /// Resolve `"37/13.seed"`: one level down, into `definitions.subgraphs`.
@@ -202,26 +286,7 @@ fn resolve_in_subgraph(
     let Some((outer, inner)) = instance.split_once('/') else {
         return Resolution::Unchecked;
     };
-    if inner.contains('/') {
-        return Resolution::Unchecked;
-    }
-
-    let Some(definition) = node_with_id(nodes, outer)
-        .and_then(|host| host.get("type"))
-        .and_then(Value::as_str)
-    else {
-        return Resolution::Unchecked;
-    };
-    let Some(subgraph) = workflow
-        .pointer("/definitions/subgraphs")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .find(|s| s.get("id").and_then(Value::as_str) == Some(definition))
-    else {
-        return Resolution::Unchecked;
-    };
-    let Some(interior) = subgraph.get("nodes").and_then(Value::as_array) else {
+    let Some((subgraph, interior)) = resolve_subgraph(workflow, nodes, outer, inner) else {
         return Resolution::Unchecked;
     };
     let Some(node) = node_with_id(interior, inner) else {
@@ -267,6 +332,36 @@ fn top_level_origin_type(workflow: &Value, nodes: &[Value], id: i64) -> Option<S
         .iter()
         .find(|n| n.get("id").and_then(Value::as_i64) == Some(src))
         .and_then(|n| n.get("type"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// Read the target input name from a link object or array.
+///
+/// Top-level links are positional: element 3 is the target node id, element 4 the
+/// target input index. Interior links are objects keyed `target_id` and
+/// `target_slot`.
+fn target_input_name(nodes: &[Value], link: &Value) -> Option<String> {
+    let (target_id, target_slot) = if link.is_array() {
+        let arr = link.as_array()?;
+        (
+            arr.get(3).and_then(Value::as_i64)?,
+            arr.get(4).and_then(Value::as_u64)?,
+        )
+    } else {
+        (
+            link.get("target_id").and_then(Value::as_i64)?,
+            link.get("target_slot").and_then(Value::as_u64)?,
+        )
+    };
+    let slot = usize::try_from(target_slot).ok()?;
+    nodes
+        .iter()
+        .find(|n| n.get("id").and_then(Value::as_i64) == Some(target_id))?
+        .get("inputs")
+        .and_then(Value::as_array)
+        .and_then(|inputs| inputs.get(slot))?
+        .get("name")
         .and_then(Value::as_str)
         .map(str::to_string)
 }
@@ -706,5 +801,36 @@ mod tests {
         }
         let audit = audit_slots(&workflow, &["37/38.seed".to_string()]);
         assert_eq!(audit.link_fed[0].source, LinkSource::Boundary);
+    }
+
+    #[test]
+    fn test_output_targets_reads_a_top_level_consumer() {
+        let workflow = fixture("ace_step_1_5_xl_turbo.json");
+        let targets = output_targets(&workflow, "94");
+        assert!(targets.iter().any(|t| t == "positive"), "{targets:?}");
+        assert!(!targets.iter().any(|t| t == "negative"), "{targets:?}");
+    }
+
+    #[test]
+    fn test_output_targets_reads_a_subgraph_consumer() {
+        let workflow = fixture("flux2_klein_9b.json");
+        let positive = output_targets(&workflow, "75/74");
+        assert!(positive.iter().any(|t| t == "positive"), "{positive:?}");
+        assert!(!positive.iter().any(|t| t == "negative"), "{positive:?}");
+
+        let negative = output_targets(&workflow, "75/67");
+        assert!(negative.iter().any(|t| t == "negative"), "{negative:?}");
+        assert!(!negative.iter().any(|t| t == "positive"), "{negative:?}");
+    }
+
+    #[test]
+    fn test_output_targets_is_empty_for_an_unresolvable_instance() {
+        let workflow = fixture("flux2_klein_9b.json");
+        assert!(output_targets(&workflow, "99999").is_empty());
+        assert!(output_targets(&workflow, "75/67/2").is_empty());
+        // A non-numeric id must be "no opinion", not "every link whose origin
+        // field this graph happens to omit".
+        assert!(output_targets(&workflow, "abc").is_empty());
+        assert!(output_targets(&workflow, "75/abc").is_empty());
     }
 }

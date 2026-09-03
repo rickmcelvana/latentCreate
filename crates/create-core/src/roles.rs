@@ -22,12 +22,22 @@
 //! a frontend-only node whose link is dropped on conversion. `PrimitiveNode`
 //! and `PrimitiveInt`: same idea, opposite behaviour, one word apart.
 //!
+//! The same argument applies to conditioning polarity. On an image graph the
+//! positive and negative encoders are both `CLIPTextEncode` exposing `text`,
+//! so the name table alone maps the prompt onto **both** -- and because both
+//! score `Strong`, the import screen pre-ticks both and the negative prompt
+//! silently receives the user's prompt. The link into `positive` or
+//! `negative` is the only thing that separates them, so it outranks the name:
+//! `Role::Tags` declines a slot the graph says is negative, and
+//! `Role::Negative` accepts one no name would have matched.
+//!
 //! [`crate::audit`] already encodes that distinction and is the only correct
 //! source for it. Nothing here re-derives it.
 
-use crate::audit::{audit_slots, link_origin};
+use crate::audit::{audit_slots, link_origin, output_targets};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// A semantic input the app knows how to drive.
 ///
@@ -88,6 +98,30 @@ impl Role {
             Role::Seed | Role::Steps => widget_type == "INT",
             Role::DurationSeconds | Role::Cfg => widget_type == "FLOAT" || widget_type == "INT",
         }
+    }
+}
+
+/// Which side of a sampler's conditioning a text slot feeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Polarity {
+    Positive,
+    Negative,
+}
+
+/// Which conditioning side `instance` feeds, when the graph says so
+/// unambiguously.
+///
+/// `None` when it drives both or neither -- "no opinion", which leaves the
+/// name table in charge and is why this can never make a suggestion worse than
+/// it is today.
+fn conditioning_polarity(workflow: &Value, instance: &str) -> Option<Polarity> {
+    let targets = output_targets(workflow, instance);
+    let positive = targets.iter().any(|t| t == "positive");
+    let negative = targets.iter().any(|t| t == "negative");
+    match (positive, negative) {
+        (true, false) => Some(Polarity::Positive),
+        (false, true) => Some(Polarity::Negative),
+        _ => None,
     }
 }
 
@@ -156,6 +190,14 @@ pub fn suggest_roles(workflow: &Value, slots: &[SlotInfo]) -> Vec<RoleSuggestion
         .map(|f| f.address.as_str())
         .collect();
 
+    // Per slot, not per role: polarity is a fact about the node.
+    let polarity: BTreeMap<&str, Polarity> = slots
+        .iter()
+        .filter_map(|s| {
+            conditioning_polarity(workflow, &s.instance_id).map(|p| (s.instance_id.as_str(), p))
+        })
+        .collect();
+
     let mut out = Vec::new();
     for role in Role::ALL {
         let mut candidates = Vec::new();
@@ -166,21 +208,38 @@ pub fn suggest_roles(workflow: &Value, slots: &[SlotInfo]) -> Vec<RoleSuggestion
             if !role.accepts(&slot.widget_type) {
                 continue;
             }
-            if !role
+            let named = role
                 .names()
-                .contains(&slot.name.to_ascii_lowercase().as_str())
-            {
+                .contains(&slot.name.to_ascii_lowercase().as_str());
+            let side = polarity.get(slot.instance_id.as_str()).copied();
+            // The graph outranks the name table for the prompt roles: an image
+            // model names both encoders `text`, so the name says nothing about
+            // which is which and the link says everything.
+            let wanted = match role {
+                Role::Tags => named && side != Some(Polarity::Negative),
+                Role::Negative => named || side == Some(Polarity::Negative),
+                _ => named,
+            };
+            if !wanted {
                 continue;
             }
             if inert.contains(&slot.address.as_str()) {
                 blocked.push(slot);
                 continue;
             }
+            let reason = if !named {
+                format!(
+                    "{} on {} -- drives the negative conditioning",
+                    slot.name, slot.node_type
+                )
+            } else {
+                format!("{} on {}", slot.name, slot.node_type)
+            };
             candidates.push(Candidate {
                 address: slot.address.clone(),
                 node_type: slot.node_type.clone(),
                 confidence: Confidence::Strong,
-                reason: format!("{} on {}", slot.name, slot.node_type),
+                reason,
             });
         }
 
@@ -269,6 +328,13 @@ mod tests {
         (
             workflow("ace_step_1_5_xl_turbo.json"),
             slots("list_workflow_slots.ace-step.json"),
+        )
+    }
+
+    fn klein() -> (Value, Vec<SlotInfo>) {
+        (
+            workflow("flux2_klein_9b.json"),
+            slots("list_workflow_slots.flux2-klein-9b.json"),
         )
     }
 
@@ -451,5 +517,94 @@ mod tests {
                 assert!(s < p, "a Possible sorted above a Strong: {candidates:?}");
             }
         }
+    }
+
+    /// Protects: the positive prompt encoder is mapped, the negative one is not.
+    #[test]
+    fn test_klein_maps_the_positive_encoder_to_tags_and_not_the_negative() {
+        let (graph, slots) = klein();
+        let suggestions = suggest_roles(&graph, &slots);
+        let tags = for_role(&suggestions, Role::Tags);
+        let addresses: Vec<&str> = tags.iter().map(|c| c.address.as_str()).collect();
+
+        assert!(addresses.contains(&"75/74.text"), "{addresses:?}");
+        assert!(!addresses.contains(&"75/67.text"), "{addresses:?}");
+    }
+
+    /// Protects: the negative prompt is found even when no slot names it.
+    #[test]
+    fn test_klein_finds_the_negative_prompt_no_name_would_have_matched() {
+        let (graph, slots) = klein();
+        let suggestions = suggest_roles(&graph, &slots);
+        let negatives = for_role(&suggestions, Role::Negative);
+
+        assert!(
+            negatives.iter().any(|c| c.address == "75/67.text"),
+            "{negatives:?}"
+        );
+        let found = negatives
+            .iter()
+            .find(|c| c.address == "75/67.text")
+            .expect("negative encoder offered");
+        assert_eq!(found.confidence, Confidence::Strong);
+        assert!(
+            found.reason.contains("negative conditioning"),
+            "{}",
+            found.reason
+        );
+    }
+
+    /// Protects: subgraph-interior controls survive the whole suggestion pass.
+    #[test]
+    fn test_klein_suggests_the_subgraph_controls() {
+        let (graph, slots) = klein();
+        let suggestions = suggest_roles(&graph, &slots);
+
+        let seeds = for_role(&suggestions, Role::Seed);
+        assert!(
+            seeds.iter().any(|c| c.address == "75/73.noise_seed"),
+            "{seeds:?}"
+        );
+
+        let steps = for_role(&suggestions, Role::Steps);
+        assert!(
+            steps.iter().any(|c| c.address == "75/62.steps"),
+            "{steps:?}"
+        );
+
+        let cfg = for_role(&suggestions, Role::Cfg);
+        assert!(cfg.iter().any(|c| c.address == "75/63.cfg"), "{cfg:?}");
+    }
+
+    /// Protects: polarity logic is inert for audio graphs that name their slots.
+    #[test]
+    fn test_ace_step_still_maps_its_tags_encoder() {
+        let (graph, slots) = ace();
+        let suggestions = suggest_roles(&graph, &slots);
+        let tags = for_role(&suggestions, Role::Tags);
+        assert!(
+            tags.iter()
+                .any(|c| c.address == "94.tags" && c.confidence == Confidence::Strong),
+            "{tags:?}"
+        );
+        let negatives = for_role(&suggestions, Role::Negative);
+        assert!(negatives.is_empty(), "{negatives:?}");
+    }
+
+    /// Protects: the same for MiniMax -- no STRING slot can resolve to Negative.
+    #[test]
+    fn test_minimax_still_maps_its_tags_encoder() {
+        let graph = workflow("minimax_music3_int8.json");
+        let slots = slots("list_workflow_slots.minimax.json");
+        let suggestions = suggest_roles(&graph, &slots);
+
+        let caption = for_role(&suggestions, Role::Tags);
+        assert!(
+            caption.iter().any(|c| c.address == "37/13.caption"),
+            "{caption:?}"
+        );
+
+        let negatives = for_role(&suggestions, Role::Negative);
+        assert!(negatives.is_empty(), "{negatives:?}");
     }
 }
