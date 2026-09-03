@@ -112,7 +112,7 @@ Headlines:
     ([t-505a-brief.md](t-505a-brief.md)). Drives the two T-504 commands; derives the Ready/Not-ready/
     Unknown verdict from `LocalCheck` in TS; per-row readiness resolved lazily. Fully unit-tested
     (13 tests), no UI. Three new files; frontend 435→448, gate green.
-  - **T-505b — the `<ModelCatalog>` component + Setup wiring. ✅ LANDED 2026-09-02, awaiting producer click-through** ([t-505b-brief.md](t-505b-brief.md)).
+  - **T-505b — the `<ModelCatalog>` component + Setup wiring. ✅ COMPLETE — click-through passed 2026-09-02** ([t-505b-brief.md](t-505b-brief.md)). The catalog toggle, the 163-row image gallery, search, and readiness pills all worked; a stopped ComfyUI reads "Can't check", never "Not installed". The click-through surfaced a **pre-existing** Models-step defect (not the catalog): a stopped ComfyUI dumped the raw `server_not_running` tool diagnostic instead of the clean "Start ComfyUI above." line. Fixed same-session (architect-direct): `models::inventory_detail` returns `None` for `server_not_running` so the frontend's own fallback speaks; other errors keep their detail. app 117→118.
     **One "Model catalog" Setup step with an Audio | Image toggle** (not two steps) — the T-505a store
     is a singleton, so one kind shows at a time; that both keeps the store correct and delivers the
     owner's "both on the setup page". Renders rows, a debounced search, and per-row readiness pills

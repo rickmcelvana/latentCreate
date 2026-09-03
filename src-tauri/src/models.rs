@@ -123,7 +123,7 @@ pub async fn models_status(
     let (inventory, inventory_detail) =
         match take_inventory(&state, &config_dir, bin, &wanted).await {
             Ok(inventory) => (Some(inventory), None),
-            Err(TakeError::Comfy(e)) => (None, Some(e.to_string())),
+            Err(TakeError::Comfy(e)) => (None, inventory_detail(&e)),
             Err(TakeError::Log(detail)) => return Err(detail),
         };
 
@@ -244,6 +244,23 @@ pub(crate) async fn take_inventory(
 /// state rather than reporting an empty install.
 fn is_server_not_running(error: &ComfyError) -> bool {
     matches!(error, ComfyError::Tool { code, .. } if code.as_deref() == Some("server_not_running"))
+}
+
+/// The banner detail for an inventory that could not be taken.
+///
+/// A stopped ComfyUI is the **expected** failure here, and its raw tool
+/// diagnostic is ~300 characters of `urlopen`/`WinError` prose ending in
+/// "check `--where` and network connectivity" -- useless to a user who just
+/// needs to start ComfyUI. That case returns `None`, so the step falls back to
+/// its own clean "Start ComfyUI above." line (the same shape T-315 gave the job
+/// path). Any *other* failure is genuinely unexpected and keeps its detail,
+/// where the diagnostic is the only clue to what went wrong.
+fn inventory_detail(error: &ComfyError) -> Option<String> {
+    if is_server_not_running(error) {
+        None
+    } else {
+        Some(error.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -400,6 +417,31 @@ mod tests {
             message: "nope".to_string(),
         };
         assert!(!is_server_not_running(&other));
+    }
+
+    /// Protects: a stopped ComfyUI shows no raw tool diagnostic. The real
+    /// failure is ~300 characters of `urlopen`/`WinError` prose; the step must
+    /// fall back to its own "Start ComfyUI above." line, so the detail is
+    /// `None`. An unexpected failure keeps its detail -- that string is the only
+    /// clue to a problem the step has no clean copy for.
+    #[test]
+    fn test_a_stopped_server_carries_no_raw_diagnostic() {
+        let stopped = ComfyError::Tool {
+            tool: "search_models".to_string(),
+            code: Some("server_not_running".to_string()),
+            message: "comfy models list-folder diffusion_models failed: failed to fetch \
+                      http://127.0.0.1:8188/models/diffusion_models: <urlopen error \
+                      [WinError 10061] ...> hint: check `--where` and network connectivity"
+                .to_string(),
+        };
+        assert_eq!(inventory_detail(&stopped), None);
+
+        let unexpected = ComfyError::Tool {
+            tool: "search_models".to_string(),
+            code: Some("some_other_code".to_string()),
+            message: "boom".to_string(),
+        };
+        assert!(inventory_detail(&unexpected).is_some());
     }
 
     /// The whole readiness path against a **real** comfy-mcp and a **running**
