@@ -2480,3 +2480,48 @@ cannot honour. This keeps "ship no models" and "no executing untrusted URLs" int
 curated row still uses the profile-file-list match (readiness.rs), **not** `local_check.runnable`
 (the MiniMax slot-override lesson, §6) -- `local_check` drives readiness only for a *bare gallery
 row* that has no profile yet.
+
+## 34. An image template's two prompt encoders are indistinguishable by slot name -- 2026-09-03
+
+Verified against `image_flux2_text_to_image_9b` (Flux.2 Klein 9B) on ComfyUI v0.34.3 / comfy-cli
+1.16.0, `local_check runnable: true`. The template and its 20-slot capture are frozen as
+`testdata/workflows/flux2_klein_9b.json` and `testdata/mcp/list_workflow_slots.flux2-klein-9b.json`.
+
+34.1 **Subgraph-interior slots do reach the caller, addressed `A/B.name`.** Klein's `SaveImage` sits
+at the **top level** (node `9`) while every control lives one subgraph deep: `75/62.steps`,
+`75/63.cfg`, `75/73.noise_seed`, `75/67.text`, `75/74.text`, and the dimension slots. This is the
+MiniMax layout (§18.5) on an image graph, and it means role suggestion sees the controls without
+any new descent -- the slot list already carries them.
+
+34.2 **The positive and negative prompts are the same slot name, the same widget type, and the same
+node class.** `75/74.text` and `75/67.text` are both `text` on `CLIPTextEncode`. Nothing in
+`list_workflow_slots` separates them. The **graph** does, one hop away: interior link 140 runs
+`74 -> CFGGuider.positive` and link 141 runs `67 -> CFGGuider.negative`.
+
+**Consequence.** A name-matching role suggester offers **both** as the tags/prompt role, and because
+both match on name *and* type it rates both `Strong` -- which the import screen pre-ticks. The
+emitted profile would then write the user's prompt into the negative conditioning as well, silently:
+it generates, nothing errors, and no screen says so. This is the §18.1 lesson in a new place --
+the slot list is not enough to decide what a slot *is* -- and it is why `roles.rs` reads the graph.
+The rule adopted is **one hop, exact input names**: a deeper walk would follow ACE-Step's encoder
+through `ConditioningZeroOut` and report that it drives the negative side too.
+
+34.3 **The audio templates are unaffected, and that is checkable rather than assumed.** Both shipped
+profiles drive their negative side from `ConditioningZeroOut` -- ACE-Step
+`3.KSampler.negative <- 47`, MiniMax `37/9.KSampler.negative <- 10` -- and that node exposes **no
+`STRING` slot**, so no audio text slot can resolve to the negative role. ACE-Step having "no negative
+prompt at all" is literally true: its negative side is a *zeroed* conditioning, not a text encoder.
+
+34.4 **A boundary-fed subgraph input is a real write target, not an inert one.** `75/74.text` -- the
+positive prompt -- is link-fed from the subgraph's `inputNode` (`-10`), with the host node `75`
+holding the prompt in `widgets_values[0]` and `inputs[0].link = null`. That is `LinkSource::Boundary`
+(§18.5), which is **not** inert. A polarity rule must therefore *reclassify* it, never drop it.
+
+34.5 **A gallery template names its weights in loader COMBO slots.** Klein carries
+`75/70.unet_name = flux-2-klein-base-9b-fp8.safetensors`,
+`75/71.clip_name = qwen_3_8b_fp8mixed.safetensors`, and
+`75/72.vae_name = full_encoder_small_decoder.safetensors`. Emission does not currently read them, so
+an imported or adopted profile declares no model files and its readiness is `Undeclared` ("Cannot
+check"). The filenames are right there, and their folders are resolvable via `search_models`, which
+is the fix logged against T-507 -- with `source_url` left `None`, since knowing a file's *name* is
+not knowing where to download it (§33).

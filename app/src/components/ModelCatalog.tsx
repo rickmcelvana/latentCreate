@@ -219,7 +219,7 @@ function BareRow({ row }: { row: TemplateInfo }) {
       verdict !== 'checking' &&
       verdict.kind === 'ready' &&
       adopting === null ? (
-        <div className="setup-actions">
+        <div className="catalog-row-actions">
           <button
             type="button"
             className="setup-button setup-button-primary"
@@ -289,7 +289,7 @@ function CuratedRow({ row, profile }: { row: TemplateInfo; profile: ProfileStatu
       ) : null}
 
       {profile.readiness.state === 'missing' && profile.readiness.installable ? (
-        <div className="setup-actions">
+        <div className="catalog-row-actions">
           <button
             type="button"
             className="setup-button setup-button-primary"

@@ -12,7 +12,7 @@ This file seeds the JSON profiles that will live in `profiles/` (schema: ARCHITE
 | `musicgen-stereo` | Simple instrumental, low-spec fallback | none | no | ~4 GB | CC-BY-NC weights ⚠ | Non-commercial weights — surface the warning in UI |
 | `yue-7b` | Suno-like lyrics-to-song, "advanced" | full-song lyrics | no | 24 GB+ | Apache-2.0 (check weights) | Slow; only show when VRAM check passes |
 | `diffrhythm-2` | Fast full songs | timestamped/plain lyrics | tbd | ~8 GB | check | Block flow matching; verify ComfyUI support level |
-| `cover-art (sdxl or flux template)` | Album/single art | n/a | yes (sdxl) | 6–12 GB | varies | Reuses whatever image template the user picks in setup |
+| `cover-art (sdxl or flux template)` | Album/single art | n/a | yes (sdxl) | 6–12 GB | varies | Reuses whatever image template the user picks in setup. **Route settled 2026-09-03 (T-505d):** the user *adopts* an image row from the Model catalog's Image tab through the normal import path — there is no shipped image profile and no separate setup step. **Verified end to end** on `image_flux2_text_to_image_9b` (Flux.2 Klein 9B, `flux-2-klein-base-9b-fp8.safetensors` + `qwen_3_8b_fp8mixed.safetensors` + `full_encoder_small_decoder.safetensors`, ~16 GB card): adopted, emitted as `kind: image` with `SaveImage`, prompt mapped to the positive encoder and the negative prompt to the negative one. Its controls live one subgraph deep and its two text encoders are indistinguishable by slot name — MCP-SURFACE §34 |
 
 ## Prefill examples (shipped in profiles' `prompt_guide`)
 

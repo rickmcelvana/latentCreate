@@ -188,7 +188,7 @@ Headlines:
       tags→`75/74.text`, negative→`75/67.text` (`Strong`, reason naming the negative conditioning),
       seed/steps/cfg to its subgraph controls; ACE-Step and MiniMax suggestions unchanged with
       `Negative` still absent. create-core 176→184.
-    - **T-505d-d — the "Bring in" button + adopt mapping UI. ✅ LANDED 2026-09-03, click-through pending**
+    - **T-505d-d — the "Bring in" button + adopt mapping UI. ✅ LANDED 2026-09-03, click-through PASSED**
       ([t-505d-d-brief.md](t-505d-d-brief.md)) (frontend, **has the click-through**). A ready **bare**
       row gets a "Bring in" action → an `adopt(name, title)` import-store action driving
       `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/
@@ -214,6 +214,16 @@ Headlines:
       bring-in, taking its mapping screen with it, and since the store allows one flow at a time the
       user could then reach neither Cancel nor any new import. The step now keeps the screen, named,
       when its row is no longer listed. frontend 453→459.
+      **Click-through passed** (2026-09-03), verified independently against the emitted profile on
+      disk: `kind: image`, `output.save_node: SaveImage`, `prefer_lossless: false`,
+      tags→`75/74.text`, negative→`75/67.text`, seed/steps/cfg on the subgraph addresses, and
+      `id: flux-2-klein-9b-text-to-image` from the gallery title rather than the adopt temp file —
+      so b, c and d are all confirmed end to end. One visual defect found and fixed: the row's action
+      button used the wizard's `.setup-actions`/`.setup-button`, which has no top margin (every other
+      `.catalog-row` child sets its own) and step-sized padding, so it collided with the tag chips.
+      Added `.catalog-row-actions` with a compact button override. **This hit `CuratedRow`'s Install
+      button identically and had never been seen** — T-505c's click-through found nothing missing, so
+      that button never rendered. Both rows now use the new class.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
   pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.
@@ -226,7 +236,17 @@ Headlines:
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start
-  and offline states; consistent status pills, no modal walls (ARCHITECTURE §10 rule).
+  and offline states; consistent status pills, no modal walls (ARCHITECTURE section 10 rule).
+  **Carries one named item from T-505d-d's click-through:** an imported/adopted profile declares no
+  model files (`emit` sets `models: []`, unchanged since T-313), so the Models step reads
+  `Undeclared` — "Cannot check" + "This profile does not list the model files it needs." Correct for
+  a user's own graph, but poor for an adopted gallery row the app *knows* is runnable. Nothing gates
+  on readiness (verified: `generate.ts`, `generatePanel.ts`, `GenerateBar.tsx`, `generate.rs`,
+  `profiles.ts` all ignore it), so the profile is fully usable and this is presentation, not a
+  blocker. The fix available: populate `comfy.models` in `emit` from the graph's loader COMBO slots —
+  Klein names all three (`75/70.unet_name`, `75/71.clip_name`, `75/72.vae_name`) — resolving each
+  file's folder via `search_models`. `source_url`/`size_bytes` are both `Option` and stay `None`, so
+  the row would read **Ready** without ever claiming the app can fetch someone else's weights.
 - **T-508 — Installer builds.** Windows first (NSIS/MSIX), then macOS `.dmg` + Linux AppImage via
   CI. The milestone gate for the phase.
 - **T-509 — THIRD-PARTY-LICENSES generation** (Rust + npm dependency licenses; the ported-viz
