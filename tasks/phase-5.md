@@ -266,7 +266,7 @@ Headlines:
     fail unless a derive is removed; it now strips `title`/`width`/`height` from the JSON so the
     `serde(default)`s are what is under test. Eight mutations, eight killed. create-core 184→191,
     library 109→124; gate green.
-  - **T-506b — `generate_image` + art ingest. BRIEFED 2026-09-03** ([t-506b-brief.md](t-506b-brief.md))
+  - **T-506b — `generate_image` + art ingest. ✅ LANDED 2026-09-03** ([t-506b-brief.md](t-506b-brief.md))
     (`src-tauri`). `PendingTrack` becomes `PendingOutput` carrying a `ModelKind` -- **the record
     decides, not the file extension** -- `ingest_outputs` returns a `Saved` per asset so the pump
     emits `track://saved` or `art://saved`, and the download directory is chosen by kind. A pure
@@ -278,7 +278,21 @@ Headlines:
     `testdata/profiles/flux2-klein-9b-image.json`, the profile the app itself emitted, with only
     its adopt-time absolute workflow path rewritten to the repo's capture
     (`testdata/profiles/README.md`). **No click-through** -- tests only; the first sight of a cover
-    is T-506d.
+    is T-506d. Landed matching the brief; ARCHITECTURE §7 gained the shared-pipeline step in the
+    same commit. Four defects fixed in review: **the brief's own `queue_generation` signature**
+    (`&ComfyState`/`&ConfigDir` where `ensure_connected` wants the `State` wrappers -- a compile
+    error the executor transcribed faithfully), two kind-guard tests whose **names were swapped
+    against what they assert** and one expecting the fixture's *filename* where the profile's id
+    belongs, a pipeline test using the input name `prompt` where the profile declares `tags`, and a
+    title test that ingested the same file twice -- ingest **moves** the output, so the second run
+    read a path that was no longer there. Also consolidated: `audio_extension`/`image_extension`
+    differed only in the constant they consulted. **Seven mutations, seven killed** -- one only
+    after rewriting the art counter test, which minted and wrote by hand and so survived moving the
+    counter save *after* the file write; it is now the art mirror of the track burn test, driven
+    through `ingest_outputs`. The repo's own comment on that track test already said a hand-ordered
+    test cannot see a reordering. **Two production lines are not unit-testable** and wait for
+    T-506d's click-through: the download-directory choice and the two-event dispatch both live in
+    `ingest_if_pending`, which needs an `AppHandle` no test in the crate builds. src-tauri 121→133.
   - **T-506c — the art generation store** (frontend, no UI). The image profile selection
     (`default_image_profile_id` on `Config`), the spec assembly reusing `specInputs`, and the
     param-panel **store factory**: `paramPanel.ts` is a module-level singleton today, so a

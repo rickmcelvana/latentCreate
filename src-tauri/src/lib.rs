@@ -73,6 +73,7 @@ pub fn run() {
             catalog::catalog_readiness,
             catalog::catalog_adopt_begin,
             generate::generate_audio,
+            generate::generate_image,
             llm::llm_probe,
             llm::llm_test,
             profile::profile_guide,

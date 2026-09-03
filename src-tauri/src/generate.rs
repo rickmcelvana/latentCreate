@@ -33,7 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use create_core::audit::{audit_slots, SlotAudit};
 use create_core::generation::{GenerationSpec, ResolvedSlots};
 use create_core::graph::{ensure_lossless_output, splice_loras, GraphError, LoraChoice};
-use create_core::profile::ModelProfile;
+use create_core::profile::{ModelKind, ModelProfile};
 use create_core::provenance::ComfyServerInfo;
 use create_core::workflow::{detect_format, WorkflowFormat};
 use mcp_bridge::{Finding, LocalComfy, ServerInfo, SlotOverride, Validation, Verdict};
@@ -42,7 +42,7 @@ use serde_json::Value;
 use tauri::{AppHandle, State};
 
 use crate::comfy::{ensure_connected, EnsureError};
-use crate::ingest::PendingTrack;
+use crate::ingest::PendingOutput;
 use crate::jobs::ComfyState;
 use crate::projectctx::selected_project;
 use crate::{ConfigDir, ProfilesDir};
@@ -73,7 +73,7 @@ struct GraphEdits {
     output_format: Option<String>,
 }
 
-/// Queue one generation and start its pump. Returns as soon as ComfyUI has the
+/// Queue one audio generation and start its pump. Returns as soon as ComfyUI has the
 /// job; progress arrives on the `job://` events T-104b already emits.
 #[tauri::command]
 pub async fn generate_audio(
@@ -83,12 +83,44 @@ pub async fn generate_audio(
     profiles_dir: State<'_, ProfilesDir>,
     spec: GenerationSpec,
 ) -> Result<Submission, String> {
+    queue_generation(app, state, config_dir, profiles_dir, spec, ModelKind::Music).await
+}
+
+/// Queue one image generation and start its pump. Returns as soon as ComfyUI has the
+/// job; progress arrives on the `job://` events T-104b already emits.
+#[tauri::command]
+pub async fn generate_image(
+    app: AppHandle,
+    state: State<'_, ComfyState>,
+    config_dir: State<'_, ConfigDir>,
+    profiles_dir: State<'_, ProfilesDir>,
+    spec: GenerationSpec,
+) -> Result<Submission, String> {
+    queue_generation(app, state, config_dir, profiles_dir, spec, ModelKind::Image).await
+}
+
+/// Shared body of `generate_audio` and `generate_image`.
+///
+/// The two commands are one pipeline with one difference: which kind of asset
+/// the outputs become. A mismatch is refused before any connection is opened.
+async fn queue_generation(
+    app: AppHandle,
+    state: State<'_, ComfyState>,
+    config_dir: State<'_, ConfigDir>,
+    profiles_dir: State<'_, ProfilesDir>,
+    spec: GenerationSpec,
+    kind: ModelKind,
+) -> Result<Submission, String> {
     let set = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"));
     let profile = set
         .profiles
         .get(&spec.profile_id)
         .map(|loaded| loaded.profile.clone())
         .ok_or_else(|| format!("no profile named {}", spec.profile_id))?;
+
+    if let Some(err) = kind_error(&profile, kind) {
+        return Err(err);
+    }
 
     let comfy = match ensure_connected(&state, &config_dir, None).await {
         Ok(comfy) => comfy,
@@ -104,7 +136,7 @@ pub async fn generate_audio(
     let (submission, resolved) = build_and_submit(&comfy, &workflow, &profile, &spec).await?;
     let server_info = comfy.health().await.ok().as_ref().map(server_info_of);
     let project = selected_project(&config_dir.0).map_err(|e| e.to_string())?;
-    let pending = PendingTrack {
+    let pending = PendingOutput {
         project_slug: project.slug,
         profile_id: profile.id.clone(),
         profile_display_name: profile.display_name.clone(),
@@ -113,6 +145,7 @@ pub async fn generate_audio(
         spec: spec.clone(),
         resolved_slots: resolved,
         comfy: server_info,
+        kind,
     };
     state.pump(
         app,
@@ -122,6 +155,32 @@ pub async fn generate_audio(
         config_dir.0.clone(),
     );
     Ok(submission)
+}
+
+/// Why this profile cannot be queued by this command, or `None` to go ahead.
+///
+/// The two commands are one pipeline with one difference: which kind of asset
+/// the outputs become. A music profile queued as an image would download its
+/// FLAC into `art/` and file nothing, because ingest dispatches on the record's
+/// kind -- a Done row and no output, which is the silent failure this task
+/// exists to remove. So the mismatch is refused at submit, in a sentence that
+/// says where the profile does belong.
+fn kind_error(profile: &ModelProfile, wanted: ModelKind) -> Option<String> {
+    if profile.kind == wanted {
+        return None;
+    }
+    Some(match wanted {
+        ModelKind::Music => format!(
+            "{} is an image model, so it cannot generate audio. \
+             Pick a music profile here, or generate artwork from Cover Art.",
+            profile.id
+        ),
+        ModelKind::Image => format!(
+            "{} is a music model, so it cannot generate cover art. \
+             Pick an image profile here, or generate audio from the Audio Studio.",
+            profile.id
+        ),
+    })
 }
 
 /// Put this job's own copy of the graph at `workflow`.
@@ -432,6 +491,7 @@ mod tests {
 
     const ACE: &str = include_str!("../../profiles/ace-step-1.5-turbo.json");
     const MINIMAX: &str = include_str!("../../profiles/minimax-music-3.json");
+    const KLEIN: &str = include_str!("../../testdata/profiles/flux2-klein-9b-image.json");
 
     fn ace() -> ModelProfile {
         serde_json::from_str(ACE).expect("profile decodes")
@@ -439,6 +499,10 @@ mod tests {
 
     fn minimax() -> ModelProfile {
         serde_json::from_str(MINIMAX).expect("profile decodes")
+    }
+
+    fn klein() -> ModelProfile {
+        serde_json::from_str(KLEIN).expect("profile decodes")
     }
 
     /// The real captured template, as `fetch_template` would have written it.
@@ -512,6 +576,24 @@ mod tests {
     #[test]
     fn test_job_ids_do_not_collide_within_a_millisecond() {
         assert_ne!(mint_job_id(), mint_job_id());
+    }
+
+    #[test]
+    fn test_kind_error_refuses_a_music_profile_on_the_image_command() {
+        let err = kind_error(&ace(), ModelKind::Image).expect("refused");
+        assert!(err.contains("ace-step-1.5-turbo"), "{err}");
+    }
+
+    #[test]
+    fn test_kind_error_refuses_an_image_profile_on_the_audio_command() {
+        let err = kind_error(&klein(), ModelKind::Music).expect("refused");
+        assert!(err.contains("flux-2-klein-9b-text-to-image"), "{err}");
+    }
+
+    #[test]
+    fn test_kind_error_permits_matching_kind() {
+        assert!(kind_error(&ace(), ModelKind::Music).is_none());
+        assert!(kind_error(&klein(), ModelKind::Image).is_none());
     }
 
     #[tokio::test]
@@ -813,6 +895,60 @@ mod tests {
             workflow.exists(),
             "the user's graph is copied to this job's own working copy"
         );
+    }
+
+    /// Protects: the image pipeline copies its workflow instead of fetching
+    /// one, and makes no save-node edit.
+    ///
+    /// Two differences from the audio case, and they are the point: a
+    /// workflow-backed profile copies the file (ARCHITECTURE 5b), and the
+    /// returned `Submission::output_format` is `None` because the profile opts
+    /// out of the lossless swap.
+    #[tokio::test]
+    async fn test_image_pipeline_copies_its_workflow_and_makes_no_save_node_edit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("flux2_klein_9b.json");
+        let workflow = dir.path().join("workflow.json");
+        std::fs::write(&source, named_fixture("flux2_klein_9b.json"))
+            .expect("place the image fixture");
+
+        let mut profile = klein();
+        profile.comfy.workflow = Some(source.display().to_string());
+
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            "tags".to_string(),
+            InputValue::Text("synthwave cover".into()),
+        );
+        inputs.insert("negative".to_string(), InputValue::Text("blurry".into()));
+        inputs.insert("seed".to_string(), InputValue::Seed(42));
+        inputs.insert("steps".to_string(), InputValue::Int(20));
+        let spec = GenerationSpec {
+            title: None,
+            profile_id: "flux-2-klein-9b-text-to-image".to_string(),
+            inputs,
+            loras: Vec::new(),
+            lyrics: None,
+        };
+
+        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
+        let mut replies = happy_replies();
+        replies.remove(0); // no fetch_template for imported workflow
+        replies[0] = Reply::Json(json!({
+            "applied": applied(&overrides),
+            "warnings": [],
+            "wrote": workflow.display().to_string()
+        }));
+
+        let (comfy, _calls) = client_and_log(replies).await;
+        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
+            .await
+            .expect("image pipeline runs");
+
+        assert_eq!(submission.prompt_id, "abc-123");
+        assert!(submission.output_format.is_none());
+        assert!(submission.unchecked_slots.is_empty());
+        assert!(submission.lora_nodes.is_empty());
     }
 
     /// Protects: the one shape that validates clean but cannot be edited is

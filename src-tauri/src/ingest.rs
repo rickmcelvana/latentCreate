@@ -1,4 +1,4 @@
-//! Ingest finished ComfyUI outputs as tracks with provenance sidecars.
+//! Ingest finished ComfyUI outputs as tracks or artwork with provenance sidecars.
 //!
 //! Keeps every MCP call out of this module: tests run on real temp files with
 //! no transport.
@@ -6,20 +6,21 @@
 use std::path::Path;
 
 use create_core::generation::{GenerationSpec, ResolvedSlots};
-use create_core::project::{Project, TrackId};
-use create_core::provenance::{ComfyServerInfo, Provenance, Track};
+use create_core::profile::ModelKind;
+use create_core::project::{ArtId, Project, TrackId};
+use create_core::provenance::{Artwork, ComfyServerInfo, Provenance, Track};
 use mcp_bridge::{OutputBatch, OutputFile};
 use thiserror::Error;
 
-/// Everything a finished job needs to become a track, captured when it was
-/// submitted.
+/// Everything a finished job needs to become a track or artwork, captured when it
+/// was submitted.
 ///
 /// Held in memory only. An app restart mid-job loses that job's provenance,
 /// and that is deliberate rather than overlooked: the queue itself is in-memory
 /// and does not survive a restart either.
 #[derive(Debug, Clone)]
-pub struct PendingTrack {
-    /// Project the track is filed under.
+pub struct PendingOutput {
+    /// Project the asset is filed under.
     pub project_slug: String,
     pub profile_id: String,
     pub profile_display_name: String,
@@ -31,9 +32,13 @@ pub struct PendingTrack {
     pub resolved_slots: ResolvedSlots,
     /// The server that ran it, when `server_info` could be read.
     pub comfy: Option<ComfyServerInfo>,
+    /// Which kind of asset this job's outputs become, taken from the profile at
+    /// submit time. The *record* decides, not the file extension: an image job
+    /// that somehow emits a `.flac` must not quietly become a track.
+    pub kind: ModelKind,
 }
 
-/// Ingestion failed before all tracks were saved.
+/// Ingestion failed before all assets were saved.
 #[derive(Debug, Error)]
 pub enum IngestError {
     /// A library call failed.
@@ -47,35 +52,60 @@ pub enum IngestError {
 /// Audio extensions the app files as tracks.
 const AUDIO_EXTS: &[&str] = &["flac", "wav", "mp3", "ogg", "opus", "m4a"];
 
-/// Ingest every audio file in a completed job's output batch.
+/// Image extensions the app files as artwork.
 ///
-/// Non-audio files are skipped without error. Returns the saved tracks in the
-/// order they appeared in the batch.
+/// Wider than the two save nodes `emit` recognises (`SaveImage` -> png,
+/// `SaveImageWebP` -> webp) on purpose. A filter that is too tight drops a real
+/// output **silently**, which is the exact failure this task exists to remove;
+/// one that is too wide files something the user can see and delete.
+const IMAGE_EXTS: &[&str] = &["png", "webp", "jpg", "jpeg"];
+
+/// One asset a finished job produced.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Saved {
+    Track(Track),
+    Art(Artwork),
+}
+
+/// Ingest every file in a completed job's output batch.
+///
+/// Files that do not match the pending record's kind are skipped without error.
+/// Returns the saved assets in the order they appeared in the batch.
 pub fn ingest_outputs(
     root: &Path,
-    pending: &PendingTrack,
+    pending: &PendingOutput,
     batch: &OutputBatch,
     created_at: &str,
     prompt_id: &str,
-) -> Result<Vec<Track>, IngestError> {
-    let mut tracks = Vec::new();
+) -> Result<Vec<Saved>, IngestError> {
+    let mut saved = Vec::new();
     for file in &batch.files {
-        if let Some(track) = ingest_one_file(root, pending, file, created_at, prompt_id)? {
-            tracks.push(track);
+        match pending.kind {
+            ModelKind::Music => {
+                if let Some(track) = ingest_one_file(root, pending, file, created_at, prompt_id)? {
+                    saved.push(Saved::Track(track));
+                }
+            }
+            ModelKind::Image => {
+                if let Some(art) = ingest_one_art_file(root, pending, file, created_at, prompt_id)?
+                {
+                    saved.push(Saved::Art(art));
+                }
+            }
         }
     }
-    Ok(tracks)
+    Ok(saved)
 }
 
 /// Ingest one downloaded output file, returning `None` when it is not audio.
 fn ingest_one_file(
     root: &Path,
-    pending: &PendingTrack,
+    pending: &PendingOutput,
     file: &OutputFile,
     created_at: &str,
     prompt_id: &str,
 ) -> Result<Option<Track>, IngestError> {
-    let ext = match audio_extension(&file.path) {
+    let ext = match filed_extension(&file.path, AUDIO_EXTS) {
         Some(e) => e,
         None => return Ok(None),
     };
@@ -104,7 +134,7 @@ fn write_track_file(
     id: &TrackId,
     ext: &str,
     src: &Path,
-    pending: &PendingTrack,
+    pending: &PendingOutput,
     created_at: &str,
     prompt_id: &str,
 ) -> Result<Track, IngestError> {
@@ -120,13 +150,74 @@ fn write_track_file(
     Ok(track)
 }
 
-/// The lowercased audio extension, or `None` for files this app does not file.
-fn audio_extension(path: &Path) -> Option<String> {
+/// Ingest one downloaded output file, returning `None` when it is not an image.
+fn ingest_one_art_file(
+    root: &Path,
+    pending: &PendingOutput,
+    file: &OutputFile,
+    created_at: &str,
+    prompt_id: &str,
+) -> Result<Option<Artwork>, IngestError> {
+    let ext = match filed_extension(&file.path, IMAGE_EXTS) {
+        Some(e) => e,
+        None => return Ok(None),
+    };
+
+    // Load the project, mint an id, and persist the counter before any file
+    // write. A crash after this point burns an id rather than overwriting an
+    // artwork the user already has.
+    let (mut project, id) = mint_and_save_art_project(root, &pending.project_slug)?;
+    let art = write_art_file(root, &id, &ext, &file.path, pending, created_at, prompt_id)?;
+    project.art.push(id);
+    library::projects::save_project(root, &project)?;
+    Ok(Some(art))
+}
+
+/// Load the project, mint the next artwork id, and persist the counter.
+fn mint_and_save_art_project(root: &Path, slug: &str) -> Result<(Project, ArtId), IngestError> {
+    let mut project = library::projects::load_project(root, slug)?;
+    let id = library::art::mint_art_id(&mut project);
+    library::projects::save_project(root, &project)?;
+    Ok((project, id))
+}
+
+/// Move the downloaded image into place and write its sidecar.
+fn write_art_file(
+    root: &Path,
+    id: &ArtId,
+    ext: &str,
+    src: &Path,
+    pending: &PendingOutput,
+    created_at: &str,
+    prompt_id: &str,
+) -> Result<Artwork, IngestError> {
+    let slug = pending.project_slug.as_str();
+    let art_dir = library::art::art_dir(root, slug)?;
+    std::fs::create_dir_all(&art_dir)?;
+    let dst = library::art::image_path(root, slug, id, ext)?;
+    std::fs::rename(src, &dst)?;
+    let (width, height) = match library::art::dimensions_of(&dst) {
+        Some((w, h)) => (Some(w), Some(h)),
+        None => (None, None),
+    };
+    let file_rel = format!("art/{}.{}", id.0, ext);
+    let art = build_artwork(id, &file_rel, width, height, pending, created_at, prompt_id);
+    library::art::save_art(root, slug, &art)?;
+    Ok(art)
+}
+
+/// The lowercased extension, when it is one of `allowed`; `None` otherwise --
+/// which is how a file this app does not file is skipped.
+///
+/// One function over both lists rather than one per kind: they differed only in
+/// the constant they consulted, and a fix applied to one copy of a filter is a
+/// fix the other kind silently does not get.
+fn filed_extension(path: &Path, allowed: &[&str]) -> Option<String> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())?
         .to_ascii_lowercase();
-    if AUDIO_EXTS.contains(&ext.as_str()) {
+    if allowed.contains(&ext.as_str()) {
         Some(ext)
     } else {
         None
@@ -138,7 +229,7 @@ fn build_track(
     id: &TrackId,
     file: &str,
     duration_s: Option<f64>,
-    pending: &PendingTrack,
+    pending: &PendingOutput,
     created_at: &str,
     prompt_id: &str,
 ) -> Track {
@@ -151,17 +242,44 @@ fn build_track(
         title: pending.spec.title.clone(),
         file: file.to_string(),
         duration_s,
-        provenance: Provenance {
-            profile_id: pending.profile_id.clone(),
-            profile_display_name: pending.profile_display_name.clone(),
-            model_license: pending.model_license.clone(),
-            template: pending.template.clone(),
-            spec: pending.spec.clone(),
-            resolved_slots: pending.resolved_slots.clone(),
-            comfy: pending.comfy.clone(),
-            created_at: created_at.to_string(),
-            prompt_id: Some(prompt_id.to_string()),
-        },
+        provenance: build_provenance(pending, created_at, prompt_id),
+    }
+}
+
+/// Build an `Artwork` from the pending record and the on-disk facts.
+fn build_artwork(
+    id: &ArtId,
+    file: &str,
+    width: Option<u32>,
+    height: Option<u32>,
+    pending: &PendingOutput,
+    created_at: &str,
+    prompt_id: &str,
+) -> Artwork {
+    Artwork {
+        id: id.clone(),
+        // The title the user named at generation, carried on the spec, exactly
+        // as `Track::title` is (T-409). A snapshot, not a link.
+        title: pending.spec.title.clone(),
+        file: file.to_string(),
+        width,
+        height,
+        provenance: build_provenance(pending, created_at, prompt_id),
+    }
+}
+
+/// Build the shared `Provenance` record for any generated asset.
+fn build_provenance(pending: &PendingOutput, created_at: &str, prompt_id: &str) -> Provenance {
+    Provenance {
+        profile_id: pending.profile_id.clone(),
+        profile_display_name: pending.profile_display_name.clone(),
+        model_license: pending.model_license.clone(),
+        template: pending.template.clone(),
+        spec: pending.spec.clone(),
+        resolved_slots: pending.resolved_slots.clone(),
+        comfy: pending.comfy.clone(),
+        created_at: created_at.to_string(),
+        prompt_id: Some(prompt_id.to_string()),
     }
 }
 
@@ -182,7 +300,7 @@ mod tests {
         (root, project.slug)
     }
 
-    fn pending(slug: &str, lyrics: bool, duration_s: f64) -> PendingTrack {
+    fn pending(slug: &str, lyrics: bool, duration_s: f64, kind: ModelKind) -> PendingOutput {
         let mut inputs = BTreeMap::new();
         inputs.insert(
             "tags".to_string(),
@@ -219,7 +337,7 @@ mod tests {
             );
         }
 
-        PendingTrack {
+        PendingOutput {
             project_slug: slug.to_string(),
             profile_id: "ace-step-1.5-turbo".to_string(),
             profile_display_name: "ACE-Step 1.5 XL Turbo".to_string(),
@@ -256,6 +374,7 @@ mod tests {
                 comfy_cli_version: Some("0.1.0".to_string()),
                 url: Some("http://127.0.0.1:8188".to_string()),
             }),
+            kind,
         }
     }
 
@@ -280,12 +399,15 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, false, 120.0);
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        assert_eq!(tracks.len(), 1);
-        let track = &tracks[0];
+        assert_eq!(saved.len(), 1);
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
         assert_eq!(track.id.0, "tr-0001");
         assert_eq!(track.file, "tracks/tr-0001.flac");
 
@@ -311,14 +433,18 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let mut pending = pending(&slug, false, 120.0);
+        let mut pending = pending(&slug, false, 120.0, ModelKind::Music);
         pending.spec.title = Some("Midnight Drive".to_string());
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        assert_eq!(tracks[0].title.as_deref(), Some("Midnight Drive"));
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        assert_eq!(track.title.as_deref(), Some("Midnight Drive"));
         // On the sidecar, not just the returned value.
-        let loaded = library::tracks::load_track(root.path(), &slug, &tracks[0].id).unwrap();
+        let loaded = library::tracks::load_track(root.path(), &slug, &track.id).unwrap();
         assert_eq!(loaded.title.as_deref(), Some("Midnight Drive"));
     }
 
@@ -332,11 +458,15 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, false, 120.0); // spec.title is None
+        let pending = pending(&slug, false, 120.0, ModelKind::Music); // spec.title is None
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        assert_eq!(tracks[0].title, None);
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        assert_eq!(track.title, None);
     }
 
     /// Protects: the sidecar alone carries enough to reproduce the run.
@@ -348,11 +478,15 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, true, 120.0);
+        let pending = pending(&slug, true, 120.0, ModelKind::Music);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        let loaded = library::tracks::load_track(root.path(), &slug, &tracks[0].id).unwrap();
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        let loaded = library::tracks::load_track(root.path(), &slug, &track.id).unwrap();
         let spec = loaded.provenance.spec;
         assert_eq!(spec.loras.len(), 2);
         assert_eq!(spec.loras[0].file, "lora_a.safetensors");
@@ -383,7 +517,7 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, false, 120.0);
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
 
         // Phase 1: mint and persist the counter, then read the project back.
         let (mut project, id) = mint_and_save_project(root.path(), &slug).unwrap();
@@ -422,11 +556,15 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, false, 120.0);
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        let loaded = library::tracks::load_track(root.path(), &slug, &tracks[0].id).unwrap();
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        let loaded = library::tracks::load_track(root.path(), &slug, &track.id).unwrap();
         assert_eq!(loaded.provenance.prompt_id, Some(PROMPT.to_string()));
     }
 
@@ -446,7 +584,7 @@ mod tests {
     fn test_a_failed_write_burns_the_id_rather_than_reusing_it() {
         let (root, slug) = root_with_project();
         let missing = root.path().join("tracks").join("never_downloaded_000.flac");
-        let pending = pending(&slug, false, 120.0);
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
         let batch = batch_with(&missing);
 
         let result = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT);
@@ -474,10 +612,10 @@ mod tests {
         std::fs::create_dir_all(src.parent().unwrap()).unwrap();
         std::fs::write(&src, b"fake png").unwrap();
 
-        let pending = pending(&slug, false, 120.0);
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
-        assert!(tracks.is_empty());
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        assert!(saved.is_empty());
 
         let project = library::projects::load_project(root.path(), &slug).unwrap();
         assert!(project.tracks.is_empty());
@@ -492,12 +630,16 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, false, 120.0);
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        assert_eq!(tracks[0].file, "tracks/tr-0001.wav");
-        let audio = library::tracks::audio_path(root.path(), &slug, &tracks[0].id, "wav").unwrap();
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        assert_eq!(track.file, "tracks/tr-0001.wav");
+        let audio = library::tracks::audio_path(root.path(), &slug, &track.id, "wav").unwrap();
         assert!(audio.exists());
     }
 
@@ -510,10 +652,264 @@ mod tests {
         let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
         std::fs::write(&src, head).unwrap();
 
-        let pending = pending(&slug, false, 90.0);
+        let pending = pending(&slug, false, 90.0, ModelKind::Music);
         let batch = batch_with(&src);
-        let tracks = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
 
-        assert_eq!(tracks[0].duration_s, Some(120.0));
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        assert_eq!(track.duration_s, Some(120.0));
+    }
+
+    /// Protects: an image output is filed as artwork rather than skipped.
+    ///
+    /// This is the regression the whole task exists for: before it, the same
+    /// call returned an empty list and wrote nothing.
+    #[test]
+    fn test_an_image_output_is_filed_as_artwork_rather_than_skipped() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("art").join("prompt_000.png");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/images/klein-cover.png.head");
+        std::fs::write(&src, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = batch_with(&src);
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        assert_eq!(saved.len(), 1);
+        let art = match &saved[0] {
+            Saved::Art(a) => a,
+            _ => panic!("expected artwork"),
+        };
+        assert_eq!(art.id.0, "ar-0001");
+        assert_eq!(art.file, "art/ar-0001.png");
+
+        let image = library::art::image_path(root.path(), &slug, &art.id, "png").unwrap();
+        assert!(image.exists());
+        let loaded = library::art::load_art(root.path(), &slug, &art.id).unwrap();
+        assert_eq!(loaded.id, art.id);
+        assert_eq!(loaded.file, art.file);
+
+        let project = library::projects::load_project(root.path(), &slug).unwrap();
+        assert_eq!(project.art, vec![art.id.clone()]);
+    }
+
+    /// Protects: the pending record's kind decides what is filed, not the file
+    /// extension. A dispatch that read the extension first would pass one of
+    /// these two directions.
+    #[test]
+    fn test_the_kind_decides_not_the_extension() {
+        let (root, slug) = root_with_project();
+        let png = root.path().join("tracks").join("prompt_000.png");
+        let flac = root.path().join("art").join("prompt_000.flac");
+        std::fs::create_dir_all(png.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(flac.parent().unwrap()).unwrap();
+        std::fs::write(&png, b"fake png").unwrap();
+        std::fs::write(&flac, b"fake flac").unwrap();
+
+        let image_pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let image_batch = batch_with(&flac);
+        let image_saved =
+            ingest_outputs(root.path(), &image_pending, &image_batch, NOW, PROMPT).unwrap();
+        assert!(image_saved.is_empty(), "image pending must not file a flac");
+
+        let music_pending = pending(&slug, false, 120.0, ModelKind::Music);
+        let music_batch = batch_with(&png);
+        let music_saved =
+            ingest_outputs(root.path(), &music_pending, &music_batch, NOW, PROMPT).unwrap();
+        assert!(music_saved.is_empty(), "music pending must not file a png");
+    }
+
+    /// Protects: the artwork's provenance is built by the same constructor as
+    /// the track's, so a field added to one cannot be missing from the other.
+    #[test]
+    fn test_artwork_provenance_matches_the_pending_record() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("art").join("prompt_000.png");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/images/klein-cover.png.head");
+        std::fs::write(&src, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = batch_with(&src);
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        let art = match &saved[0] {
+            Saved::Art(a) => a,
+            _ => panic!("expected artwork"),
+        };
+        assert_eq!(art.provenance.profile_id, pending.profile_id);
+        assert_eq!(
+            art.provenance.profile_display_name,
+            pending.profile_display_name
+        );
+        assert_eq!(art.provenance.model_license, pending.model_license);
+        assert_eq!(art.provenance.template, pending.template);
+        assert_eq!(art.provenance.spec, pending.spec);
+        assert_eq!(art.provenance.resolved_slots, pending.resolved_slots);
+        assert_eq!(art.provenance.comfy, pending.comfy);
+        assert_eq!(art.provenance.prompt_id, Some(PROMPT.to_string()));
+    }
+
+    /// Protects: the pixel size is read from the file that was written.
+    #[test]
+    fn test_artwork_size_is_read_from_the_file() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("art").join("prompt_000.png");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/images/klein-cover.png.head");
+        std::fs::write(&src, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = batch_with(&src);
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        let art = match &saved[0] {
+            Saved::Art(a) => a,
+            _ => panic!("expected artwork"),
+        };
+        assert_eq!(art.width, Some(768));
+        assert_eq!(art.height, Some(768));
+
+        let loaded = library::art::load_art(root.path(), &slug, &art.id).unwrap();
+        assert_eq!(loaded.width, Some(768));
+        assert_eq!(loaded.height, Some(768));
+    }
+
+    /// Protects: a file with no readable header still becomes an artwork, with
+    /// `None` for both dimensions.
+    #[test]
+    fn test_artwork_with_no_readable_header_records_none_for_size() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("art").join("prompt_000.png");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        std::fs::write(&src, b"not a png").unwrap();
+
+        let pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = batch_with(&src);
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        let art = match &saved[0] {
+            Saved::Art(a) => a,
+            _ => panic!("expected artwork"),
+        };
+        assert_eq!(art.width, None);
+        assert_eq!(art.height, None);
+    }
+
+    /// Protects: a failed write handing the same artwork id to the next one.
+    ///
+    /// The art mirror of the track test above, and written the same way for the
+    /// same reason: through `ingest_outputs`, not by calling the helpers in the
+    /// order the test chooses. The first version of this test minted and wrote
+    /// by hand and so asserted only that `mint_and_save_art_project` saves --
+    /// moving the save *after* the file write in the production path left it
+    /// green.
+    ///
+    /// The rename fails because the download is not there. If the counter were
+    /// persisted last, `next_art_seq` would still be 1 here and the next
+    /// generation would mint `ar-0001` again, overwriting the image **and** the
+    /// sidecar of artwork the user already had.
+    #[test]
+    fn test_a_failed_art_write_burns_the_id_rather_than_reusing_it() {
+        let (root, slug) = root_with_project();
+        let missing = root.path().join("art").join("never_downloaded_000.png");
+        let pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = batch_with(&missing);
+
+        let result = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT);
+        assert!(
+            result.is_err(),
+            "a missing download must not report success"
+        );
+
+        let on_disk = library::projects::load_project(root.path(), &slug).unwrap();
+        assert_eq!(
+            on_disk.next_art_seq, 2,
+            "the id must be burned, not offered to the next artwork"
+        );
+        assert!(
+            on_disk.art.is_empty(),
+            "artwork that was never written must not be registered"
+        );
+    }
+
+    /// Protects: two images in one batch become two artworks, in batch order.
+    #[test]
+    fn test_two_images_in_one_batch_become_two_artworks() {
+        let (root, slug) = root_with_project();
+        let first = root.path().join("art").join("prompt_000.png");
+        let second = root.path().join("art").join("prompt_001.png");
+        std::fs::create_dir_all(first.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/images/klein-cover.png.head");
+        std::fs::write(&first, head).unwrap();
+        std::fs::write(&second, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = OutputBatch {
+            prompt_id: Some("prompt-1".to_string()),
+            out_dir: Some(first.parent().unwrap().to_path_buf()),
+            files: vec![
+                OutputFile {
+                    url: "http://example.com/output".to_string(),
+                    path: first.to_path_buf(),
+                    size: 0,
+                },
+                OutputFile {
+                    url: "http://example.com/output".to_string(),
+                    path: second.to_path_buf(),
+                    size: 0,
+                },
+            ],
+        };
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        assert_eq!(saved.len(), 2);
+        let ids: Vec<&str> = saved
+            .iter()
+            .map(|s| match s {
+                Saved::Art(a) => a.id.0.as_str(),
+                _ => panic!("expected artwork"),
+            })
+            .collect();
+        assert_eq!(ids, vec!["ar-0001", "ar-0002"]);
+    }
+
+    /// Protects: the artwork's title travels from the spec, and `None` when the
+    /// spec has none.
+    #[test]
+    fn test_artwork_title_travels_from_the_spec() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("art").join("prompt_000.png");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/images/klein-cover.png.head");
+        std::fs::write(&src, head).unwrap();
+
+        let mut titled = pending(&slug, false, 120.0, ModelKind::Image);
+        titled.spec.title = Some("Neon City".to_string());
+        let batch = batch_with(&src);
+        let saved = ingest_outputs(root.path(), &titled, &batch, NOW, PROMPT).unwrap();
+        let art = match &saved[0] {
+            Saved::Art(a) => a,
+            _ => panic!("expected artwork"),
+        };
+        assert_eq!(art.title.as_deref(), Some("Neon City"));
+
+        // Ingest **moves** the output into place, so the second run needs its
+        // own file: reusing `src` was reading a path that is no longer there.
+        let second = root.path().join("art").join("prompt_001.png");
+        std::fs::write(&second, head).unwrap();
+
+        let untitled = pending(&slug, false, 120.0, ModelKind::Image);
+        let batch = batch_with(&second);
+        let saved = ingest_outputs(root.path(), &untitled, &batch, NOW, PROMPT).unwrap();
+        let art = match &saved[0] {
+            Saved::Art(a) => a,
+            _ => panic!("expected artwork"),
+        };
+        assert_eq!(art.title, None);
     }
 }

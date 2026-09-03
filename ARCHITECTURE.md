@@ -301,6 +301,16 @@ comfy-mcp itself, so such a gate would leave the button dead on every cold start
    - A known, accepted gap: the pump can emit before `register` runs, so an early status may be missed. Terminal events always arrive after, so nothing hangs. Closing it means a new `job://queued` event from the backend, for a cosmetic gain.
 6. On completion: `fetch_outputs` → audio copied into the library (§8) with a **provenance sidecar** that includes the resolved slot values actually submitted, not just the UI values.
 
+7. **Cover art rides this same pipeline** (T-506b). `generate_image` and `generate_audio` are two
+   commands over one `build_and_submit`, which needs no change for an image profile: the lossless
+   swap is a clean no-op at `prefer_lossless: false`, the LoRA splice is skipped for a profile with
+   no `loras` block, and the slot writes land (verified live -- [docs/MCP-SURFACE.md §35](docs/MCP-SURFACE.md)).
+   Two things differ, and both are decided by the **pending record's `ModelKind`, never by a file
+   extension**: outputs download into `tracks/` or `art/`, and ingest files a `Track` or an
+   `Artwork`, emitting `track://saved` or `art://saved`. A profile queued by the wrong command is
+   refused **before anything connects** -- otherwise it would run to completion, report Done, and
+   file nothing, because the other kind's ingest skips what it does not recognise.
+
 ## 8. Library, provenance, storage
 
 - App data dir, Tauri `app_config_dir()` under identifier **`com.latentbeats.create`**
