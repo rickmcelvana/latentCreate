@@ -63,8 +63,43 @@ set_workflow_slot(out_path, [{"address": "37/6.unet_name",
 validate_workflow(out_path)   # expect valid: true
 ```
 
+## `flux2_klein_9b.json`
+
+The `image_flux2_text_to_image_9b` gallery template, **unmodified**, fetched 2026-09-03 against
+ComfyUI v0.34.3 / comfy-cli 1.16.0. `local_check` reported `runnable: true` with zero errors.
+Its slot capture is `testdata/mcp/list_workflow_slots.flux2-klein-9b.json` (20 slots).
+
+### Why this one is worth freezing
+It is the **first image graph** in `testdata/`, and the only one carrying the shape that broke
+role suggestion:
+
+- **Two `CLIPTextEncode` nodes whose inputs are both named `text`, both `STRING`.**
+  `75/74.text` feeds `CFGGuider.positive` (link 140) and `75/67.text` feeds `CFGGuider.negative`
+  (link 141). Nothing in the slot list distinguishes them -- same input name, same widget type,
+  same node class -- so a name-matching suggester offers **both** as `Tags` and, because both
+  rank `Strong`, the import screen **pre-ticks both** and the emitted profile writes the user's
+  prompt into the negative conditioning as well. This is the file that proves the polarity rule
+  (T-505d-c) and the regression that would undo it.
+- **`75/74.text` is boundary-fed, not inert.** Its link (162) originates at the subgraph's
+  `inputNode` (`-10`), and the host node `75` holds the prompt in `widgets_values[0]` with
+  `inputs[0].link = null` -- the MiniMax `37/38.seed` pattern. So it is a real write target and
+  must stay offered; the fix must reclassify it, never drop it.
+- **`SaveImage` sits at the top level** (node `9`) while every control lives one subgraph deep,
+  the mirror of MiniMax's layout. `emit::detect_output_kind` (T-505d-b) reads it there.
+- It has **no negative-named slot at all**, so `Role::Negative`'s name table finds nothing --
+  the negative prompt is reachable only through graph polarity.
+
+### Regenerating it
+```
+fetch_template("image_flux2_text_to_image_9b", out_path)   # expect runnable: true
+list_workflow_slots(out_path)                              # 20 slots, the mcp/ fixture
+```
+Requires `flux-2-klein-base-9b-fp8.safetensors`, `qwen_3_8b_fp8mixed.safetensors` and
+`full_encoder_small_decoder.safetensors` installed for the `runnable` check; parsing needs none
+of them.
+
 ### Staleness
-Both files here are **snapshots**. The gallery updates and comfy-cli caches templates with a 24-hour
+All three files here are **snapshots**. The gallery updates and comfy-cli caches templates with a 24-hour
 TTL, so this file will drift from upstream. That is fine — its job is to be a stable input
 for parser and graph-edit tests, not to mirror the current gallery. When a test needs
 current gallery content, it is a live producer-run check, not a CI test.

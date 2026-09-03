@@ -169,16 +169,30 @@ Headlines:
       (create-core, no UI) — proven by tests: the new `test_an_image_graph_emits_an_image_profile`,
       the renamed no-save-node-of-either-kind test, and a `kind: Music` guard added to the existing
       no-both-sources test. create-core 10 emit tests (was 8); gate green.
-    - **T-505d-c — the "Bring in" button + adopt mapping UI** (frontend, has click-through). NEXT.
-      A ready bare row gets a "Bring in" action → an `adopt(name)` import-store action driving
+    - **T-505d-c — conditioning polarity in role suggestion (create-core). 📋 BRIEFED 2026-09-03**
+      ([t-505d-c-brief.md](t-505d-c-brief.md)). **Found by verifying the subgraph risk, which turned
+      out fine and revealed a worse one.** Subgraph slots do reach `suggest_roles` (addressed
+      `A/B.name`), so Klein's controls are all found — but its **two `CLIPTextEncode` nodes both
+      expose an input named `text`**: `75/74.text` drives `CFGGuider.positive`, `75/67.text` drives
+      `.negative`. Name+type matching cannot tell them apart, so both rank `Strong` for `Tags` and
+      `initialSelection` **pre-ticks both** — the adopted profile would silently write the prompt into
+      the negative conditioning too, and `Negative` (name table `negative`/`negative_prompt`) would
+      match nothing at all. This lane adds `audit::output_targets` (the mirror of `link_origin`:
+      forward one hop to the input names a node drives) and lets that outrank the name table for the
+      two prompt roles. **Inert for audio** and regression-tested so: both shipped models drive their
+      negative from `ConditioningZeroOut`, which exposes no `STRING` slot. Fixtures
+      `flux2_klein_9b.json` + its slot capture are committed ahead of the lane. No click-through.
+    - **T-505d-d — the "Bring in" button + adopt mapping UI** (frontend, has click-through). A ready
+      bare row gets a "Bring in" action → an `adopt(name)` import-store action driving
       `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/
-      `saveNotes`/`mappingsOf`) → `save_imported_profile`. Both backend prerequisites are now landed
-      (a: the fetch→import seam; b: emit accepts and correctly kinds an image graph), and Flux.2
-      Klein 9B (`image_flux2_text_to_image_9b`) is installed and runnable, so there is a ready bare
-      image row to adopt end-to-end. Its controls live in a **subgraph** (MiniMax-shaped), so this
-      lane's real risk is whether `suggest_roles` finds the prompt/seed/steps there. An adopted profile
-      is `workflow`-backed (`template: None`), so it does **not** join the T-505c curated index — the
-      row stays "bare" after adopt; whether to surface "adopted" on it is decided here.
+      `saveNotes`/`mappingsOf`) → `save_imported_profile`. Backend prerequisites: a (fetch→import
+      seam), b (emit kinds an image graph), c (the prompt maps to the right encoder). Flux.2 Klein 9B
+      (`image_flux2_text_to_image_9b`) is installed and runnable, so there is a ready bare image row
+      to adopt end-to-end; after c the expected mapping screen is tags→`75/74.text`,
+      negative→`75/67.text`, seed→`75/73.noise_seed`, steps→`75/62.steps`, cfg→`75/63.cfg`, with
+      lyrics and duration correctly empty. An adopted profile is `workflow`-backed (`template: None`),
+      so it does **not** join the T-505c curated index — the row stays "bare" after adopt; whether to
+      surface "adopted" on it is decided here.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
   pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.

@@ -1,0 +1,167 @@
+{
+  "workflow": "testdata/workflows/flux2_klein_9b.json",
+  "id": "flux2_klein_9b",
+  "count": 20,
+  "slots": [
+    {
+      "address": "9.filename_prefix",
+      "name": "filename_prefix",
+      "type": "STRING",
+      "current_value": "Flux2-Klein",
+      "instance_id": "9",
+      "node_type": "SaveImage"
+    },
+    {
+      "address": "75/61.sampler_name",
+      "name": "sampler_name",
+      "type": "COMBO",
+      "current_value": "euler",
+      "instance_id": "75/61",
+      "node_type": "KSamplerSelect"
+    },
+    {
+      "address": "75/62.steps",
+      "name": "steps",
+      "type": "INT",
+      "current_value": 20,
+      "instance_id": "75/62",
+      "node_type": "Flux2Scheduler"
+    },
+    {
+      "address": "75/62.width",
+      "name": "width",
+      "type": "INT",
+      "current_value": 1024,
+      "instance_id": "75/62",
+      "node_type": "Flux2Scheduler"
+    },
+    {
+      "address": "75/62.height",
+      "name": "height",
+      "type": "INT",
+      "current_value": 1024,
+      "instance_id": "75/62",
+      "node_type": "Flux2Scheduler"
+    },
+    {
+      "address": "75/63.cfg",
+      "name": "cfg",
+      "type": "FLOAT",
+      "current_value": 5,
+      "instance_id": "75/63",
+      "node_type": "CFGGuider"
+    },
+    {
+      "address": "75/66.width",
+      "name": "width",
+      "type": "INT",
+      "current_value": 1024,
+      "instance_id": "75/66",
+      "node_type": "EmptyFlux2LatentImage"
+    },
+    {
+      "address": "75/66.height",
+      "name": "height",
+      "type": "INT",
+      "current_value": 1024,
+      "instance_id": "75/66",
+      "node_type": "EmptyFlux2LatentImage"
+    },
+    {
+      "address": "75/66.batch_size",
+      "name": "batch_size",
+      "type": "INT",
+      "current_value": 1,
+      "instance_id": "75/66",
+      "node_type": "EmptyFlux2LatentImage"
+    },
+    {
+      "address": "75/67.text",
+      "name": "text",
+      "type": "STRING",
+      "current_value": "",
+      "instance_id": "75/67",
+      "node_type": "CLIPTextEncode"
+    },
+    {
+      "address": "75/68.value",
+      "name": "value",
+      "type": "INT",
+      "current_value": 1024,
+      "instance_id": "75/68",
+      "node_type": "PrimitiveInt"
+    },
+    {
+      "address": "75/69.value",
+      "name": "value",
+      "type": "INT",
+      "current_value": 1024,
+      "instance_id": "75/69",
+      "node_type": "PrimitiveInt"
+    },
+    {
+      "address": "75/73.noise_seed",
+      "name": "noise_seed",
+      "type": "INT",
+      "current_value": 145965955694731,
+      "instance_id": "75/73",
+      "node_type": "RandomNoise"
+    },
+    {
+      "address": "75/70.unet_name",
+      "name": "unet_name",
+      "type": "COMBO",
+      "current_value": "flux-2-klein-base-9b-fp8.safetensors",
+      "instance_id": "75/70",
+      "node_type": "UNETLoader"
+    },
+    {
+      "address": "75/70.weight_dtype",
+      "name": "weight_dtype",
+      "type": "COMBO",
+      "current_value": "default",
+      "instance_id": "75/70",
+      "node_type": "UNETLoader"
+    },
+    {
+      "address": "75/71.clip_name",
+      "name": "clip_name",
+      "type": "COMBO",
+      "current_value": "qwen_3_8b_fp8mixed.safetensors",
+      "instance_id": "75/71",
+      "node_type": "CLIPLoader"
+    },
+    {
+      "address": "75/71.type",
+      "name": "type",
+      "type": "COMBO",
+      "current_value": "flux2",
+      "instance_id": "75/71",
+      "node_type": "CLIPLoader"
+    },
+    {
+      "address": "75/71.device",
+      "name": "device",
+      "type": "COMBO",
+      "current_value": "default",
+      "instance_id": "75/71",
+      "node_type": "CLIPLoader"
+    },
+    {
+      "address": "75/72.vae_name",
+      "name": "vae_name",
+      "type": "COMBO",
+      "current_value": "full_encoder_small_decoder.safetensors",
+      "instance_id": "75/72",
+      "node_type": "VAELoader"
+    },
+    {
+      "address": "75/74.text",
+      "name": "text",
+      "type": "STRING",
+      "current_value": "A vintage motorcycle parked in front of a retro diner at sunset, warm orange and pink sky, neon signs glowing, 80s vintage photo style, film grain, warm color cast",
+      "instance_id": "75/74",
+      "node_type": "CLIPTextEncode"
+    }
+  ]
+}

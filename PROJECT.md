@@ -5951,8 +5951,34 @@ no-both-sources test. `graph.rs`, `import.rs`, the bridge, and the frontend are 
 required -- the audio lossless-swap still never sees an image profile. Review found no defects; nothing
 to fix. create-core emit tests 8→10; full gate (`gate:rust` + `gate:app`) green, tree otherwise clean.
 
-Both T-505d-c prerequisites are now landed (the fetch→import seam, and emit accepting/kinding an image
-graph correctly). Next: **T-505d-c** -- the "Bring in" button + adopt mapping UI, click-through-ready
-against the installed Klein 9B row. Its two open questions, carried from scoping: whether
-`suggest_roles` finds Klein's prompt/seed/steps inside its subgraph, and whether/how an adopted row
-(workflow-backed, not in the T-505c curated index) should read as "adopted" in the catalog.
+Next: the adopt UI, click-through-ready against the installed Klein 9B row -- but first its open
+subgraph question had to be answered, which is the entry below.
+
+### 2026-09-03 (later still) -- the subgraph risk cleared, a silent mis-mapping found; briefed T-505d-c
+
+Verified the flagged T-505d-c risk live rather than briefing around it. **Subgraph slots do reach
+`suggest_roles`** -- `list_workflow_slots` on Klein 9B returns 20 slots, its controls addressed
+`75/NN.name` -- so that risk is closed. Checking *what* they map to found a worse defect, and the
+reason to look was that image graphs have a shape no audio graph has:
+
+**Klein exposes two `CLIPTextEncode` nodes whose inputs are both named `text`, both `STRING`.**
+`75/74.text` feeds `CFGGuider.positive` (link 140), `75/67.text` feeds `.negative` (link 141).
+Name-and-type matching cannot separate them, so **both** match `Role::Tags`'s name table, **both**
+rank `Strong`, and `initialSelection` pre-ticks every `Strong` candidate -- the adopted profile would
+write the user's prompt into the negative conditioning as well, silently, with nothing on screen
+saying so. Meanwhile `Role::Negative` (name table `negative`/`negative_prompt`) matches **nothing**,
+so the negative prompt is unmappable. Also confirmed `75/74.text` is boundary-fed (link origin `-10`,
+the host's `widgets_values[0]`), i.e. `LinkSource::Boundary` and **not inert** -- a real write target
+that must be reclassified, never dropped. This is the standard SD/SDXL/Flux shape, not a Klein quirk.
+
+Briefed **T-505d-c** ([t-505d-c-brief.md](tasks/t-505d-c-brief.md)): add `audit::output_targets` (the
+mirror of `link_origin` -- forward one hop to the input names a node drives) and let conditioning
+polarity outrank the name table for the two prompt roles. Deliberately **one hop and exact names**:
+a deeper walk would follow ACE-Step's encoder through `ConditioningZeroOut` and call it negative too.
+Checked both audio fixtures -- ACE-Step and MiniMax each drive their negative side from
+`ConditioningZeroOut`, which exposes **no `STRING` slot** -- so the rule is provably inert for audio,
+and the brief makes those two regressions load-bearing tests. Froze the fixtures myself ahead of the
+lane (captured live data is architect work, not executor work): `testdata/workflows/flux2_klein_9b.json`
++ `testdata/mcp/list_workflow_slots.flux2-klein-9b.json`, with a README section recording provenance
+and why the file is worth keeping. Adopt lanes renumbered again: a (seam, landed), b (emit, landed),
+**c (polarity, briefed)**, d (adopt UI, has the click-through). Docs/fixtures only; gate unaffected.
