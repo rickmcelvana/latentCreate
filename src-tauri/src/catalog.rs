@@ -9,14 +9,17 @@
 //! one-click install set and adopt-to-profile are T-505; nothing here installs.
 //!
 //! The frontend derives the Ready/Not-ready/Unknown verdict from the returned
-//! `LocalCheck` (T-505), the same way `state/queue.ts` derives its rows -- so
+//! `LocalCheck` (T-505), the same way `state/library.ts` derives its rows -- so
 //! there is deliberately no second verdict enum in Rust.
+
+use std::path::Path;
 
 use mcp_bridge::{LocalCheck, TemplateInfo, TemplateSearch};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::comfy::{ensure_connected, EnsureError};
+use crate::import::{import_into, ImportReport};
 use crate::jobs::ComfyState;
 use crate::ConfigDir;
 
@@ -109,6 +112,54 @@ pub async fn catalog_readiness(
         .map_err(ensure_detail)?;
     let detail = comfy.get_template(&name).await.map_err(|e| e.to_string())?;
     Ok(detail.local_check.unwrap_or(LocalCheck::Unknown))
+}
+
+/// Adopt a gallery row into an app profile: fetch its workflow and run it
+/// through the same import path a user-picked file takes (T-313). Returns the
+/// `ImportReport` the mapping screen works from; T-505d-b renders that and calls
+/// `save_imported_profile` to finish. Nothing is written to the profile set here.
+///
+/// The row must be one this install can run -- an un-installed template is
+/// refused by `import_into`'s validation, naming the missing file (MCP-SURFACE
+/// 33). The UI only offers this on a `ready` row; this is the backstop.
+#[tauri::command]
+pub async fn catalog_adopt_begin(
+    state: State<'_, ComfyState>,
+    config_dir: State<'_, ConfigDir>,
+    bin: Option<String>,
+    name: String,
+) -> Result<ImportReport, String> {
+    let comfy = ensure_connected(&state, &config_dir, bin)
+        .await
+        .map_err(ensure_detail)?;
+
+    // Fetch to a temp file named after the template, so the workflow_id and the
+    // default profile name `import_into` derives read as the model, not a uuid.
+    // import_into copies this into `workflows/`, so the temp is scratch.
+    let temp = std::env::temp_dir().join(format!("latentcreate-adopt-{name}.json"));
+    comfy
+        .fetch_template(&name, &temp)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    adopt_from_fetched(&comfy, &config_dir.0, &temp).await
+}
+
+/// Run a fetched workflow file through `import_into`, then remove it whatever
+/// happened. Split from the command so a test can drive it with a real file on
+/// disk and a mock transport -- `fetch_template` itself writes via comfy-cli and
+/// cannot be mocked into producing a file.
+async fn adopt_from_fetched(
+    comfy: &mcp_bridge::LocalComfy,
+    root: &Path,
+    fetched: &Path,
+) -> Result<ImportReport, String> {
+    let result = import_into(comfy, root, fetched).await;
+    // import_into copied what it needed into `workflows/`; the fetch temp is
+    // scratch either way. A leftover would rot silently, so remove it on the
+    // error path too.
+    let _ = std::fs::remove_file(fetched);
+    result
 }
 
 /// Flatten an `ensure_connected` failure to a message. A log failure and a
@@ -206,5 +257,112 @@ mod tests {
         // A decided tri-state either way: with ComfyUI up it is Checked, with it
         // down it is Unknown. The point is it never panics and never guesses.
         let _ = check.runnable();
+    }
+
+    /// The adopt seam against a real comfy-mcp: fetch a template and drive the
+    /// whole import path. Asserts only the shape of the report, not which models
+    /// are installed. Excluded from CI; run with `cargo test -p app -- --ignored`
+    /// at the T-505 milestone.
+    #[tokio::test]
+    #[ignore = "needs comfy-mcp and a running ComfyUI"]
+    async fn test_adopt_against_a_live_comfyui() {
+        let log =
+            mcp_bridge::SessionLog::open(std::env::temp_dir().join("latentcreate-catalog.log"))
+                .expect("session log opens");
+        let comfy = mcp_bridge::LocalComfy::connect("comfy-mcp", log)
+            .await
+            .expect("comfy-mcp connects");
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fetched = tmp.path().join("audio_ace_step_1_5_split.json");
+        comfy
+            .fetch_template("audio_ace_step_1_5_split", &fetched)
+            .await
+            .expect("fetch a real template");
+
+        let report = adopt_from_fetched(&comfy, tmp.path(), &fetched)
+            .await
+            .expect("adopt produces a report");
+        assert!(!report.workflow_id.is_empty());
+        assert!(!report.slots.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod adopt_tests {
+    use mcp_bridge::mock::Reply;
+    use mcp_bridge::test_helpers::client_and_log;
+    use serde_json::json;
+
+    use super::adopt_from_fetched;
+
+    // The frontend fixture import.rs uses; a fetched template is this shape.
+    fn frontend_fixture() -> String {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../testdata/workflows/ace_step_1_5_xl_turbo.json");
+        std::fs::read_to_string(&path).expect("fixture reads")
+    }
+
+    /// A clean inspect: validate, then slots (import.rs's `ok_replies`).
+    fn ok_replies() -> Vec<Reply> {
+        vec![
+            Reply::Json(json!({
+                "valid": true, "errors": [], "warnings": [],
+                "converted_from_ui": true, "converted_node_count": 11
+            })),
+            Reply::Json(json!({
+                "workflow": "staged", "count": 1,
+                "slots": [{
+                    "address": "94.tags", "name": "tags", "type": "STRING",
+                    "current_value": "synthwave", "instance_id": "94",
+                    "node_type": "TextEncodeAceStepAudio1.5"
+                }]
+            })),
+        ]
+    }
+
+    /// Protects: a fetched workflow is imported, and the fetch temp is removed.
+    /// The temp is `fetch_template`'s scratch output; a leftover would rot and
+    /// collide with the next adopt of the same template.
+    #[tokio::test]
+    async fn test_adopt_imports_the_fetched_file_and_cleans_it_up() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fetched = tmp.path().join("audio_ace_step_1_5_split.json");
+        std::fs::write(&fetched, frontend_fixture()).expect("write the fetched file");
+
+        let (comfy, _calls) = client_and_log(ok_replies()).await;
+        let report = adopt_from_fetched(&comfy, tmp.path(), &fetched)
+            .await
+            .expect("a fetched frontend workflow imports");
+
+        assert_eq!(report.workflow_id, "audio-ace-step-1-5-split");
+        assert!(!fetched.exists(), "the fetch temp must be removed");
+        assert!(!report.slots.is_empty());
+    }
+
+    /// Protects: a refused import still removes the fetch temp. An un-installed
+    /// template fails validation here (unknown_enum_value); the scratch file must
+    /// not survive the failure.
+    #[tokio::test]
+    async fn test_a_refused_adopt_still_cleans_up_the_temp() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fetched = tmp.path().join("audio_ace_step_1_5_split.json");
+        std::fs::write(&fetched, frontend_fixture()).expect("write the fetched file");
+
+        let replies = vec![Reply::Json(json!({
+            "valid": false,
+            "errors": [{ "node_id": "104", "message": "not in 3 known options for unet_name" }],
+            "warnings": []
+        }))];
+        let (comfy, _calls) = client_and_log(replies).await;
+        let err = adopt_from_fetched(&comfy, tmp.path(), &fetched)
+            .await
+            .expect_err("an un-runnable template is refused at validation");
+
+        assert!(err.contains("node 104"), "{err}");
+        assert!(
+            !fetched.exists(),
+            "the fetch temp must be removed on failure too"
+        );
     }
 }

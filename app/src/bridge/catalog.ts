@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import type { ImportReport } from './import'
+
 /** Which gallery kind to browse. Mirrors Rust `CatalogKind` (snake_case). */
 export type CatalogKind = 'audio' | 'image'
 
@@ -52,4 +54,16 @@ export async function catalogBrowse(
 /** Check one gallery row's readiness. `unknown` when ComfyUI could not be compared. */
 export async function catalogReadiness(name: string, bin?: string): Promise<LocalCheck> {
   return await invoke<LocalCheck>('catalog_readiness', { name, bin })
+}
+
+/**
+ * Adopt a gallery row: fetch its workflow and run it through the T-313 import
+ * path, returning the report the mapping screen works from. Nothing is written
+ * to the profile set yet -- `saveImportedProfile` (bridge/import) finishes it.
+ *
+ * The row must be runnable here; an un-installed template is refused by import
+ * validation with the missing filename.
+ */
+export async function catalogAdoptBegin(name: string, bin?: string): Promise<ImportReport> {
+  return await invoke<ImportReport>('catalog_adopt_begin', { name, bin })
 }

@@ -71,6 +71,7 @@ pub fn run() {
             models::models_status,
             catalog::catalog_browse,
             catalog::catalog_readiness,
+            catalog::catalog_adopt_begin,
             generate::generate_audio,
             llm::llm_probe,
             llm::llm_test,
