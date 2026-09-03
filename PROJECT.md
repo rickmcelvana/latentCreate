@@ -5871,3 +5871,30 @@ eighth file, necessary fallout, one `template: null` line. **src-tauri 118->119,
 `npm run gate` green, tree clean. The curated readiness-from-profile rule (the MiniMax lesson) and the
 shared-install reuse are the click-through's watch-items. Next: producer click-through, then **T-505d**
 (adopt an installed bare gallery row into a profile).
+
+### 2026-09-02 (later still) -- T-505c click-through passed (observable parts); T-505d-a briefed
+
+**T-505c click-through: passed for everything observable, one instruction retracted.** Both curated
+rows (ACE turbo + MiniMax) read **Installed** and matched the Models step, and -- the lane's key
+correctness proof -- **MiniMax read Installed, not the `local_check` `runnable:false` trap**. The
+Install button could not be *seen* fire, and that was **my error, not the code's**: my click-through
+step said "click Install on the ACE-Step row", but ACE turbo is fully installed on this machine (all
+four files verified present against the live inventory: `acestep_v1.5_xl_turbo_bf16`, `qwen_0.6b_ace15`,
+`qwen_4b_ace15`, `ace_1.5_vae`), so no curated row is `missing` and the button correctly hides -- as
+it does on the Models step too. The install path is the same verbatim gate as the (proven) Models-step
+button; it will be seen live at T-506, whose first image profile won't be pre-installed. No code change.
+
+**T-505d-a briefed** ([t-505d-a-brief.md](tasks/t-505d-a-brief.md)) -- the adopt backend seam, split
+out first per the T-504→T-505 cadence. Adopt reuses the **whole** T-313 import path: the only new
+backend is `catalog_adopt_begin(name)`, which fetches a gallery template to a temp file and hands it to
+`import_into` unchanged. Two facts verified live 2026-09-03, not recalled: **(1)** `fetch_template`
+writes **frontend format** (`nodes[]`+`links`), so `import_into`'s format gate accepts it -- fetched
+`audio_ace_step_1_5_split` and inspected the file; **(2)** an un-installed row is refused at
+`validate_workflow` naming the missing file (same live fetch reported `runnable:false` on
+`acestep_v1.5_turbo.safetensors`, which this install lacks), so adopt never emits a broken profile --
+the UI's ready-only gate is a convenience, not the safety. Also confirmed the machine has **no ready
+bare row** to adopt (the bare ACE variants want checkpoints it doesn't have), so **T-505d-b's
+click-through waits on an installed-but-unshipped model** -- which T-506 needs regardless. A factored
+`adopt_from_fetched` helper carries temp-cleanup so it's testable, since `fetch_template` writes via
+comfy-cli and can't be mocked into producing a file. Three files, no click-through (no UI). Docs/brief
+only; gate unaffected.

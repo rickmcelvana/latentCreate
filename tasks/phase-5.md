@@ -133,9 +133,35 @@ Headlines:
     turns curated as the models view lands); fixed by branching in the parent between sibling
     `BareRow`/`CuratedRow` components. The required `template` field also needed a `template: null`
     line in an untouched fixture (`profiles.test.ts`) — an eighth file. src-tauri 118→119, frontend
-    448→453; gate green. **Awaiting producer click-through.**
-  - **T-505d — adopt an installed gallery row into a profile** via the T-313 import path. This is
-    the "bring it in" action for a model the user already downloaded.
+    448→453; gate green. **Click-through passed 2026-09-02 for everything observable** — both curated
+    rows (ACE turbo + MiniMax) read **Installed**, matching the Models step, and **MiniMax reads
+    Installed, not the `local_check` `runnable:false` trap** (the lane's key correctness proof). The
+    Install button could **not** be seen fire: every shipped model on the dev machine is already
+    installed (all four ACE turbo files verified present against the live inventory), so no curated
+    row is `missing` and the button correctly hides — as it does on the Models step too. The install
+    path is the same verbatim `install`/`rowFor` gate as the (proven) Models-step button; it will be
+    seen live at **T-506**, whose first image curated profile won't be pre-installed.
+  - **T-505d — adopt an installed gallery row into a profile** via the T-313 import path. The "bring
+    it in" action for a model the user already has. Split into lanes (backend seam first, per the
+    T-504→T-505 cadence):
+    - **T-505d-a — the fetch→import backend seam. 📋 BRIEFED 2026-09-02** ([t-505d-a-brief.md](t-505d-a-brief.md)).
+      One command, `catalog_adopt_begin(name)`: fetch the gallery template to a temp file, hand it to
+      the **existing** `import_into` (T-313) unchanged, clean up, return the `ImportReport`. Verified
+      live 2026-09-03: `fetch_template` writes **frontend format** (`nodes[]`+`links`), so
+      `import_into`'s format gate accepts it; and an un-installed row is refused at `validate_workflow`
+      with the missing filename (the T-309d `unknown_enum_value` behaviour), so adopt never emits a
+      broken profile. Reuses `import_into` + `save_imported_profile` verbatim; nothing in `import.rs`
+      changes. Three files; **no click-through** (no UI yet). A factored `adopt_from_fetched` helper
+      carries the temp-cleanup logic so it is testable (`fetch_template` writes via comfy-cli and
+      can't be mocked into producing a file).
+    - **T-505d-b — the "Bring in" button + adopt mapping UI** (frontend, has click-through). A ready
+      bare row gets a "Bring in" action → an `adopt(name)` import-store action driving
+      `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/
+      `saveNotes`/`mappingsOf`) → `save_imported_profile`. On save the row becomes **curated** (a
+      profile now rides its template) and flips to the T-505c Installed treatment. **Click-through
+      needs an installed-but-unshipped model** (a ready bare row); none exists on the dev machine yet,
+      so this lane's live verification waits on an image model being installed — which T-506 needs
+      anyway.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
   pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.
