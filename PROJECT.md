@@ -5911,3 +5911,26 @@ clippy `len() >= 1` → `!is_empty()`; fixed. Aider also made one unrequested co
 comment's `state/queue.ts` → `state/library.ts` example reference) -- harmless, left in. src-tauri
 119→121; gate green, tree clean. Next: **T-505d-b** (the "Bring in" button + adopt mapping UI),
 whose click-through waits on an installed-but-unshipped model.
+
+### 2026-09-03 -- Klein 9B installed; emit found audio-only; owner picks "generalize emit"
+
+The producer installed **Flux.2 Klein 9B** and corrected a process habit worth keeping ([[latent-install-dont-defer]]):
+this is a dev PC they add/remove models on freely, comfy-mcp is wired for Claude, and a task that only
+needs a download should **not** be deferred -- say so and install (with a permission line), don't park
+it. Verified live: `image_flux2_text_to_image_9b` (Klein **9B**) is `runnable: true`; the 4B variant is
+not installed and not needed. That one model unblocks the whole remaining image path (T-505d-c adopt +
+T-506 cover art); nothing else is needed.
+
+**Scoping the adopt UI surfaced a blocker:** `emit::build_profile` is **audio-only** -- it refuses any
+graph with no *audio* save node (`EmitError::NoSaveNode`) and hardcodes `kind: Music`. Klein is a
+`SaveImage` graph, so T-505d-a's adopt *begin* works (it stops before emit) but **Save would fail**.
+So "adopt an image model" is not a pure-frontend lane. **Owner decision 2026-09-03: generalize emit**
+(keep the single bring-your-own mechanism), not hand-author a curated image profile. Briefed
+**T-505d-b** ([t-505d-b-brief.md](tasks/t-505d-b-brief.md)): a single-file `create-core` change teaching
+`build_profile` to detect the output kind (audio vs image save node), accept image graphs, and emit
+`kind: image` with an image `OutputSpec`. `graph.rs` is untouched -- its audio lossless-swap
+(`ensure_lossless_output`) runs only in `generate_audio` and never sees an image profile (T-506 owns
+image output). Verified Klein's `SaveImage` sits at the **top level** (its prompt/seed/steps live in a
+subgraph, MiniMax-shaped -- a T-505d-c role-suggestion concern, not this lane's). Adopt lanes renumbered:
+a (seam, landed), **b (emit, briefed)**, c (adopt UI, has the click-through, now verifiable against
+Klein). Docs/brief only; gate unaffected.

@@ -155,14 +155,23 @@ Headlines:
       carries the temp-cleanup logic so it is testable (`fetch_template` writes via comfy-cli and
       can't be mocked into producing a file). Landed matching the brief; the two mock tests (import +
       cleanup, refusal + cleanup) and an `#[ignore]` live test. src-tauri 119→121; gate green.
-    - **T-505d-b — the "Bring in" button + adopt mapping UI** (frontend, has click-through). A ready
+    - **T-505d-b — generalize profile emission for images (create-core). 📋 BRIEFED 2026-09-03**
+      ([t-505d-b-brief.md](t-505d-b-brief.md)). **Discovered while scoping the UI:** `emit::build_profile`
+      is audio-only — it refuses any graph with no *audio* save node and hardcodes `kind: Music`, so
+      adopting Klein (a `SaveImage` graph) fails at Save. Owner decision 2026-09-03: **generalize emit**
+      (keep the one bring-your-own mechanism) rather than hand-author a curated image profile. This lane
+      teaches `build_profile` to detect the output kind (audio vs image save node), stop refusing image
+      graphs, and emit `kind: image` with an image `OutputSpec`. Single-file `create-core` change;
+      `graph.rs` untouched (its audio lossless-swap never sees an image profile). No click-through.
+    - **T-505d-c — the "Bring in" button + adopt mapping UI** (frontend, has click-through). A ready
       bare row gets a "Bring in" action → an `adopt(name)` import-store action driving
       `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/
-      `saveNotes`/`mappingsOf`) → `save_imported_profile`. On save the row becomes **curated** (a
-      profile now rides its template) and flips to the T-505c Installed treatment. **Click-through
-      needs an installed-but-unshipped model** (a ready bare row); none exists on the dev machine yet,
-      so this lane's live verification waits on an image model being installed — which T-506 needs
-      anyway.
+      `saveNotes`/`mappingsOf`) → `save_imported_profile`. **Now unblocked for verification:** Flux.2
+      Klein 9B (`image_flux2_text_to_image_9b`) is installed and runnable, so there is a ready bare
+      image row to adopt. Its controls live in a **subgraph** (MiniMax-shaped), so this lane's real
+      risk is whether `suggest_roles` finds the prompt/seed/steps there. An adopted profile is
+      `workflow`-backed (`template: None`), so it does **not** join the T-505c curated index — the row
+      stays "bare" after adopt; whether to surface "adopted" on it is decided here.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
   pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.
