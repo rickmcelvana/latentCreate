@@ -188,17 +188,23 @@ Headlines:
       tags→`75/74.text`, negative→`75/67.text` (`Strong`, reason naming the negative conditioning),
       seed/steps/cfg to its subgraph controls; ACE-Step and MiniMax suggestions unchanged with
       `Negative` still absent. create-core 176→184.
-    - **T-505d-d — the "Bring in" button + adopt mapping UI** (frontend, has click-through). A ready
-      bare row gets a "Bring in" action → an `adopt(name)` import-store action driving
+    - **T-505d-d — the "Bring in" button + adopt mapping UI. 📋 BRIEFED 2026-09-03**
+      ([t-505d-d-brief.md](t-505d-d-brief.md)) (frontend, **has the click-through**). A ready **bare**
+      row gets a "Bring in" action → an `adopt(name, title)` import-store action driving
       `catalog_adopt_begin` → the existing role-mapping surface (reusing `roleRows`/`canSave`/
-      `saveNotes`/`mappingsOf`) → `save_imported_profile`. Backend prerequisites: a (fetch→import
-      seam), b (emit kinds an image graph), c (the prompt maps to the right encoder). Flux.2 Klein 9B
-      (`image_flux2_text_to_image_9b`) is installed and runnable, so there is a ready bare image row
-      to adopt end-to-end; after c the expected mapping screen is tags→`75/74.text`,
-      negative→`75/67.text`, seed→`75/73.noise_seed`, steps→`75/62.steps`, cfg→`75/63.cfg`, with
-      lyrics and duration correctly empty. An adopted profile is `workflow`-backed (`template: None`),
-      so it does **not** join the T-505c curated index — the row stays "bare" after adopt; whether to
-      surface "adopted" on it is decided here.
+      `saveNotes`/`mappingsOf`) → `save_imported_profile`. Backend prerequisites all landed: a
+      (fetch→import seam), b (emit kinds an image graph), c (the prompt maps to the right encoder).
+      Two decisions: **bare rows adopt, curated rows install** (adopting a curated row would emit a
+      second, worse profile for a model the app already describes); and the store records
+      **`adopting`**, the row that started the flow, because `ImportWorkflow` (Audio Studio) and
+      `ModelCatalog` (Setup) render one singleton store from different views — without it a file
+      import would draw a mapping screen under an unrelated catalog row. The in-progress screen is
+      lifted into a shared `RoleMapping` component both surfaces render. **The name must be seeded
+      from the gallery title, not `report.workflow_id`**: adopt fetches to `latentcreate-adopt-<row>.json`
+      and `emit_profile` derives the profile id from the *display name*, so seeding the id would name
+      the model after a temp file. An adopted profile is `workflow`-backed (`template: None`), so it
+      does **not** join the T-505c curated index — the row stays bare after adopt, which is expected;
+      marking it "adopted" across a reload needs a backend field and is out of scope.
   **Curated set:** app-curated audio+image list with hand-verified URLs (the shipped-profile
   pattern). **Gallery rows:** installed → adopt (d); not-installed → show missing files verbatim (no
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.

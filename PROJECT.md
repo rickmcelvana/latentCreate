@@ -6008,6 +6008,28 @@ conditioning), and seed/steps/cfg to its subgraph controls; ACE-Step and MiniMax
 `Negative` still absent, which is the guard that makes this safe. create-core 176→184; full gate
 green, fmt and clippy clean.
 
-All three backend prerequisites for adopting an image model are now landed. Next: **T-505d-d** --
-the "Bring in" button + adopt mapping UI, the first lane in this chain with a real click-through,
-against the installed Klein 9B row.
+All three backend prerequisites for adopting an image model are now landed. Briefed **T-505d-d**
+([t-505d-d-brief.md](tasks/t-505d-d-brief.md)) -- the "Bring in" button + adopt mapping UI, the first
+lane in this chain with a real click-through, against the installed Klein 9B row.
+
+Reading the frontend before writing the brief settled three things that were not obvious:
+
+- **`ImportWorkflow` is mounted in Audio Studio, `ModelCatalog` in Setup** -- two views over one
+  singleton import store. Without a marker, a file import started in the studio would draw a mapping
+  screen under an unrelated catalog row. So the store records `adopting`, the row that started the
+  flow, and each surface renders the screen only for its own. The in-progress screen is lifted into a
+  shared `RoleMapping` component rather than duplicated.
+- **The name must be seeded from the gallery title, not `report.workflow_id`.**
+  `catalog_adopt_begin` fetches to `latentcreate-adopt-<row>.json`, so `workflow_id` is the slug of
+  *that*; and `emit_profile` derives the **profile id from the display name** (`free_profile_id(root,
+  display_name)`), not from the workflow id. Seeding the id would have produced a model called and
+  ided `latentcreate-adopt-image-flux2-text-to-image-9b`. That is the brief's headline test and a
+  named click-through check.
+- **Bare rows adopt, curated rows install.** A curated row already has a shipped profile and the
+  T-505c one-click install; adopting one would emit a second, worse profile for a model the app
+  already describes.
+
+Also noted as expected-not-a-defect for the click-through: the role list is the same for every model,
+so an image adopt shows "Lyrics" and "Duration (s)" with the "no input looks like this" note. That is
+the deliberate T-313 design (a person must see what was *not* matched); a kind-aware role list is a
+later question. Docs/brief only; gate unaffected.
