@@ -266,10 +266,19 @@ Headlines:
     fail unless a derive is removed; it now strips `title`/`width`/`height` from the JSON so the
     `serde(default)`s are what is under test. Eight mutations, eight killed. create-core 184→191,
     library 109→124; gate green.
-  - **T-506b — `generate_image` + art ingest** (`src-tauri`). The pending record learns which kind
-    of asset it is waiting for, and the pump dispatches to an `ingest_art` that files
-    `art/<id>.png` + its sidecar and emits `art://saved`. A profile-kind guard on each command, so
-    a music profile cannot be queued into `art/` and an image profile cannot be filed as a track.
+  - **T-506b — `generate_image` + art ingest. BRIEFED 2026-09-03** ([t-506b-brief.md](t-506b-brief.md))
+    (`src-tauri`). `PendingTrack` becomes `PendingOutput` carrying a `ModelKind` -- **the record
+    decides, not the file extension** -- `ingest_outputs` returns a `Saved` per asset so the pump
+    emits `track://saved` or `art://saved`, and the download directory is chosen by kind. A pure
+    `kind_error` guard refuses a profile queued by the wrong command, before `ensure_connected`, in
+    a sentence naming where it does belong. `build_and_submit` is untouched. Checked while briefing
+    rather than assumed: `audit_slots` over the frozen Klein graph and the emitted profile's five
+    addresses reports **nothing unchecked and nothing inert**, so the inert-slot refusal does not
+    fire for an image profile. Fixture frozen ahead of the lane:
+    `testdata/profiles/flux2-klein-9b-image.json`, the profile the app itself emitted, with only
+    its adopt-time absolute workflow path rewritten to the repo's capture
+    (`testdata/profiles/README.md`). **No click-through** -- tests only; the first sight of a cover
+    is T-506d.
   - **T-506c — the art generation store** (frontend, no UI). The image profile selection
     (`default_image_profile_id` on `Config`), the spec assembly reusing `specInputs`, and the
     param-panel **store factory**: `paramPanel.ts` is a module-level singleton today, so a
