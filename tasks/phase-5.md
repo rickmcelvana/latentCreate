@@ -390,13 +390,31 @@ Headlines:
     changes the gallery, a renamed file reads as missing and keeps its facts, and the Library is
     undisturbed by `provenanceView`'s new signature. **Cover art now works end to end**, and the
     two `ingest_if_pending` lines named as untested at T-506b are discharged.
-  - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
-    sidecar** (`Track.cover: Option<ArtId>`) and an album's in its `AlbumList`, per ARCHITECTURE §8's
-    one-source-of-truth rule; the artwork sidecar stays a pure provenance record. **`delete_art`
-    lands here, not in a**, because deleting an artwork has to decide what a cover reference means --
-    the T-408 shape (to OS trash, the trasher injected so `cargo test` never fills a Recycle Bin,
-    plus a `tracks_referencing`-style check). Artwork is the first new *kind of created content*
-    since T-408, so the delete rule follows it.
+  - **T-506e — attach artwork to a track or an album, and delete one. SPLIT INTO TWO 2026-09-03**,
+    for the reason T-506c was: the stores need a schema change and three commands that do not exist,
+    and mixing Rust into a store lane is what the T-504 -> T-505a cadence exists to avoid. A track's
+    cover belongs in the **track sidecar** (`Track.cover: Option<ArtId>`) and an album's in its
+    `AlbumList`, per ARCHITECTURE §8's one-source-of-truth rule; the artwork sidecar stays a pure
+    provenance record. **`delete_art` lands here, not in a**, because deleting an artwork has to
+    decide what a cover reference means. Artwork is the first new *kind of created content* since
+    T-408, so the delete rule follows it.
+    - **T-506e-a — the cover backend. BRIEFED 2026-09-03** ([t-506e-a-brief.md](t-506e-a-brief.md))
+      (no frontend). The two fields, `set_track_cover` / `set_album_cover` / `delete_art`, and the
+      three commands. **Correcting this entry's earlier guess:** a cover reference does **not** block
+      a delete, and there is no `tracks_referencing`-style check. The repo has two precedents and
+      they differ -- `lyrics::delete_doc` *refuses* because a track's `LyricRef` is part of the
+      recipe and deleting the document would strand it, while `delete_track` *clears* the id from
+      every album because an album is the user's current arrangement, not a record of how anything
+      was made. A cover is the second kind: an editable pointer beside `title`, on which nothing
+      reproducible depends. Refusing would make a user detach a bad cover from every track before
+      deleting it -- friction bought with no protection. The T-408 shape still holds for the file
+      half: to OS trash, trasher injected so `cargo test` never fills a Recycle Bin, files first and
+      record last. One thing the brief says plainly rather than hides: clearing covers is **N atomic
+      writes, not one transaction**, so a crash part-way leaves some tracks with no cover and some
+      naming a deleted one -- which is why e-b must render a dangling cover as missing, the way
+      T-403 renders a missing track.
+    - **T-506e-b — the frontend**: attach/detach on a track and an album, delete from the Cover Art
+      gallery, and a dangling cover rendered as missing. Briefed after e-a lands.
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start
