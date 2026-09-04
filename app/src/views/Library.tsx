@@ -30,6 +30,9 @@ import {
   isRow,
   useTrackActionsStore,
 } from '../state/trackActions'
+import { CoverPicker } from '../components/CoverPicker'
+import { coverChoices, coverView } from '../state/covers'
+import { useArtStore } from '../state/art'
 
 export function Library() {
   const tracks = useLibraryStore((state) => state.tracks)
@@ -46,6 +49,8 @@ export function Library() {
   const selectProject = useProjectsStore((state) => state.select)
   const albumsLoad = useAlbumsStore((state) => state.load)
 
+  const loadArt = useArtStore((state) => state.load)
+
   useEffect(() => {
     void load()
   }, [load])
@@ -53,6 +58,10 @@ export function Library() {
   useEffect(() => {
     void startListening()
   }, [startListening])
+
+  useEffect(() => {
+    void loadArt()
+  }, [loadArt])
 
   useEffect(() => {
     void loadProjects()
@@ -223,6 +232,7 @@ function ProjectCreate() {
 }
 
 function TrackCard({ row }: { row: TrackRow }) {
+  const art = useArtStore((state) => state.art)
   const play = usePlayerStore((state) => state.play)
   const send = useSendToStore((state) => state.send)
   const sending = useSendToStore((state) => state.sending)
@@ -295,6 +305,16 @@ function TrackCard({ row }: { row: TrackRow }) {
           </div>
         ) : null}
       </dl>
+
+      <div className="track-cover">
+        <span className="track-cover-label">Cover</span>
+        <CoverPicker
+          view={coverView(row.cover, art)}
+          choices={coverChoices(art)}
+          disabled={busy}
+          onChange={(cover) => void actions.setCover(row.id, cover)}
+        />
+      </div>
 
       <TrackDetails trackId={row.id} />
 

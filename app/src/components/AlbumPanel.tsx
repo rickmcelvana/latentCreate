@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { albumRows, useAlbumsStore, type AlbumRow } from '../state/albums'
 import { useLibraryStore } from '../state/library'
+import { CoverPicker } from './CoverPicker'
+import { coverChoices, coverView } from '../state/covers'
+import { useArtStore } from '../state/art'
 
 /**
  * The Library's album section: create albums, open one to see its tracks in
@@ -13,7 +16,9 @@ export function AlbumPanel() {
   const error = useAlbumsStore((state) => state.error)
   const create = useAlbumsStore((state) => state.create)
   const openAlbum = useAlbumsStore((state) => state.openAlbum)
+  const setCover = useAlbumsStore((state) => state.setCover)
   const tracks = useLibraryStore((state) => state.tracks)
+  const art = useArtStore((state) => state.art)
 
   const [name, setName] = useState('')
   const rows = albumRows(albums, tracks)
@@ -71,6 +76,14 @@ export function AlbumPanel() {
 
               {open === row.name ? (
                 <div className="album-row-body">
+                  <div className="album-cover">
+                    <span className="album-cover-label">Cover</span>
+                    <CoverPicker
+                      view={coverView(row.cover, art)}
+                      choices={coverChoices(art)}
+                      onChange={(cover) => void setCover(row.name, cover)}
+                    />
+                  </div>
                   <AlbumTrackList row={row} />
                   <AlbumAddTrack row={row} />
                 </div>

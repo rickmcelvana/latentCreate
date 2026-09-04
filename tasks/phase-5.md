@@ -449,7 +449,8 @@ Headlines:
       the survivor a mutation found, and the same shape as T-506c-c's `??`-swallowed default. Also
       restored the house confirm wording (curly quotes around the name, as `ProjectDelete` has).
       **Seventeen mutations, seventeen killed** after that fix. frontend 508->525.
-    - **T-506e-c — the cover views. BRIEFED 2026-09-03** ([t-506e-c-brief.md](t-506e-c-brief.md)).
+    - **T-506e-c — the cover views. ✅ LANDED 2026-09-03, AWAITING CLICK-THROUGH**
+      ([t-506e-c-brief.md](t-506e-c-brief.md)).
       `CoverPicker` (presentational, reads **no store** -- its two callers write through different
       ones, and a store read inside would make the component pick a side), the control on a track
       card and an album row, Delete with its confirm on a gallery tile, and the CSS. **No new
@@ -463,7 +464,15 @@ Headlines:
       (step 6, what `remove`'s three store reloads buy), the trashed files still in the Recycle Bin
       (7), and a hand-made dangling cover rendering as missing and repairable (9 -- the state e-a's
       non-atomic clearing can leave, named there so it would be designed for rather than
-      discovered).
+      discovered). Landed matching the brief -- both acceptance criteria hold: the only new export
+      is the component itself, and `CoverPicker` reads no store. **The gate was not run**: `art` was
+      subscribed in `Library()` but used in `TrackCard`, a separate component, so it did not
+      compile. The other three fixes were **deleted comments** -- the run stripped the T-409
+      sanitise-before-the-dialog note, the whole `TrackDetails` doc comment, and the `broken`-reset
+      comment written during T-506d's own review, none of them near anything it was asked to
+      change. All restored. No mutations: this lane adds no decidable logic, which is the claim the
+      brief makes and the reason the twelve-step click-through is its acceptance. frontend 525
+      (unchanged -- no new tests, by design).
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start

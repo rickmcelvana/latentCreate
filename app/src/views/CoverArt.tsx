@@ -16,6 +16,9 @@ import {
   pickable,
   profileRow,
 } from '../state/profiles'
+import { useAlbumsStore } from '../state/albums'
+import { useLibraryStore } from '../state/library'
+import { coverUsage, deleteArtPrompt } from '../state/covers'
 
 export function CoverArt() {
   const startListeningJobs = useJobsStore((state) => state.startListening)
@@ -26,6 +29,8 @@ export function CoverArt() {
   const loadArt = useArtStore((state) => state.load)
   const startListeningArt = useArtStore((state) => state.startListening)
   const loadPanel = useArtPanelStore((state) => state.load)
+  const loadLibrary = useLibraryStore((state) => state.load)
+  const loadAlbums = useAlbumsStore((state) => state.load)
 
   useEffect(() => {
     void startListeningJobs()
@@ -42,6 +47,14 @@ export function CoverArt() {
   useEffect(() => {
     void startListeningArt()
   }, [startListeningArt])
+
+  useEffect(() => {
+    void loadLibrary()
+  }, [loadLibrary])
+
+  useEffect(() => {
+    void loadAlbums()
+  }, [loadAlbums])
 
   const state = imageStudioState(view, config)
   const chosenId = effectiveImageProfileId(config)
@@ -146,6 +159,12 @@ function ArtGallery() {
 
 function ArtTile({ row }: { row: ArtRow }) {
   const [broken, setBroken] = useState(false)
+  const tracks = useLibraryStore((state) => state.tracks)
+  const albums = useAlbumsStore((state) => state.albums)
+  const confirming = useArtStore((state) => state.confirmingDelete === row.id)
+  const askDelete = useArtStore((state) => state.askDelete)
+  const cancelDelete = useArtStore((state) => state.cancelDelete)
+  const remove = useArtStore((state) => state.remove)
 
   // Clear the failure when the store reloads. `artRows` builds fresh row
   // objects on every load, so `row` changes identity exactly when the gallery
@@ -193,6 +212,36 @@ function ArtTile({ row }: { row: ArtRow }) {
           <dd>{row.created}</dd>
         </div>
       </dl>
+
+      {confirming ? (
+        <div className="art-delete-confirm">
+          <span className="art-delete-prompt">
+            {deleteArtPrompt(row.name, coverUsage(row.id, tracks, albums))}
+          </span>
+          <button
+            type="button"
+            className="art-delete-yes"
+            onClick={() => void remove(row.id)}
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            className="art-delete-cancel"
+            onClick={() => cancelDelete()}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="art-delete"
+          onClick={() => askDelete(row.id)}
+        >
+          Delete
+        </button>
+      )}
     </li>
   )
 }
