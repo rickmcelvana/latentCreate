@@ -325,10 +325,23 @@ Headlines:
       killed**, including one re-run honestly: the first parallel-submit mutation did not actually
       parallelise, so the sequential-await invariant was re-checked with a real `Promise.all` over
       `generateImage`. frontend 459->476.
-    - **T-506c-c — the artwork listing store** (`bridge/art.ts`, `state/art.ts`): rows over
-      `library_art`, image paths over `art_image_path`, and the `art://saved` subscription that
+    - **T-506c-c — the artwork listing store. BRIEFED 2026-09-03**
+      ([t-506c-c-brief.md](t-506c-c-brief.md)) (no UI). `bridge/art.ts` (reusing `Provenance` from
+      `bridge/library.ts`, because the Rust `Artwork` embeds it verbatim) and `state/art.ts`: rows
+      over `library_art`, asset URLs over `art_image_path`, and the `art://saved` subscription that
       makes a finished cover appear without a reload, mirroring what `track://saved` does for the
-      Library.
+      Library. Three decisions the brief carries a reason for: the URLs resolve with `Promise.all`
+      and a **per-artwork catch** (the sequential-await rule is about the one stdio transport to
+      comfy-mcp and about `submittedAt` ordering the queue -- neither applies to a path lookup, and
+      one unreadable sidecar must not blank the gallery, the same rule `list_art` follows on the
+      Rust side); the URL map is **not cached across loads**, because art ids are per-project and a
+      map keyed by id would show the previous project's cover under the new project's artwork; and
+      `select`/`deleteProject` in `state/projects.ts` reload the artwork beside the tracks for that
+      same reason. The lane also **extracts `modelLabel`/`seedText`/`createdDate`/`provenanceView`
+      into `state/provenance.ts`** -- `library.ts`'s own comment says `queue.ts`'s `modelName` is a
+      deliberate twin, and a third copy is where the fallback chain drifts, in the record a user
+      reads to prove where a file came from. `provenanceView` takes a `Provenance` after the move,
+      which is also how T-506d gets an artwork inspector for free.
   - **T-506d — the CoverArt view** (frontend; **this lane has the click-through**). Image profile
     picker, param panel, Generate, the shared job queue, and a grid of what has been made.
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
