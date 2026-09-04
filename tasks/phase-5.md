@@ -427,8 +427,21 @@ Headlines:
       the half of it that is reachable -- a trasher that fails on the sidecar, asserting the project
       still lists the artwork so the delete can be retried. create-core 191->193, library 126->139,
       src-tauri 133->134.
-    - **T-506e-b — the frontend**: attach/detach on a track and an album, delete from the Cover Art
-      gallery, and a dangling cover rendered as missing. Briefed after e-a lands.
+    - **T-506e-b — the cover stores. BRIEFED 2026-09-03** ([t-506e-b-brief.md](t-506e-b-brief.md))
+      (no views). The frontend half is **split in two**, the c/d rhythm this phase has used twice
+      already: e-b is every rule as a pure function or a tested store action, e-c is the layer this
+      repo cannot test in `node`. Three bridge calls, `Track.cover` / `AlbumList.cover` on the wire
+      types, and `state/covers.ts` -- its own module because these selectors describe a cover **on
+      something else**, and both the Library and the album panel need them without pulling in the
+      gallery store. `coverView` returns `none` / `missing` / `shown`: **`missing` is not `none`**,
+      because `none` would claim the row never had a cover, and a dangling reference is genuinely
+      reachable -- e-a clears covers in N atomic writes, not one transaction. `deleteArtPrompt`
+      states the rule unconditionally and appends the usage counts only when they are known, so a
+      view that has not loaded the tracks says less rather than something false. `art.remove`
+      reloads **three** stores, because `delete_art` rewrites track sidecars and album lists the
+      frontend is already holding.
+    - **T-506e-c — the cover views**: `CoverPicker`, the control on a track card and an album row,
+      Delete on a gallery tile, the CSS, and **the click-through**. Briefed after e-b lands.
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start
