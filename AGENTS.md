@@ -7,61 +7,15 @@
 4. [CONVENTIONS.md](CONVENTIONS.md) — code standards. Fed to Aider with `--read` on every run.
 4b. [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — **verified** comfy-mcp tool names, slot addresses, LoRA and template facts. Authoritative over docs/RESEARCH.md and over any model documentation. Read before touching `mcp-bridge` or writing a model profile.
 4c. [docs/LLM-SURFACE.md](docs/LLM-SURFACE.md) — **verified** OpenAI-compatible wire format: the `delta.reasoning` split, the empty-`choices` usage frame, non-JSON error bodies, SSE framing rules. Read before touching `llm-bridge`.
-5. `tasks/ROADMAP.md` → the current `tasks/phase-N.md` — pick up the first unfinished T-number. **Phases 0, 1 and 2 are complete**, tagged `phase0-done`, `phase1-done` (2026-08-25) and `phase2-done` (2026-08-26); their phase files are records, not to-do lists. **Phase 3 is complete** (closed 2026-08-30, T-301 … T-317 all landed): the pipeline generates
-audio live on both shipped profiles, a finished track is ingested into the Library with a
-provenance sidecar checked field-for-field against the graph ComfyUI actually executed, one click
-queues N variations by seed, and a fresh Generate re-rolls the seed unless the user pinned it
-(T-316). T-315 landed 2026-08-29 and passed its click-through (the crash path's error copy — one sentence with a next step, diagnostics moved to `session.log`; this also discharges T-314's kill-mid-job check). **T-313 is complete (a-g) and click-through passed.** A person can import their own ComfyUI workflow, confirm what the app guessed about it, save it as a profile indistinguishable from a shipped one, and generate from it -- the milestone line "an imported user workflow generates successfully" is **discharged**, as is the kill-mid-job line (T-315). Import takes the **frontend** format, not API (MCP-SURFACE 29, which corrected ARCHITECTURE 5b), and an imported workflow is **copied**, not referenced, so sidecars cannot go stale. **T-314 ran live 2026-08-30** (the first recorded full-length generations — 185/200 s of audio at
-~5x realtime) and **T-317 settled `vram_gb_min: 8` by measurement**: a comfort floor, not a gate —
-ComfyUI offloads rather than fails (MCP-SURFACE 31). **Phase 4 (Library & Player) is COMPLETE —
-closed 2026-09-02** ([tasks/phase-4.md](tasks/phase-4.md)): T-401 … T-409, every task
-click-through-passed — projects first-class, playback + visualizer, album lists, Send-to, track
-actions, scrollbar styling, delete-for-everything (T-408), the carried song title (T-409), and the
-provenance inspector + "re-use these settings" (T-406). Closed docs-only, **not git-tagged** (the
-Phase 3 precedent). **Next: Phase 5** (cover art, polish, packaging — T-501…), **not yet opened**:
-the next session's first work is the Phase 5 phase-start check (re-verify the image/cover-art
-comfy-mcp surface before any brief) and opening `tasks/phase-5.md`. **T-401 (projects become first-class) is complete** — T-401a (backend seam) and T-401b (the
-picker) landed 2026-08-30 and the click-through passed: a track generated with a second project
-selected lands in `projects/<slug>/tracks/` and the Library shows it under that project. **T-402
-(playback + visualizer) is complete** — click-through passed, the first Phase 4 milestone line
-discharged. **T-403 (album lists) is complete** — `library::albums`, the six `albums_*` commands,
-the `state/albums` store (18 tests) and the Library album panel; **the producer click-through
-passed 2026-08-31 and the second Phase 4 milestone line ("album list") is discharged.** **A planning pass on 2026-09-01** added two tasks and set the remaining order --
-T-404 (Send-to) -> T-405 (track actions) -> T-408 -> T-409 -> T-406. **T-404 (Send-to) and
-T-405 (track actions: delete-to-trash, rename, export, reveal) are complete, both click-throughs
-passed 2026-09-01**, so the phase's milestone check is met in full. **The phase is not finished** --
-**T-408** (delete for lyric versions/documents/albums/projects, reusing T-405's `trash_to_os`),
-**T-409** (the song title, carried from Lyrics Studio to the export filename) and **T-406**
-(provenance inspector) remain, in that order. **T-408 is in progress:** part a (delete a lyric
-version) is **complete** (a-back + a-front landed 2026-09-01 architect-direct; click-through passed,
-v31 correctly refused). **Part b (many lyric docs per project + doc delete) is complete**
-(b-back + b-front landed 2026-09-01 architect-direct: `delete_doc`, shared `tracks_referencing`, the
-doc commands, and the Lyrics Studio document picker; click-through passed all five steps).
-**Part c (delete an album) is complete** -- the pattern-breaker: an album has no file, so
-`delete_album` trashes nothing and refuses nothing (nothing references an album), and deleting a
-list never touches its tracks; landed 2026-09-01 architect-direct with the album-panel affordance,
-click-through passed (a deleted album's tracks all stayed). **Part d (delete a project) is complete**
--- the whole `projects/<slug>/` tree to OS trash in one move; a project *is* its directory, so
-existence is checked on the directory (a malformed `project.json` stays deletable) and the config
-selection is left alone (deleting the selected project falls back to the first remaining one -- the
-first real deletion to reach `selected_project`'s "configured slug no longer exists" arm). Landed
-2026-09-01 architect-direct (three destructive-core mutations killed); **click-through passed all
-five steps 2026-09-01, so T-408 is COMPLETE across all four parts.** The phase now moves to **T-409**
-(the song title, carried from Lyrics Studio to the export filename), **briefed and split into three
-lanes; lane a landed 2026-09-01** -- **all three lanes landed** -- `GenerationSpec.title`
-(serde-default) flows through `ingest.rs` to `Track.title` (ARCHITECTURE §5 doc same commit); a Title
-input in the Lyrics Studio picker; and an Audio Studio Title override + `filenameSafe` sanitising the
-export default name before the dialog. **T-409 is COMPLETE -- click-through passed all six
-steps 2026-09-02.** **T-406 (the provenance inspector) is COMPLETE** -- both lanes landed
-2026-09-02 (lane a a read-only Details inspector over the whole sidecar; lane b "re-use these
-settings" loading a past spec into the Audio Studio with the seed **pinned** so a reproduction is not
-re-rolled), **click-through passed 2026-09-02, which closed Phase 4.** Context is in the latest PROJECT.md session-log entry. Briefs are written one at a time, each after the previous lands. **PROJECT.md's Snapshot is the live state and this line is a summary of it** — if they disagree, this line is stale and fixing it is part of the session, not something to read past.
+5. `tasks/ROADMAP.md` -> the current `tasks/phase-N.md` -- pick up the first unfinished T-number. **Phases 0-4 are complete** and their phase files are records, not to-do lists: 0/1/2 are git-tagged (`phase0-done`, `phase1-done` 2026-08-25, `phase2-done` 2026-08-26); 3 and 4 were closed docs-only (2026-08-30 and 2026-09-02). **Phase 5 is open** -- [tasks/phase-5.md](tasks/phase-5.md) is the only phase file to work from.
 
 **Hard rules (summary — the linked docs are authoritative):**
 - Planning-first: no code without a T-brief in the current phase file. One brief per Aider run, ≤ ~400-line diffs, commit `T-0XX: title` only after **`npm run gate`** passes (it mirrors CI). Executors run with `--no-auto-commits`; they never commit. **The architect (you) commits once the gate is green** — including for your own doc/brief work, where no Aider run is involved. Green gate is the go-ahead, not a checkpoint to ask at.
 - Ship no models. All generation goes through the user's ComfyUI (Comfy MCP) or their API keys.
 - Never modify user prompt/lyric text without an explicit accept step. Every generated asset gets a provenance sidecar. Deletes go to OS trash.
 - Verify third-party API surfaces (rmcp, provider APIs) against live docs/source before writing briefs — not from memory. For comfy-mcp, docs/MCP-SURFACE.md holds the verified names/slots; re-check against the live server rather than trusting the cloud documentation, which names different tools.
+- **Briefs are written one at a time**, each after the previous lands and its review is done. A phase file lists the lanes; it does not pre-write them.
+- **This file carries no per-task state, deliberately.** Item 5 names the open phase and nothing more -- it went stale twice by accreting status a session at a time, which is the failure the session-start drift check exists to catch and the one it is worst at catching. **PROJECT.md's Snapshot is the live state.**
 - End every session by updating PROJECT.md's session log; doc updates land in the same commit as the behavior change they describe.
 - **Verify a doc's claim before building on it.** A doc that names a file, a test, a gate or a count is making a claim about the repo, and the session-start `git log` check cannot catch one that was never true. Open the file. Grep for the behaviour. Prefer the most recently dated number over the oldest. WORKFLOW §6 has the rule and what it has cost twice.
 - **Aider is a token-saving device, nothing else.** Its only job is to keep the architect's context free so a session runs longer. Work that is already written and verified does not go through it — WORKFLOW §1.

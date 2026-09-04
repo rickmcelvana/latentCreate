@@ -501,9 +501,10 @@ Headlines:
 - **T-510 — Public-repo readiness** — CONTRIBUTING, issue/PR templates, a README pass for a
   stranger cloning cold.
 
-**Build order is the owner's next call** (the "docs first, then decide build order" decision). The
-three polish items are independent and cheap; the catalog (T-504/505) gates cover art (T-506);
-packaging (T-508) is the closing milestone by nature.
+**Build order, as it actually ran:** the three polish items first (T-501/502/503, independent and
+cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506). **All of that
+is landed as of 2026-09-03.** What is left -- T-507, T-508, T-509, T-510 -- has no feature work in
+it, and T-508 is the closing milestone by nature.
 
 ---
 
@@ -512,3 +513,9 @@ A person on a machine that never had the dev toolchain installs the build, opens
 the catalog and installs an image model**, generates **cover art** over it with a provenance
 sidecar, sees the **player docked on screen** with a **sharp** visualizer, and the lyrics document
 picker reads as a card. Installable build produced by CI for at least Windows.
+
+**Everything after "opens Setup" is already discharged in a dev build** (2026-09-03): the catalog
+search + install and the adopt path by T-505's click-throughs, cover art with its sidecar by
+T-506d's and T-506e-c's, and the three polish items by T-501/502/503. **What the milestone still
+needs is the installer itself (T-508)** -- and then the whole sequence run once on a machine that
+never had the toolchain, which is the only part a dev-machine click-through cannot stand in for.

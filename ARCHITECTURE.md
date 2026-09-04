@@ -366,7 +366,7 @@ comfy-mcp itself, so such a gate would leave the button dead on every cold start
   same way for album membership.
 - **Provenance stores both levels**: the `GenerationSpec` the user chose (semantic, e.g. `duration_s = 120`) *and* the resolved slot values actually submitted (e.g. `94.duration = 120`, `98.seconds = 120`). The first powers "re-use these settings"; the second is what makes a track reproducible and is the only record of what the graph really received.
 - Track actions: play, delete (to OS trash, not hard delete), rename, add-to-album-list, export/reveal, **Send to** mixer/mastering.
-- **Send to**: v1 opens `https://app.latentmixer.com` / `https://app.latentmastering.com` in the browser and reveals the file for drag-in. The real handoff protocol is **owned by the mixing/mastering repos** and will exist before this repo's Phase 4; latentCreate adopts it then rather than designing it (PROJECT.md decisions log, 2026-08-23).
+- **Send to**: v1 opens `https://app.latentmixer.com` / `https://app.latentmastering.com` in the browser and reveals the file for drag-in. The real handoff protocol is **owned by the mixing/mastering repos**; latentCreate adopts it when it exists rather than designing it (PROJECT.md decisions log, 2026-08-23). **It did not arrive during Phase 4** -- the phase-start check on 2026-08-30 found both siblings web-first with no landed protocol -- so the link-out plus reveal-file is what shipped, and it stays until they publish one.
 
 ## 9. Player & visualizer
 

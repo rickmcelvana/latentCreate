@@ -18,6 +18,9 @@ through the app carry their own licenses, which you are responsible for reviewin
 
 - **Guided setup** — detect or configure your local ComfyUI + Comfy MCP, pick an LLM provider,
   and install the model files a profile needs straight into ComfyUI, one click per model.
+- **Model catalog** — browse ComfyUI's built-in template gallery for audio *and* image models,
+  install one in a click, and bring it in as a profile you can generate from. Local models only in
+  v1.
 - **Lyrics Studio** — a structured brief (genre, mood, theme, structure, language) is sent to your
   LLM, which writes lyrics in the exact format your music model expects (`[verse]` / `[chorus]`
   tags and so on). Edit, version, approve, send to audio.
@@ -30,7 +33,9 @@ through the app carry their own licenses, which you are responsible for reviewin
 - **Library & Player** — playback with a spectrum visualizer, full provenance (every prompt, seed,
   and model saved per track), albums, rename/export/delete, and **Send to** the Latent Mixing /
   Mastering apps.
-- **Cover art (optional)** — generate single/album art through the same ComfyUI connection.
+- **Cover art** — generate single/album art through the same ComfyUI connection and the same job
+  queue, each image saved with its own provenance sidecar. Attach one as the cover of a track or an
+  album.
 - **Prompt optimization with consent** — the app can tighten a prompt for the target model, but it
   always shows the diff first; you approve, edit, or revert. Your words are never silently
   rewritten.
@@ -130,8 +135,9 @@ Everything the app writes lives under the OS app-data directory for the identifi
 | Linux | `~/.config/com.latentbeats.create/` |
 
 Inside it: `config.json` (non-secret config), `session.log`, and `projects/<slug>/` holding each
-project's `project.json`, `lyrics/`, and `tracks/` (audio plus a per-track provenance sidecar).
-API keys are **never** written to disk — they live in the OS keychain.
+project's `project.json`, `lyrics/`, `tracks/` (audio plus a per-track provenance sidecar) and
+`art/` (cover images plus their own sidecars). API keys are **never** written to disk — they live
+in the OS keychain.
 
 ## Documentation
 
@@ -143,8 +149,11 @@ API keys are **never** written to disk — they live in the OS keychain.
 
 ## Status
 
-**Pre-alpha.** Phases 0–3 (setup, lyrics, audio pipeline, workflow import) are complete; Phase 4
-(Library & Player) is in progress. See [PROJECT.md](PROJECT.md) for the live state.
+**Pre-alpha.** Phases 0–4 are complete — setup and connections, Lyrics Studio, the audio pipeline
+with workflow import, and the Library with playback, albums and provenance. **Phase 5 is in
+progress:** the model catalog and cover art have landed; first-run polish, installers, third-party
+licence generation and public-repo readiness remain. There is **no released build yet** — build from
+source. See [PROJECT.md](PROJECT.md) for the live state.
 
 ## Contributing
 

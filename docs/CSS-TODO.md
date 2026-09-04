@@ -2,7 +2,9 @@
 
 Presentation work that is **not** behaviour: nothing here is a bug, and nothing here blocks a
 task. It exists so styling gaps found while clicking through a feature get written down at the
-moment they are noticed, instead of being rediscovered at the Phase 5 polish pass.
+moment they are noticed, instead of being rediscovered at the polish pass (**T-507**). Resolved
+items are struck through with the task that closed them rather than deleted, so a fix and its
+original complaint stay together.
 
 Rules that apply to everything below: tokens from `theme.css`, no forked values, no hardcoded
 hex. The branding source of truth is `latentbeats.com` — change the site first, then follow it
@@ -21,7 +23,9 @@ hex. The branding source of truth is `latentbeats.com` — change the site first
 
 ## Library
 
-- **The player is below the fold, so playing a track from the top of the list shows nothing**
+- ~~**The player is below the fold, so playing a track from the top of the list shows nothing**~~
+  **RESOLVED by T-502 (2026-09-02)** -- `.player` is `position: sticky` at the foot of the view, so
+  it is on screen wherever the list is scrolled. The original report, kept for the reasoning:
   (2026-09-01). `<Player />` renders last in the Library view (`Library.tsx`), after the whole
   track list and the album panel. Click Play on a track near the top and its visualizer is all
   the way at the bottom — with the producer's 20 tracks you must scroll to find it, which most
