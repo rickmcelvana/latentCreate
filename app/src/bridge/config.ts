@@ -33,6 +33,9 @@ export interface Config {
   comfy: ComfyConfig
   llm: LlmConfig | null
   default_profile_id: string | null
+  /** The image model Cover Art generates with; `null` until one is adopted and picked.
+   *  Separate from `default_profile_id` so the two studios do not move each other's model. */
+  default_image_profile_id: string | null
   /** `Project::slug` last selected; `null` means the first project. */
   default_project_slug: string | null
 }

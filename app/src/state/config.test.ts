@@ -24,6 +24,7 @@ const fixture: LoadedConfig = {
       accepts_reasoning_effort: null,
     },
     default_profile_id: 'ace-step-1.5-turbo',
+    default_image_profile_id: null,
     default_project_slug: null,
   },
   warnings: [

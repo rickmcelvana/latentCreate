@@ -15,6 +15,7 @@ function config(default_profile_id: string | null): Config {
     comfy: { mode: 'local', url: null, comfy_bin: null },
     llm: null,
     default_profile_id,
+    default_image_profile_id: null,
     default_project_slug: null,
   }
 }

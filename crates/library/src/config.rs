@@ -75,6 +75,15 @@ pub struct Config {
     /// `ModelProfile::id` last used for audio.
     #[serde(default)]
     pub default_profile_id: Option<String>,
+    /// `ModelProfile::id` last used for cover art.
+    ///
+    /// Separate from `default_profile_id` because the two studios choose
+    /// independently: one field would make picking an image model in Cover Art
+    /// change the model the Audio Studio generates with. `None` means no image
+    /// profile has been chosen, and -- unlike the audio side -- there is no
+    /// shipped default to fall back to, because the app ships no image profile.
+    #[serde(default)]
+    pub default_image_profile_id: Option<String>,
     /// `Project::slug` the studios and the Library are working in.
     ///
     /// `None` means "first project, or a fresh one on an empty root" --
@@ -96,6 +105,7 @@ impl Default for Config {
             comfy: ComfyConfig::default(),
             llm: None,
             default_profile_id: None,
+            default_image_profile_id: None,
             default_project_slug: None,
         }
     }
@@ -216,6 +226,7 @@ mod tests {
                 accepts_reasoning_effort: None,
             }),
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
+            default_image_profile_id: Some("flux-2-klein-9b-text-to-image".to_string()),
             default_project_slug: Some("night-drive".to_string()),
         };
         save(dir.path(), &config).unwrap();
@@ -298,6 +309,7 @@ mod tests {
                 accepts_reasoning_effort: Some(true),
             }),
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
+            default_image_profile_id: None,
             default_project_slug: None,
         };
         save(dir.path(), &config).unwrap();
@@ -335,6 +347,51 @@ mod tests {
             None
         );
         assert!(loaded.warnings.is_empty());
+    }
+
+    /// Protects: every `config.json` on disk predates cover art. A user who
+    /// installed the app before T-506c must not have their config rejected, and
+    /// must not be handed an image model they never chose.
+    #[test]
+    fn test_load_missing_image_profile_defaults_to_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE);
+        let old = r#"{"schema_version":1,"comfy":{"mode":"local","url":null,"comfy_bin":null},"llm":null,"default_profile_id":"ace-step-1.5-turbo"}"#;
+        std::fs::write(&path, old).unwrap();
+        let loaded = load(dir.path());
+        assert_eq!(loaded.config.default_image_profile_id, None);
+        assert_eq!(
+            loaded.config.default_profile_id,
+            Some("ace-step-1.5-turbo".to_string())
+        );
+        assert!(loaded.warnings.is_empty());
+    }
+
+    /// Protects: the two studios choose independently.
+    ///
+    /// One field, or a copy-paste that wrote one into the other, would make
+    /// picking an image model in Cover Art change the model the Audio Studio
+    /// generates with -- and every other test here would still pass, because
+    /// each only ever sets one of them.
+    #[test]
+    fn test_the_two_profile_choices_are_independent() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            default_profile_id: Some("ace-step-1.5-turbo".to_string()),
+            default_image_profile_id: Some("flux-2-klein-9b-text-to-image".to_string()),
+            ..Config::default()
+        };
+        save(dir.path(), &config).unwrap();
+
+        let loaded = load(dir.path()).config;
+        assert_eq!(
+            loaded.default_profile_id,
+            Some("ace-step-1.5-turbo".to_string())
+        );
+        assert_eq!(
+            loaded.default_image_profile_id,
+            Some("flux-2-klein-9b-text-to-image".to_string())
+        );
     }
 
     #[test]

@@ -48,6 +48,7 @@ function baseConfig(over: Partial<Config> = {}): Config {
     comfy: { mode: 'local', url: null, comfy_bin: null },
     llm: null,
     default_profile_id: null,
+    default_image_profile_id: null,
     default_project_slug: null,
     ...over,
   }

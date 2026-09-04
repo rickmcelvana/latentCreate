@@ -660,6 +660,7 @@ describe('versioned document store', () => {
           accepts_reasoning_effort: null,
         },
         default_profile_id: null,
+        default_image_profile_id: null,
         default_project_slug: null,
       },
     })

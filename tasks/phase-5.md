@@ -293,11 +293,27 @@ Headlines:
     test cannot see a reordering. **Two production lines are not unit-testable** and wait for
     T-506d's click-through: the download-directory choice and the two-event dispatch both live in
     `ingest_if_pending`, which needs an `AppHandle` no test in the crate builds. src-tauri 121→133.
-  - **T-506c — the art generation store** (frontend, no UI). The image profile selection
-    (`default_image_profile_id` on `Config`), the spec assembly reusing `specInputs`, and the
-    param-panel **store factory**: `paramPanel.ts` is a module-level singleton today, so a
-    CoverArt view loading an image profile into it would reset the Audio Studio's values on every
-    view switch (the T-505d-d singleton lesson, one store over).
+  - **T-506c — the art generation store. SPLIT INTO TWO 2026-09-03**, because the stores need a
+    config field and two read commands that do not exist, and mixing Rust into the store lane is
+    what the T-504 -> T-505a cadence exists to avoid.
+    - **T-506c-a — the backend seam. ✅ LANDED 2026-09-03 architect-direct**
+      ([t-506c-a-brief.md](t-506c-a-brief.md)). `Config.default_image_profile_id` (its own field:
+      one field would make picking an image model in Cover Art change the Audio Studio's model, and
+      **there is no shipped image profile to fall back to**, so `None` stays `None` and the view
+      says so), plus `src-tauri/src/art.rs` with `library_art` and `art_image_path` mirroring their
+      track twins. Checked rather than assumed: the asset-protocol scope is already
+      `$APPCONFIG/projects/**`, which covers `projects/<slug>/art/`. **The brief's file list was
+      short by five** -- adding a required field to a mirrored type touches every test that builds
+      a `Config` literal, which the wire-fixture tripwire found immediately and correctly. library
+      124->126. `art.rs` has no tests, the same rule `tracks.rs` follows: both commands take Tauri
+      `State`, which no test in the crate builds.
+    - **T-506c-b — the frontend stores** (no UI). The param-panel **store factory**
+      (`paramPanel.ts` is a module-level singleton today, so a CoverArt view loading an image
+      profile into it would reset the Audio Studio's values on every view switch -- the T-505d-d
+      singleton lesson, one store over), a `generateImage` bridge, an art submit store reusing
+      `specsFor` with an empty LoRA stack and no lyric document, an artwork listing store over
+      `library_art` + `art://saved`, and `effectiveImageProfileId` returning **`string | null`**
+      rather than a shipped default.
   - **T-506d — the CoverArt view** (frontend; **this lane has the click-through**). Image profile
     picker, param panel, Generate, the shared job queue, and a grid of what has been made.
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track

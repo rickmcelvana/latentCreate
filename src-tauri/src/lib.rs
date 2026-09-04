@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 mod albums;
+mod art;
 mod catalog;
 mod comfy;
 mod generate;
@@ -94,6 +95,8 @@ pub fn run() {
             jobs::cancel_job,
             tracks::library_tracks,
             tracks::track_audio_path,
+            art::library_art,
+            art::art_image_path,
             projects::projects_list,
             projects::projects_create,
             projects::projects_delete,
