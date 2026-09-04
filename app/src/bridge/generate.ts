@@ -77,3 +77,15 @@ export interface Submission {
 export async function generateAudio(spec: GenerationSpec): Promise<Submission> {
   return await invoke<Submission>('generate_audio', { spec })
 }
+
+/**
+ * Queue one cover-art generation.
+ *
+ * Same contract as `generateAudio` -- including that **the caller must register
+ * the returned `prompt_id` with the jobs store**, because this command starts
+ * the pump itself and `applyJobEvent` drops events for ids the store does not
+ * know. The backend refuses a music profile here, and says where it belongs.
+ */
+export async function generateImage(spec: GenerationSpec): Promise<Submission> {
+  return await invoke<Submission>('generate_image', { spec })
+}

@@ -307,7 +307,7 @@ Headlines:
       a `Config` literal, which the wire-fixture tripwire found immediately and correctly. library
       124->126. `art.rs` has no tests, the same rule `tracks.rs` follows: both commands take Tauri
       `State`, which no test in the crate builds.
-    - **T-506c-b — the panel factory and the art submit store. BRIEFED 2026-09-03**
+    - **T-506c-b — the panel factory and the art submit store. ✅ LANDED 2026-09-03**
       ([t-506c-b-brief.md](t-506c-b-brief.md)) (no UI). `paramPanel.ts` becomes
       `createParamPanelStore()` with two instances -- it is a module-level singleton today, so a
       CoverArt view loading an image profile into it would reset the Audio Studio's values on every
@@ -316,7 +316,15 @@ Headlines:
       `generateImage` bridge, `state/artGenerate.ts` reusing `specsFor` with an **empty LoRA stack
       and no lyric document** (an adopted image profile declares neither, so nothing is invented),
       and `effectiveImageProfileId` / `selectedImageProfile` returning **`string | null`** with no
-      fallback -- there is no shipped image profile to fall back to.
+      fallback -- there is no shipped image profile to fall back to. Landed matching the brief. Two
+      defects fixed in review: the executor **overwrote `pickable`** -- an existing export, not in
+      the brief, and the very function whose doc comment says CoverArt will want it -- replacing it
+      in place with `effectiveImageProfileId` and breaking `AudioStudio.tsx`; and a seed test stubbed
+      `global.crypto`, which is getter-only here, when it needed no stub at all (every assertion is
+      about whether the seed *changed*, which the real generator answers). **Nine mutations, nine
+      killed**, including one re-run honestly: the first parallel-submit mutation did not actually
+      parallelise, so the sequential-await invariant was re-checked with a real `Promise.all` over
+      `generateImage`. frontend 459->476.
     - **T-506c-c — the artwork listing store** (`bridge/art.ts`, `state/art.ts`): rows over
       `library_art`, image paths over `art_image_path`, and the `art://saved` subscription that
       makes a finished cover appear without a reload, mirroring what `track://saved` does for the

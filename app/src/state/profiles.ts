@@ -28,6 +28,22 @@ export function pickable(view: ModelsView | null, kind: ProfileStatus['kind']): 
 }
 
 /**
+ * The image profile Cover Art is working against, or `null` when none is chosen.
+ *
+ * **No default, deliberately.** `effectiveProfileId` can fall back to
+ * `DEFAULT_PROFILE_ID` because `ace-step-1.5-turbo` ships; the app ships no image
+ * profile at all, so there is nothing to fall back to and inventing one would
+ * generate with a model the user never picked. `null` is the view's cue to say
+ * so and point at the Setup catalog.
+ */
+export function effectiveImageProfileId(config: Config | null): string | null {
+  const stored = config?.default_image_profile_id ?? null
+  if (stored === null) return null
+  const trimmed = stored.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+/**
  * The configured profile, when it is still one of the loaded ones.
  *
  * `null` while the list has not loaded, and also when the configured id
@@ -41,6 +57,22 @@ export function selectedProfile(
   config: Config | null,
 ): ProfileStatus | null {
   const id = effectiveProfileId(config)
+  return (view?.profiles ?? []).find((p) => p.id === id) ?? null
+}
+
+/**
+ * The chosen image profile, when it is still one of the loaded ones.
+ *
+ * `null` while the list has not loaded, when nothing is chosen, and when the
+ * configured id names a profile that is no longer there -- a deleted or renamed
+ * user profile. The caller says which, rather than substituting another model.
+ */
+export function selectedImageProfile(
+  view: ModelsView | null,
+  config: Config | null,
+): ProfileStatus | null {
+  const id = effectiveImageProfileId(config)
+  if (id === null) return null
   return (view?.profiles ?? []).find((p) => p.id === id) ?? null
 }
 

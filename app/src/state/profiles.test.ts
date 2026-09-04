@@ -3,9 +3,11 @@ import type { Config } from '../bridge/config'
 import type { ModelsView, ProfileStatus } from '../bridge/models'
 import {
   DEFAULT_PROFILE_ID,
+  effectiveImageProfileId,
   effectiveProfileId,
   pickable,
   profileRow,
+  selectedImageProfile,
   selectedProfile,
 } from './profiles'
 
@@ -16,6 +18,17 @@ function config(default_profile_id: string | null): Config {
     llm: null,
     default_profile_id,
     default_image_profile_id: null,
+    default_project_slug: null,
+  }
+}
+
+function configWithImage(default_image_profile_id: string | null): Config {
+  return {
+    schema_version: 1,
+    comfy: { mode: 'local', url: null, comfy_bin: null },
+    llm: null,
+    default_profile_id: null,
+    default_image_profile_id,
     default_project_slug: null,
   }
 }
@@ -62,6 +75,24 @@ describe('effectiveProfileId', () => {
   })
 })
 
+describe('effectiveImageProfileId', () => {
+  it('returns configured image id when present', () => {
+    expect(effectiveImageProfileId(configWithImage('flux2-klein-9b'))).toBe('flux2-klein-9b')
+  })
+
+  it('returns null when null', () => {
+    expect(effectiveImageProfileId(configWithImage(null))).toBeNull()
+  })
+
+  it('returns null when empty', () => {
+    expect(effectiveImageProfileId(configWithImage(''))).toBeNull()
+  })
+
+  it('returns null when whitespace', () => {
+    expect(effectiveImageProfileId(configWithImage('   '))).toBeNull()
+  })
+})
+
 describe('pickable', () => {
   it('filters by kind and orders curated first', () => {
     const userReady = profile({
@@ -94,6 +125,29 @@ describe('selectedProfile', () => {
 
   it('returns null when list has not loaded', () => {
     expect(selectedProfile(null, config('minimax-music-3'))).toBeNull()
+  })
+})
+
+describe('selectedImageProfile', () => {
+  it('returns matching image profile when configured id exists', () => {
+    const p = profile({ id: 'flux2-klein-9b', kind: 'image' })
+    expect(selectedImageProfile(view([p]), configWithImage('flux2-klein-9b'))).toEqual(p)
+  })
+
+  it('returns null when configured id is not in list', () => {
+    expect(
+      selectedImageProfile(view([profile({ id: 'other', kind: 'image' })]), configWithImage('missing')),
+    ).toBeNull()
+  })
+
+  it('returns null when list has not loaded', () => {
+    expect(selectedImageProfile(null, configWithImage('flux2-klein-9b'))).toBeNull()
+  })
+
+  it('returns null when no image profile is chosen', () => {
+    expect(
+      selectedImageProfile(view([profile({ id: 'flux2-klein-9b', kind: 'image' })]), configWithImage(null)),
+    ).toBeNull()
   })
 })
 

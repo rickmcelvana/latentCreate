@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import aceProfile from '../../../profiles/ace-step-1.5-turbo.json'
 import type { ProfileInputs } from '../bridge/profiles'
 import { MAX_SAFE_SEED, panelModel } from './params'
-import { freshSeed, initialValues, useParamPanelStore } from './paramPanel'
+import { freshSeed, initialValues, useArtPanelStore, useParamPanelStore } from './paramPanel'
 
 const aceInputs = aceProfile.inputs as unknown as ProfileInputs
 
@@ -18,6 +18,15 @@ beforeEach(() => {
   mockIsTauri = true
   mockInputs = aceInputs
   useParamPanelStore.setState({
+    profileId: null,
+    model: null,
+    values: {},
+    showAdvanced: false,
+    seedPinned: false,
+    error: null,
+    busy: false,
+  })
+  useArtPanelStore.setState({
     profileId: null,
     model: null,
     values: {},
@@ -90,6 +99,28 @@ describe('initialValues', () => {
     expect(values.tags).toBe(
       'synthwave, retro, 80s, dreamy, female vocal, driving beat, 105 bpm',
     )
+  })
+})
+
+describe('createParamPanelStore', () => {
+  /**
+   * Protects: the two studios do not share panel state.
+   *
+   * A singleton store would reset whichever panel was not on screen every time
+   * the view changed -- discarding typed values and re-rolling a seed the user
+   * had already seen, which is exactly what `load`'s same-profile early return
+   * exists to prevent.
+   */
+  it('test_two_panels_do_not_share_state', async () => {
+    await useParamPanelStore.getState().load('ace-step-1.5-turbo')
+    await useArtPanelStore.getState().load('ace-step-1.5-turbo')
+
+    useParamPanelStore.getState().setValue('seed', '42')
+
+    expect(useParamPanelStore.getState().seedPinned).toBe(true)
+    expect(useParamPanelStore.getState().values.seed).toBe('42')
+    expect(useArtPanelStore.getState().seedPinned).toBe(false)
+    expect(useArtPanelStore.getState().values.seed).not.toBe('42')
   })
 })
 

@@ -91,129 +91,144 @@ interface ParamPanelState {
   refreshChoices: () => Promise<void>
 }
 
-export const useParamPanelStore = create<ParamPanelState>((set, get) => ({
-  profileId: null,
-  model: null,
-  values: {},
-  showAdvanced: false,
-  seedPinned: false,
-  error: null,
-  busy: false,
+/**
+ * A panel store. Called once per studio rather than shared, because the two
+ * studios hold different profiles at the same time: one singleton would reset
+ * whichever panel was not on screen every time the view changed -- discarding
+ * typed values and re-rolling a seed the user had already seen, which is
+ * exactly what `load`'s same-profile early return exists to prevent.
+ */
+export function createParamPanelStore() {
+  return create<ParamPanelState>((set, get) => ({
+    profileId: null,
+    model: null,
+    values: {},
+    showAdvanced: false,
+    seedPinned: false,
+    error: null,
+    busy: false,
 
-  /**
-   * Load one profile's declarations and reset the panel to its defaults.
-   *
-   * Reloading the same profile is a no-op: switching views must not silently
-   * discard the tags someone typed, and re-rolling their seed behind their
-   * back would be worse -- the sidecar would record a seed they never saw.
-   */
-  load: async (profileId: string) => {
-    if (!isTauri()) return
-    if (get().profileId === profileId && get().model !== null) return
+    /**
+     * Load one profile's declarations and reset the panel to its defaults.
+     *
+     * Reloading the same profile is a no-op: switching views must not silently
+     * discard the tags someone typed, and re-rolling their seed behind their
+     * back would be worse -- the sidecar would record a seed they never saw.
+     */
+    load: async (profileId: string) => {
+      if (!isTauri()) return
+      if (get().profileId === profileId && get().model !== null) return
 
-    set({ busy: true })
-    try {
-      const inputs = await getProfileInputs(profileId)
-      if (inputs === null) {
+      set({ busy: true })
+      try {
+        const inputs = await getProfileInputs(profileId)
+        if (inputs === null) {
+          set({
+            profileId,
+            model: null,
+            values: {},
+            error: `No profile answers to ${profileId}, so there are no settings to show. Pick another model profile.`,
+          })
+          return
+        }
+        const model = panelModel(inputs)
+        set({ profileId, model, values: initialValues(model), seedPinned: false, error: null })
+      } finally {
+        set({ busy: false })
+      }
+      await get().refreshChoices()
+    },
+
+    hydrate: async (profileId, values) => {
+      if (!isTauri()) return
+
+      set({ busy: true })
+      try {
+        const inputs = await getProfileInputs(profileId)
+        if (inputs === null) {
+          set({
+            profileId,
+            model: null,
+            values: {},
+            error: `No profile answers to ${profileId}, so there are no settings to show. Pick another model profile.`,
+          })
+          return
+        }
+        const model = panelModel(inputs)
+        // Defaults for controls the spec never set, the spec's own values over
+        // them; `seedPinned: true` so the next Generate reproduces this track
+        // rather than re-rolling the seed the sidecar recorded (T-316's opposite).
         set({
           profileId,
-          model: null,
-          values: {},
-          error: `No profile answers to ${profileId}, so there are no settings to show. Pick another model profile.`,
+          model,
+          values: { ...initialValues(model), ...values },
+          seedPinned: true,
+          error: null,
         })
-        return
+      } finally {
+        set({ busy: false })
       }
-      const model = panelModel(inputs)
-      set({ profileId, model, values: initialValues(model), seedPinned: false, error: null })
-    } finally {
-      set({ busy: false })
-    }
-    await get().refreshChoices()
-  },
+      await get().refreshChoices()
+    },
 
-  hydrate: async (profileId, values) => {
-    if (!isTauri()) return
-
-    set({ busy: true })
-    try {
-      const inputs = await getProfileInputs(profileId)
-      if (inputs === null) {
-        set({
-          profileId,
-          model: null,
-          values: {},
-          error: `No profile answers to ${profileId}, so there are no settings to show. Pick another model profile.`,
-        })
-        return
+    /**
+     * Ask the node registry for the live enum options, and fold them in.
+     *
+     * Separate from `load` and safe to call again, because ComfyUI is very often
+     * started *after* the app -- an options list that can only be fetched once
+     * leaves the user with three dead dropdowns and no way back. A failure here
+     * leaves the panel exactly as it was: the controls already carry a sentence
+     * saying the options are not loaded, which is more useful than replacing a
+     * working panel with an error.
+     */
+    refreshChoices: async () => {
+      const { profileId, model } = get()
+      if (!isTauri() || profileId === null || model === null) return
+      try {
+        set({ model: withChoices(model, await getEnumChoices(profileId)) })
+      } catch {
+        // Left as it was, note intact.
       }
-      const model = panelModel(inputs)
-      // Defaults for controls the spec never set, the spec's own values over
-      // them; `seedPinned: true` so the next Generate reproduces this track
-      // rather than re-rolling the seed the sidecar recorded (T-316's opposite).
+    },
+
+    setValue: (name: string, value: ControlValue) => {
+      const model = get().model
+      const isSeed =
+        model !== null &&
+        [...model.basic, ...model.advanced].some((c) => c.kind === 'seed' && c.name === name)
       set({
-        profileId,
-        model,
-        values: { ...initialValues(model), ...values },
-        seedPinned: true,
-        error: null,
+        values: { ...get().values, [name]: value },
+        seedPinned: isSeed ? true : get().seedPinned,
       })
-    } finally {
-      set({ busy: false })
-    }
-    await get().refreshChoices()
-  },
+    },
 
-  /**
-   * Ask the node registry for the live enum options, and fold them in.
-   *
-   * Separate from `load` and safe to call again, because ComfyUI is very often
-   * started *after* the app -- an options list that can only be fetched once
-   * leaves the user with three dead dropdowns and no way back. A failure here
-   * leaves the panel exactly as it was: the controls already carry a sentence
-   * saying the options are not loaded, which is more useful than replacing a
-   * working panel with an error.
-   */
-  refreshChoices: async () => {
-    const { profileId, model } = get()
-    if (!isTauri() || profileId === null || model === null) return
-    try {
-      set({ model: withChoices(model, await getEnumChoices(profileId)) })
-    } catch {
-      // Left as it was, note intact.
-    }
-  },
+    /** Roll a new seed, leaving every other value alone. */
+    rerollSeed: () => {
+      const model = get().model
+      if (model === null) return
+      const seed = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
+      if (seed === undefined) return
+      set({ values: { ...get().values, [seed.name]: freshSeed() }, seedPinned: true })
+    },
 
-  setValue: (name: string, value: ControlValue) => {
-    const model = get().model
-    const isSeed =
-      model !== null &&
-      [...model.basic, ...model.advanced].some((c) => c.kind === 'seed' && c.name === name)
-    set({
-      values: { ...get().values, [name]: value },
-      seedPinned: isSeed ? true : get().seedPinned,
-    })
-  },
+    /** Set the seed value without pinning it -- Generate's own re-roll. */
+    setSeed: (value: number) => {
+      const model = get().model
+      if (model === null) return
+      const seed = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
+      if (seed === undefined) return
+      set({ values: { ...get().values, [seed.name]: value } })
+    },
 
-  /** Roll a new seed, leaving every other value alone. */
-  rerollSeed: () => {
-    const model = get().model
-    if (model === null) return
-    const seed = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
-    if (seed === undefined) return
-    set({ values: { ...get().values, [seed.name]: freshSeed() }, seedPinned: true })
-  },
+    toggleAdvanced: () => set({ showAdvanced: !get().showAdvanced }),
+  }))
+}
 
-  /** Set the seed value without pinning it -- Generate's own re-roll. */
-  setSeed: (value: number) => {
-    const model = get().model
-    if (model === null) return
-    const seed = [...model.basic, ...model.advanced].find((c) => c.kind === 'seed')
-    if (seed === undefined) return
-    set({ values: { ...get().values, [seed.name]: value } })
-  },
+/** The Audio Studio's panel. */
+export const useParamPanelStore = createParamPanelStore()
 
-  toggleAdvanced: () => set({ showAdvanced: !get().showAdvanced }),
-}))
+/** Cover Art's panel -- an independent instance, not a view of the same state. */
+export const useArtPanelStore = createParamPanelStore()
 
 /** Re-exported so the view imports its ceiling from one place. */
 export { MAX_SAFE_SEED }
