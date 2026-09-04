@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   artImageUrl,
+  deleteArt,
   listArt,
   subscribeArt,
   type ArtSet,
@@ -8,7 +9,9 @@ import {
   type Artwork,
 } from '../bridge/art'
 import { isTauri } from '../bridge/jobs'
+import { useAlbumsStore } from './albums'
 import { createdDate, modelLabel, seedText } from './provenance'
+import { useLibraryStore } from './library'
 
 /** Shown in place of the grid when nothing has been generated yet. */
 export const EMPTY_ART =
@@ -76,8 +79,16 @@ interface ArtState {
   loading: boolean
   error: string | null
   listening: boolean
+  /** The artwork id awaiting a delete confirm, or `null`. */
+  confirmingDelete: string | null
   load: () => Promise<void>
   startListening: () => Promise<void>
+  /** Arm the delete confirm for one artwork tile. */
+  askDelete: (id: string) => void
+  /** Cancel a pending delete confirm. */
+  cancelDelete: () => void
+  /** Delete an artwork and refresh everything it could have touched. */
+  remove: (id: string) => Promise<boolean>
 }
 
 export const useArtStore = create<ArtState>((set, get) => ({
@@ -87,6 +98,7 @@ export const useArtStore = create<ArtState>((set, get) => ({
   loading: false,
   error: null,
   listening: false,
+  confirmingDelete: null,
 
   load: async () => {
     set({ loading: true, error: null })
@@ -123,5 +135,24 @@ export const useArtStore = create<ArtState>((set, get) => ({
     await subscribeArt(() => {
       void get().load()
     })
+  },
+
+  askDelete: (id) => set({ confirmingDelete: id, error: null }),
+  cancelDelete: () => set({ confirmingDelete: null }),
+
+  remove: async (id) => {
+    set({ error: null })
+    try {
+      await deleteArt(id)
+      set({ confirmingDelete: null, error: null })
+      await get().load()
+      await useLibraryStore.getState().load()
+      await useAlbumsStore.getState().load()
+      return true
+    } catch (err: unknown) {
+      // Keep `confirmingDelete` set so the tile can retry or cancel.
+      set({ error: err instanceof Error ? err.message : String(err) })
+      return false
+    }
   },
 }))

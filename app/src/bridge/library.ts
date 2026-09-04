@@ -9,6 +9,8 @@ export interface Track {
   title: string | null
   file: string
   duration_s: number | null
+  /** `ArtId` as a bare string, or `null` when no cover is set. */
+  cover: string | null
   provenance: Provenance
 }
 

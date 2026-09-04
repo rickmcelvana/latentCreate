@@ -11,6 +11,11 @@ export async function renameTrack(id: string, title: string): Promise<void> {
   await invoke('rename_track', { id, title })
 }
 
+/** Set or clear a track's cover. `null` clears it. */
+export async function setTrackCover(id: string, cover: string | null): Promise<void> {
+  await invoke('set_track_cover', { id, cover })
+}
+
 /** Copy a track's audio file to `dest`. */
 export async function exportTrack(id: string, dest: string): Promise<void> {
   await invoke('export_track', { id, dest })

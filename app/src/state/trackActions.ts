@@ -5,7 +5,9 @@ import {
   pickExportPath,
   renameTrack,
   revealTrack,
+  setTrackCover,
 } from '../bridge/tracks'
+import { useLibraryStore } from './library'
 
 /** An action failure, remembered with the track it belongs to. */
 export interface ActionError {
@@ -63,6 +65,8 @@ interface TrackActionsState {
   startRename: (id: string) => void
   cancelRename: () => void
   submitRename: (id: string, title: string) => Promise<boolean>
+  /** Set or clear a track's cover, then reload the library so the row shows it. */
+  setCover: (id: string, cover: string | null) => Promise<boolean>
   runExport: (id: string, defaultName: string) => Promise<void>
   reveal: (id: string) => Promise<void>
 }
@@ -102,6 +106,19 @@ export const useTrackActionsStore = create<TrackActionsState>((set) => ({
     try {
       await renameTrack(id, title)
       set({ busy: null, renaming: null })
+      return true
+    } catch (err: unknown) {
+      set({ busy: null, error: { trackId: id, message: message(err) } })
+      return false
+    }
+  },
+
+  setCover: async (id, cover) => {
+    set({ busy: id, error: null })
+    try {
+      await setTrackCover(id, cover)
+      await useLibraryStore.getState().load()
+      set({ busy: null })
       return true
     } catch (err: unknown) {
       set({ busy: null, error: { trackId: id, message: message(err) } })

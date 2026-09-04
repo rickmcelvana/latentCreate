@@ -21,6 +21,11 @@ export async function deleteAlbum(name: string): Promise<AlbumList[]> {
   return await invoke<AlbumList[]>('album_delete', { name })
 }
 
+/** Set or clear an album's cover. Returns the refreshed album list. */
+export async function setAlbumCover(album: string, cover: string | null): Promise<AlbumList[]> {
+  return await invoke<AlbumList[]>('album_set_cover', { album, cover })
+}
+
 /** Add a track to an album. Returns the refreshed album list. */
 export async function addAlbumTrack(album: string, trackId: string): Promise<AlbumList[]> {
   return await invoke<AlbumList[]>('album_add_track', { album, trackId })

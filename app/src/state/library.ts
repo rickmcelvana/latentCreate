@@ -37,6 +37,8 @@ export interface TrackRow {
   /** `null` when the track predates T-311d, which is not an error. */
   promptId: string | null
   file: string
+  /** `ArtId` as a bare string, or `null` when no cover is set. */
+  cover: string | null
 }
 
 function trackName(track: Track): string {
@@ -76,6 +78,7 @@ export function trackRows(set: TrackSet): TrackRow[] {
     seed: seedText(track.provenance),
     promptId: track.provenance.prompt_id,
     file: track.file,
+    cover: track.cover,
   }))
 }
 

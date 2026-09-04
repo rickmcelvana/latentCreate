@@ -18,6 +18,8 @@ export interface Project {
 export interface AlbumList {
   name: string
   tracks: string[]
+  /** `ArtId` as a bare string, or `null` when no cover is set. */
+  cover: string | null
 }
 
 /** Mirrors Rust `library::projects::ProjectSet`. */

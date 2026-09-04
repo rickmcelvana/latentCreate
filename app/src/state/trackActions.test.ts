@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useLibraryStore } from './library'
 import { errorFor, filenameSafe, isRow, useTrackActionsStore } from './trackActions'
 
 const mockDeleteTrack = vi.fn()
 const mockRenameTrack = vi.fn()
+const mockSetTrackCover = vi.fn()
 const mockExportTrack = vi.fn()
 const mockRevealTrack = vi.fn()
 const mockPickExportPath = vi.fn()
@@ -10,6 +12,7 @@ const mockPickExportPath = vi.fn()
 vi.mock('../bridge/tracks', () => ({
   deleteTrack: (id: string) => mockDeleteTrack(id),
   renameTrack: (id: string, title: string) => mockRenameTrack(id, title),
+  setTrackCover: (id: string, cover: string | null) => mockSetTrackCover(id, cover),
   exportTrack: (id: string, dest: string) => mockExportTrack(id, dest),
   revealTrack: (id: string) => mockRevealTrack(id),
   pickExportPath: (defaultName: string) => mockPickExportPath(defaultName),
@@ -154,6 +157,45 @@ describe('rename flow', () => {
     expect(useTrackActionsStore.getState().error).toEqual({
       trackId: 'tr-0001',
       message: 'rename failed',
+    })
+  })
+})
+
+describe('setCover flow', () => {
+  beforeEach(() => {
+    mockSetTrackCover.mockReset()
+    reset()
+    vi.spyOn(useLibraryStore.getState(), 'load').mockResolvedValue(undefined)
+  })
+
+  // Protects: the sidecar is the source of truth and the row is built from it,
+  // so without the reload the change is invisible until something else reloads.
+  it('sets a cover and reloads the library', async () => {
+    mockSetTrackCover.mockResolvedValue(undefined)
+    const ok = await useTrackActionsStore.getState().setCover('tr-0001', 'ar-1')
+    expect(ok).toBe(true)
+    expect(mockSetTrackCover).toHaveBeenCalledWith('tr-0001', 'ar-1')
+    expect(useLibraryStore.getState().load).toHaveBeenCalled()
+    expect(useTrackActionsStore.getState().busy).toBeNull()
+    expect(useTrackActionsStore.getState().error).toBeNull()
+  })
+
+  it('clears a cover with null and reloads the library', async () => {
+    mockSetTrackCover.mockResolvedValue(undefined)
+    const ok = await useTrackActionsStore.getState().setCover('tr-0001', null)
+    expect(ok).toBe(true)
+    expect(mockSetTrackCover).toHaveBeenCalledWith('tr-0001', null)
+    expect(useLibraryStore.getState().load).toHaveBeenCalled()
+  })
+
+  it('failure stores the error against that track id and clears busy', async () => {
+    mockSetTrackCover.mockRejectedValue('cover failed')
+    const ok = await useTrackActionsStore.getState().setCover('tr-0001', 'ar-1')
+    expect(ok).toBe(false)
+    expect(useTrackActionsStore.getState().busy).toBeNull()
+    expect(useTrackActionsStore.getState().error).toEqual({
+      trackId: 'tr-0001',
+      message: 'cover failed',
     })
   })
 })

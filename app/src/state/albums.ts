@@ -7,6 +7,7 @@ import {
   removeAlbumTrack,
   renameAlbum,
   reorderAlbum,
+  setAlbumCover,
 } from '../bridge/albums'
 import type { AlbumList } from '../bridge/projects'
 import type { TrackRow } from './library'
@@ -22,9 +23,11 @@ export interface AlbumEntry {
   name: string | null
 }
 
-/** One album ready to render: its name and its entries in order. */
+/** One album ready to render: its name, its cover, and its entries in order. */
 export interface AlbumRow {
   name: string
+  /** `ArtId` as a bare string, or `null` when no cover is set. */
+  cover: string | null
   entries: AlbumEntry[]
 }
 
@@ -39,6 +42,7 @@ export interface AlbumRow {
 export function albumRows(albums: AlbumList[], tracks: TrackRow[]): AlbumRow[] {
   return albums.map((album) => ({
     name: album.name,
+    cover: album.cover,
     entries: album.tracks.map((trackId) => ({
       trackId,
       name: tracks.find((track) => track.id === trackId)?.name ?? null,
@@ -93,6 +97,8 @@ interface AlbumsState {
    * Resolves `true` on success.
    */
   deleteAlbum: (name: string) => Promise<boolean>
+  /** Set or clear an album's cover. Resolves `true` on success. */
+  setCover: (album: string, cover: string | null) => Promise<boolean>
   /** Add a track to an album. Resolves `true` on success. */
   addTrack: (album: string, trackId: string) => Promise<boolean>
   /** Remove a track from an album. Resolves `true` on success. */
@@ -169,6 +175,17 @@ export const useAlbumsStore = create<AlbumsState>((set, get) => ({
       return true
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : String(err), confirmingDelete: null })
+      return false
+    }
+  },
+
+  setCover: async (album, cover) => {
+    try {
+      const albums = await setAlbumCover(album, cover)
+      set({ albums, error: null })
+      return true
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err) })
       return false
     }
   },

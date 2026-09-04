@@ -54,6 +54,16 @@ export async function artImageUrl(id: string): Promise<string> {
 }
 
 /**
+ * Delete an artwork: image and sidecar to the OS trash, the id unlisted, and
+ * every track and album cover naming it cleared. The caller must reload the
+ * library and the albums as well as the gallery -- records the frontend already
+ * holds were changed on disk by this call.
+ */
+export async function deleteArt(id: string): Promise<void> {
+  await invoke('delete_art', { id })
+}
+
+/**
  * Subscribe to `art://saved`.
  *
  * Re-load on every save rather than appending, exactly as `subscribeTracks`

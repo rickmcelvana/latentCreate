@@ -6,6 +6,7 @@ import { albumRows, moveTrackId, useAlbumsStore } from './albums'
 const mockListAlbums = vi.fn()
 const mockCreateAlbum = vi.fn()
 const mockRenameAlbum = vi.fn()
+const mockSetAlbumCover = vi.fn()
 const mockAddAlbumTrack = vi.fn()
 const mockRemoveAlbumTrack = vi.fn()
 const mockReorderAlbum = vi.fn()
@@ -15,14 +16,15 @@ vi.mock('../bridge/albums', () => ({
   listAlbums: () => mockListAlbums(),
   createAlbum: (name: string) => mockCreateAlbum(name),
   renameAlbum: (from: string, to: string) => mockRenameAlbum(from, to),
+  setAlbumCover: (albumName: string, cover: string | null) => mockSetAlbumCover(albumName, cover),
   deleteAlbum: (name: string) => mockDeleteAlbum(name),
   addAlbumTrack: (albumName: string, trackId: string) => mockAddAlbumTrack(albumName, trackId),
   removeAlbumTrack: (albumName: string, trackId: string) => mockRemoveAlbumTrack(albumName, trackId),
   reorderAlbum: (albumName: string, trackIds: string[]) => mockReorderAlbum(albumName, trackIds),
 }))
 
-function album(name: string, tracks: string[] = []): AlbumList {
-  return { name, tracks }
+function album(name: string, tracks: string[] = [], cover: string | null = null): AlbumList {
+  return { name, tracks, cover }
 }
 
 function track(id: string, name: string): TrackRow {
@@ -37,6 +39,7 @@ function track(id: string, name: string): TrackRow {
     seed: '42',
     promptId: null,
     file: `tracks/${id}.flac`,
+    cover: null,
   }
 }
 
@@ -52,19 +55,23 @@ function reset() {
 
 describe('albumRows', () => {
   it('joins each track id to the loaded row name, in album order', () => {
+    // Album A carries a real cover and B carries none: with both at `null` the
+    // row's `cover` would read identically whether it was carried through or
+    // hardcoded, and the assertion would prove nothing about the join.
     const rows = albumRows(
-      [album('A', ['tr-0001', 'tr-0002']), album('B')],
+      [album('A', ['tr-0001', 'tr-0002'], 'ar-0001'), album('B')],
       [track('tr-0001', 'First'), track('tr-0002', 'Second')],
     )
     expect(rows).toEqual([
       {
         name: 'A',
+        cover: 'ar-0001',
         entries: [
           { trackId: 'tr-0001', name: 'First' },
           { trackId: 'tr-0002', name: 'Second' },
         ],
       },
-      { name: 'B', entries: [] },
+      { name: 'B', cover: null, entries: [] },
     ])
   })
 
@@ -105,6 +112,7 @@ describe('albums store', () => {
     mockListAlbums.mockReset()
     mockCreateAlbum.mockReset()
     mockRenameAlbum.mockReset()
+    mockSetAlbumCover.mockReset()
     mockAddAlbumTrack.mockReset()
     mockRemoveAlbumTrack.mockReset()
     mockReorderAlbum.mockReset()
@@ -196,6 +204,33 @@ describe('albums store', () => {
     expect(ok).toBe(false)
     expect(useAlbumsStore.getState().error).toBe('disk failed')
     expect(useAlbumsStore.getState().confirmingDelete).toBe(null)
+  })
+
+  it('setCover uses the returned list and does not re-list', async () => {
+    useAlbumsStore.setState({ albums: [album('A')] })
+    mockSetAlbumCover.mockResolvedValue([album('A', [], 'ar-1')])
+    const ok = await useAlbumsStore.getState().setCover('A', 'ar-1')
+    expect(ok).toBe(true)
+    expect(mockSetAlbumCover).toHaveBeenCalledWith('A', 'ar-1')
+    expect(mockListAlbums).not.toHaveBeenCalled()
+    expect(useAlbumsStore.getState().albums).toEqual([album('A', [], 'ar-1')])
+  })
+
+  it('setCover clears a cover with null', async () => {
+    useAlbumsStore.setState({ albums: [album('A', [], 'ar-1')] })
+    mockSetAlbumCover.mockResolvedValue([album('A')])
+    const ok = await useAlbumsStore.getState().setCover('A', null)
+    expect(ok).toBe(true)
+    expect(mockSetAlbumCover).toHaveBeenCalledWith('A', null)
+    expect(useAlbumsStore.getState().albums).toEqual([album('A')])
+  })
+
+  it('setCover surfaces an error', async () => {
+    useAlbumsStore.setState({ albums: [album('A')] })
+    mockSetAlbumCover.mockRejectedValue(new Error('disk failed'))
+    const ok = await useAlbumsStore.getState().setCover('A', 'ar-1')
+    expect(ok).toBe(false)
+    expect(useAlbumsStore.getState().error).toBe('disk failed')
   })
 
   it('addTrack adopts the refreshed list', async () => {

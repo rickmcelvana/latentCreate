@@ -427,7 +427,7 @@ Headlines:
       the half of it that is reachable -- a trasher that fails on the sidecar, asserting the project
       still lists the artwork so the delete can be retried. create-core 191->193, library 126->139,
       src-tauri 133->134.
-    - **T-506e-b — the cover stores. BRIEFED 2026-09-03** ([t-506e-b-brief.md](t-506e-b-brief.md))
+    - **T-506e-b — the cover stores. ✅ LANDED 2026-09-03** ([t-506e-b-brief.md](t-506e-b-brief.md))
       (no views). The frontend half is **split in two**, the c/d rhythm this phase has used twice
       already: e-b is every rule as a pure function or a tested store action, e-c is the layer this
       repo cannot test in `node`. Three bridge calls, `Track.cover` / `AlbumList.cover` on the wire
@@ -439,7 +439,16 @@ Headlines:
       states the rule unconditionally and appends the usage counts only when they are known, so a
       view that has not loaded the tracks says less rather than something false. `art.remove`
       reloads **three** stores, because `delete_art` rewrites track sidecars and album lists the
-      frontend is already holding.
+      frontend is already holding. Landed matching the brief. **The gate was not run** -- two
+      `tsc` errors (a missing `afterEach` import, an unused `beforeEach`). Two review fixes, both
+      about a test that passes for the wrong reason. The new delete-flow suite reset only its own
+      mock, so `listArt` still carried whatever the *previous* describe's last test had armed on it
+      -- its `error === null` assertion was decided by test order; it now resets and arms every mock
+      it touches, and asserts the gallery reload it was named for. And the `albumRows` fixture gave
+      every album `cover: null`, so `cover: album.cover` and `cover: null` were indistinguishable --
+      the survivor a mutation found, and the same shape as T-506c-c's `??`-swallowed default. Also
+      restored the house confirm wording (curly quotes around the name, as `ProjectDelete` has).
+      **Seventeen mutations, seventeen killed** after that fix. frontend 508->525.
     - **T-506e-c — the cover views**: `CoverPicker`, the control on a track card and an album row,
       Delete on a gallery tile, the CSS, and **the click-through**. Briefed after e-b lands.
 

@@ -31,6 +31,7 @@ function makeTrack(overrides: {
   file?: string
   license?: string
   inputs?: Record<string, InputValue>
+  cover?: string | null
 }): Track {
   const id = overrides.id
   return {
@@ -38,6 +39,7 @@ function makeTrack(overrides: {
     title: overrides.title ?? null,
     file: overrides.file ?? `tracks/${id}.flac`,
     duration_s: overrides.duration_s ?? null,
+    cover: overrides.cover ?? null,
     provenance: {
       profile_id: overrides.profile_id ?? 'ace-step-1.5-turbo',
       profile_display_name: overrides.profile_display_name ?? 'ACE-Step 1.5 XL Turbo',
@@ -111,6 +113,11 @@ describe('trackRows', () => {
     )
   })
 
+  it('carries the cover id through on the row', () => {
+    const rows = trackRows(makeSet([makeTrack({ id: 'tr-1', cover: 'ar-1' })]))
+    expect(rows[0].cover).toBe('ar-1')
+  })
+
   it('produces a complete row when prompt_id is null', () => {
     const rows = trackRows(makeSet([makeTrack({ id: 'tr-0001', prompt_id: null })]))
     expect(rows[0]).toMatchObject<TrackRow>({
@@ -124,6 +131,7 @@ describe('trackRows', () => {
       seed: '--',
       promptId: null,
       file: 'tracks/tr-0001.flac',
+      cover: null,
     })
   })
 })

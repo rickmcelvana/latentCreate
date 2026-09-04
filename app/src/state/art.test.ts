@@ -1,11 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArtSet, ArtWarning, Artwork } from '../bridge/art'
 import type { InputValue } from './params'
+import { useAlbumsStore } from './albums'
+import { useLibraryStore } from './library'
 import { EMPTY_ART, artRows, artWarningLine, useArtStore } from './art'
 
 const mockListArt = vi.fn()
 const mockArtImageUrl = vi.fn()
 const mockSubscribeArt = vi.fn()
+const mockDeleteArt = vi.fn()
 // Togglable, the way `projects.test.ts` holds it: `startListening` is guarded on
 // `isTauri()`, so a fixed `false` would make its test assert on a call the guard
 // had already refused -- a guard that reads as a subscription that happened.
@@ -16,6 +19,7 @@ vi.mock('../bridge/art', () => ({
   artImageUrl: (id: string) => mockArtImageUrl(id),
   subscribeArt: (cb: (e: { id: string; project_slug: string; file: string }) => void) =>
     mockSubscribeArt(cb),
+  deleteArt: (id: string) => mockDeleteArt(id),
 }))
 
 vi.mock('../bridge/jobs', () => ({ isTauri: () => mockIsTauri }))
@@ -140,6 +144,7 @@ describe('art store', () => {
     mockListArt.mockReset()
     mockArtImageUrl.mockReset()
     mockSubscribeArt.mockReset()
+    mockDeleteArt.mockReset()
     mockIsTauri = false
 
     useArtStore.setState({
@@ -149,6 +154,7 @@ describe('art store', () => {
       loading: false,
       error: null,
       listening: false,
+      confirmingDelete: null,
     })
   })
 
@@ -239,5 +245,71 @@ describe('art store', () => {
       "1 artwork sidecar could not be read; check the files in your project's art folder.",
     )
     expect(useArtStore.getState().error).toBeNull()
+  })
+})
+
+describe('delete flow', () => {
+  beforeEach(() => {
+    // Every mock this suite touches, not just its own: `remove` calls the
+    // gallery's `load`, so a `listArt` left armed by the previous describe's
+    // last test would decide whether `error` is null here. A guard that reads
+    // an earlier test's state proves nothing (T-505d-d, T-506c-b).
+    mockDeleteArt.mockReset()
+    mockListArt.mockReset()
+    mockArtImageUrl.mockReset()
+    mockListArt.mockResolvedValue(makeSet([]))
+    mockArtImageUrl.mockResolvedValue('url-1')
+    useArtStore.setState({
+      art: [],
+      byId: {},
+      warnings: null,
+      loading: false,
+      error: null,
+      listening: false,
+      confirmingDelete: null,
+    })
+    vi.spyOn(useLibraryStore.getState(), 'load').mockResolvedValue(undefined)
+    vi.spyOn(useAlbumsStore.getState(), 'load').mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('arms and disarms the inline confirm', () => {
+    useArtStore.getState().askDelete('ar-1')
+    expect(useArtStore.getState().confirmingDelete).toBe('ar-1')
+    expect(useArtStore.getState().error).toBeNull()
+
+    useArtStore.getState().cancelDelete()
+    expect(useArtStore.getState().confirmingDelete).toBeNull()
+  })
+
+  // Protects: a track's cover was cleared on disk by this call, and a stale row
+  // would show a cover that is gone.
+  it('remove reloads the gallery, the library and the albums', async () => {
+    mockDeleteArt.mockResolvedValue(undefined)
+    const ok = await useArtStore.getState().remove('ar-1')
+    expect(ok).toBe(true)
+    expect(mockDeleteArt).toHaveBeenCalledWith('ar-1')
+    expect(mockListArt).toHaveBeenCalledTimes(1)
+    expect(useLibraryStore.getState().load).toHaveBeenCalled()
+    expect(useAlbumsStore.getState().load).toHaveBeenCalled()
+    expect(useArtStore.getState().confirmingDelete).toBeNull()
+    expect(useArtStore.getState().error).toBeNull()
+  })
+
+  // Protects: the tile stays in confirm state so the user can retry or cancel.
+  it('a failed remove keeps confirmingDelete set, stores the error, and reloads nothing', async () => {
+    mockDeleteArt.mockRejectedValue(new Error('trash failed'))
+    useArtStore.getState().askDelete('ar-1')
+    const ok = await useArtStore.getState().remove('ar-1')
+    expect(ok).toBe(false)
+    expect(mockDeleteArt).toHaveBeenCalledWith('ar-1')
+    expect(mockListArt).not.toHaveBeenCalled()
+    expect(useLibraryStore.getState().load).not.toHaveBeenCalled()
+    expect(useAlbumsStore.getState().load).not.toHaveBeenCalled()
+    expect(useArtStore.getState().confirmingDelete).toBe('ar-1')
+    expect(useArtStore.getState().error).toBe('trash failed')
   })
 })
