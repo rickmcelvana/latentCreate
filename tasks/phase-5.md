@@ -353,8 +353,25 @@ Headlines:
       `.trim()` survived, a hole carried in unchanged from `trackModel` and now shared by two
       stores, so a whitespace-only display name (an emitted profile takes its name from a workflow
       filename) is pinned. frontend 476->497.
-  - **T-506d — the CoverArt view** (frontend; **this lane has the click-through**). Image profile
-    picker, param panel, Generate, the shared job queue, and a grid of what has been made.
+  - **T-506d — the CoverArt view. BRIEFED 2026-09-03** ([t-506d-brief.md](t-506d-brief.md))
+    (frontend; **this lane has the click-through**). Image profile picker, param panel, Generate,
+    the shared job queue, and a grid of what has been made. Two extractions keep it from becoming a
+    second Audio Studio: `ParamPanel` takes its store as a prop (`ParamPanelStore =
+    ReturnType<typeof createParamPanelStore>`), which is the last thing pinning the T-506c-b factory
+    to one instance; and `ProfilePickerRow` moves to its own file, because it is the component that
+    renders the **licence** and a second copy is where CONVENTIONS' commercial-use rule stops being
+    true in one of the two studios. `GenerateArtBar` is deliberately **not** a prop on `GenerateBar`
+    -- that bar reads a lyric document Cover Art has none of, and every rule the bar enforces
+    (`blockers`, `canBatch`, `effectiveCount`, `queueingLabel`, `notesFor`) is already a shared pure
+    function with a test, so the duplication is confined to the layer this repo cannot test anyway.
+    Cover Art has more empty states than the Audio Studio because **the app ships no image
+    profile** -- a first visit can have nothing chosen *and* nothing to choose -- so
+    `imageStudioState` names five (`loading`/`no-profiles`/`none-chosen`/`missing`/`ready`) and
+    `imageStudioNote` holds their sentences, as values rather than JSX. **The click-through is
+    eleven steps and reads the files, not only the screen**: steps 5 and 6 are the whole point,
+    proving the two lines in `ingest_if_pending` no `src-tauri` test can reach -- the `Saved::Art`
+    arm emitting `art://saved` (a tile appears with no reload) and `ModelKind::Image => art_dir`
+    (the PNG lands in `art/`, not `tracks/`).
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
     sidecar** (`Track.cover: Option<ArtId>`) and an album's in its `AlbumList`, per ARCHITECTURE §8's
     one-source-of-truth rule; the artwork sidecar stays a pure provenance record. **`delete_art`
