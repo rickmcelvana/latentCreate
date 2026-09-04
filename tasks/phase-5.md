@@ -290,9 +290,10 @@ Headlines:
     after rewriting the art counter test, which minted and wrote by hand and so survived moving the
     counter save *after* the file write; it is now the art mirror of the track burn test, driven
     through `ingest_outputs`. The repo's own comment on that track test already said a hand-ordered
-    test cannot see a reordering. **Two production lines are not unit-testable** and wait for
+    test cannot see a reordering. **Two production lines are not unit-testable** and waited for
     T-506d's click-through: the download-directory choice and the two-event dispatch both live in
-    `ingest_if_pending`, which needs an `AppHandle` no test in the crate builds. src-tauri 121→133.
+    `ingest_if_pending`, which needs an `AppHandle` no test in the crate builds. **Both discharged
+    2026-09-03** by T-506d's click-through steps 5 and 6. src-tauri 121→133.
   - **T-506c — the art generation store. SPLIT INTO TWO 2026-09-03**, because the stores need a
     config field and two read commands that do not exist, and mixing Rust into the store lane is
     what the T-504 -> T-505a cadence exists to avoid.
@@ -353,7 +354,7 @@ Headlines:
       `.trim()` survived, a hole carried in unchanged from `trackModel` and now shared by two
       stores, so a whitespace-only display name (an emitted profile takes its name from a workflow
       filename) is pinned. frontend 476->497.
-  - **T-506d — the CoverArt view. ✅ LANDED 2026-09-03, AWAITING CLICK-THROUGH**
+  - **T-506d — the CoverArt view. ✅ LANDED 2026-09-03; CLICK-THROUGH PASSED (all 11 steps)**
     ([t-506d-brief.md](t-506d-brief.md))
     (frontend; **this lane has the click-through**). Image profile picker, param panel, Generate,
     the shared job queue, and a grid of what has been made. Two extractions keep it from becoming a
@@ -381,7 +382,14 @@ Headlines:
     against the image list, and a test pins it. And `ArtTile`'s `broken` flag never cleared, so a
     tile that failed to load once stayed "not found" for the life of the mount, including after the
     file came back -- reset on `row` identity, which `artRows` changes on exactly a reload and never
-    on an unrelated re-render. **Nine mutations, nine killed.** frontend 497->508.
+    on an unrelated re-render. **Nine mutations, nine killed.** frontend 497->508. **Click-through: all
+    eleven steps passed 2026-09-03** -- the tile appears with no reload (the `Saved::Art` arm emits
+    `art://saved`), the PNG lands in `art/` rather than `tracks/` (`ModelKind::Image => art_dir`),
+    the sidecar's resolved slots and its 768x768 match the executed graph, the two panels stay
+    independent across a view switch, a batch of two gives two seeds and two tiles, a project switch
+    changes the gallery, a renamed file reads as missing and keeps its facts, and the Library is
+    undisturbed by `provenanceView`'s new signature. **Cover art now works end to end**, and the
+    two `ingest_if_pending` lines named as untested at T-506b are discharged.
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
     sidecar** (`Track.cover: Option<ArtId>`) and an album's in its `AlbumList`, per ARCHITECTURE §8's
     one-source-of-truth rule; the artwork sidecar stays a pure provenance record. **`delete_art`
