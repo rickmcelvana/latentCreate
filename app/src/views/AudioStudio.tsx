@@ -4,6 +4,7 @@ import { ImportWorkflow } from '../components/ImportWorkflow'
 import { JobQueue } from '../components/JobQueue'
 import { LoraStack } from '../components/LoraStack'
 import { ParamPanel } from '../components/ParamPanel'
+import { ProfilePickerRow } from '../components/ProfilePickerRow'
 import { useConfigStore } from '../state/config'
 import { useJobsStore } from '../state/jobs'
 import { useLoraPanelStore } from '../state/loraPanel'
@@ -14,7 +15,6 @@ import {
   pickable,
   profileRow,
   selectedProfile,
-  type ProfileRow,
 } from '../state/profiles'
 
 export function AudioStudio() {
@@ -81,6 +81,7 @@ export function AudioStudio() {
               key={profile.id}
               row={profileRow(profile)}
               selected={profile.id === effectiveId}
+              group="profile"
               onSelect={() => void save({ default_profile_id: profile.id })}
             />
           ))}
@@ -89,7 +90,7 @@ export function AudioStudio() {
         <ImportWorkflow />
       </section>
 
-      <ParamPanel />
+      <ParamPanel store={useParamPanelStore} />
 
       <LoraStack />
 
@@ -97,44 +98,5 @@ export function AudioStudio() {
 
       <JobQueue names={names} />
     </>
-  )
-}
-
-function ProfilePickerRow({
-  row,
-  selected,
-  onSelect,
-}: {
-  row: ProfileRow
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <li className={`profile-row ${selected ? 'profile-row-selected' : ''}`}>
-      <label className="profile-row-pick">
-        <input
-          type="radio"
-          name="profile"
-          checked={selected}
-          onChange={onSelect}
-        />
-        <span className="profile-row-name">{row.displayName}</span>
-      </label>
-
-      <div className="profile-row-meta">
-        <span className={`status-pill status-pill-${row.readiness.tone}`}>
-          {row.readiness.label}
-        </span>
-        <span className="profile-row-origin">{row.origin}</span>
-        {row.vramClaim !== null ? (
-          <span className="profile-row-vram">{row.vramClaim}</span>
-        ) : null}
-      </div>
-
-      <p className="profile-row-license">
-        <span className="profile-row-license-name">{row.license}</span>
-        {row.licenseNotes !== null ? ` -- ${row.licenseNotes}` : null}
-      </p>
-    </li>
   )
 }

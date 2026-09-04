@@ -1,15 +1,15 @@
 import { groupsOf, seedError, type Control, type ControlValue } from '../state/params'
-import { MAX_SAFE_SEED, useParamPanelStore } from '../state/paramPanel'
+import { MAX_SAFE_SEED, type ParamPanelStore } from '../state/paramPanel'
 
-export function ParamPanel() {
-  const model = useParamPanelStore((s) => s.model)
-  const values = useParamPanelStore((s) => s.values)
-  const showAdvanced = useParamPanelStore((s) => s.showAdvanced)
-  const error = useParamPanelStore((s) => s.error)
-  const setValue = useParamPanelStore((s) => s.setValue)
-  const rerollSeed = useParamPanelStore((s) => s.rerollSeed)
-  const toggleAdvanced = useParamPanelStore((s) => s.toggleAdvanced)
-  const refreshChoices = useParamPanelStore((s) => s.refreshChoices)
+export function ParamPanel({ store }: { store: ParamPanelStore }) {
+  const model = store((s) => s.model)
+  const values = store((s) => s.values)
+  const showAdvanced = store((s) => s.showAdvanced)
+  const error = store((s) => s.error)
+  const setValue = store((s) => s.setValue)
+  const rerollSeed = store((s) => s.rerollSeed)
+  const toggleAdvanced = store((s) => s.toggleAdvanced)
+  const refreshChoices = store((s) => s.refreshChoices)
 
   return (
     <section className="panel param-panel">

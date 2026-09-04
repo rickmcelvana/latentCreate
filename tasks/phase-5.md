@@ -353,7 +353,8 @@ Headlines:
       `.trim()` survived, a hole carried in unchanged from `trackModel` and now shared by two
       stores, so a whitespace-only display name (an emitted profile takes its name from a workflow
       filename) is pinned. frontend 476->497.
-  - **T-506d — the CoverArt view. BRIEFED 2026-09-03** ([t-506d-brief.md](t-506d-brief.md))
+  - **T-506d — the CoverArt view. ✅ LANDED 2026-09-03, AWAITING CLICK-THROUGH**
+    ([t-506d-brief.md](t-506d-brief.md))
     (frontend; **this lane has the click-through**). Image profile picker, param panel, Generate,
     the shared job queue, and a grid of what has been made. Two extractions keep it from becoming a
     second Audio Studio: `ParamPanel` takes its store as a prop (`ParamPanelStore =
@@ -371,7 +372,16 @@ Headlines:
     eleven steps and reads the files, not only the screen**: steps 5 and 6 are the whole point,
     proving the two lines in `ingest_if_pending` no `src-tauri` test can reach -- the `Saved::Art`
     arm emitting `art://saved` (a tile appears with no reload) and `ModelKind::Image => art_dir`
-    (the PNG lands in `art/`, not `tracks/`).
+    (the PNG lands in `art/`, not `tracks/`). Landed matching the brief; both extractions are
+    verbatim. **The gate was not run** -- one unused-variable error stood. Two review fixes, both
+    about a stale value outliving what produced it: `selectedImageProfile` resolved a configured id
+    against **every** profile, so a *music* id in `default_image_profile_id` -- two independent
+    fields, and `config.json` is editable -- read as `ready` and would have put a music param panel
+    in Cover Art with only `generate_image`'s kind guard behind it at submit; it now resolves
+    against the image list, and a test pins it. And `ArtTile`'s `broken` flag never cleared, so a
+    tile that failed to load once stayed "not found" for the life of the mount, including after the
+    file came back -- reset on `row` identity, which `artRows` changes on exactly a reload and never
+    on an unrelated re-render. **Nine mutations, nine killed.** frontend 497->508.
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
     sidecar** (`Track.cover: Option<ArtId>`) and an album's in its `AlbumList`, per ARCHITECTURE §8's
     one-source-of-truth rule; the artwork sidecar stays a pure provenance record. **`delete_art`

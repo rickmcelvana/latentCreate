@@ -66,6 +66,12 @@ export function selectedProfile(
  * `null` while the list has not loaded, when nothing is chosen, and when the
  * configured id names a profile that is no longer there -- a deleted or renamed
  * user profile. The caller says which, rather than substituting another model.
+ *
+ * **Resolved against the image profiles, not all of them.**
+ * `default_image_profile_id` is its own field, and `config.json` is a file a
+ * user can open: an id naming a *music* profile must read as "not one of these"
+ * rather than as a chosen model, or Cover Art would show that model's panel and
+ * only `generate_image`'s kind guard (T-506b) would stop it, at submit.
  */
 export function selectedImageProfile(
   view: ModelsView | null,
@@ -73,7 +79,54 @@ export function selectedImageProfile(
 ): ProfileStatus | null {
   const id = effectiveImageProfileId(config)
   if (id === null) return null
-  return (view?.profiles ?? []).find((p) => p.id === id) ?? null
+  return pickable(view, 'image').find((p) => p.id === id) ?? null
+}
+
+/**
+ * What Cover Art can say for itself right now.
+ *
+ * `loading` -- the profile list has not come back.
+ * `no-profiles` -- it came back with no image profiles at all; nothing to pick.
+ * `none-chosen` -- image profiles exist and the user has not chosen one. There
+ *   is no default to fall back on (see `effectiveImageProfileId`), so this is a
+ *   real state rather than a moment before one.
+ * `missing` -- an id is configured that no loaded profile answers to: a user
+ *   profile deleted from disk, or renamed. Named rather than silently
+ *   re-picked, the same rule the Audio Studio's fallback note follows.
+ * `ready` -- a chosen profile is loaded.
+ */
+export type ImageStudioState = 'loading' | 'no-profiles' | 'none-chosen' | 'missing' | 'ready'
+
+export function imageStudioState(view: ModelsView | null, config: Config | null): ImageStudioState {
+  if (view === null) return 'loading'
+  if (pickable(view, 'image').length === 0) return 'no-profiles'
+  const chosen = selectedImageProfile(view, config)
+  if (chosen === null) {
+    const id = effectiveImageProfileId(config)
+    return id === null ? 'none-chosen' : 'missing'
+  }
+  return 'ready'
+}
+
+/**
+ * The sentence for a state, or `null` when there is nothing to say.
+ *
+ * `id` is the configured id, needed only by `missing` -- naming it is what lets
+ * a user find the profile they renamed.
+ */
+export function imageStudioNote(state: ImageStudioState, id: string | null): string | null {
+  switch (state) {
+    case 'loading':
+      return null
+    case 'no-profiles':
+      return 'No image model profile yet. Bring one in from the model catalog in Setup.'
+    case 'none-chosen':
+      return 'Pick an image model to start.'
+    case 'missing':
+      return `The configured image profile ${id} is not among the loaded profiles. Pick one below to continue.`
+    case 'ready':
+      return null
+  }
 }
 
 /** One picker row, as the view renders it. */

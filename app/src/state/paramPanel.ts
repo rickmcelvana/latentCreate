@@ -224,6 +224,9 @@ export function createParamPanelStore() {
   }))
 }
 
+/** The type of one panel store, so a component can take either instance. */
+export type ParamPanelStore = ReturnType<typeof createParamPanelStore>
+
 /** The Audio Studio's panel. */
 export const useParamPanelStore = createParamPanelStore()
 

@@ -2762,3 +2762,87 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* --- Cover Art (T-506d) --- */
+
+.art-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--gap-md);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.art-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.art-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.art-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.art-name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.art-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--gap-xs) var(--gap-md);
+  margin: 0;
+}
+
+.art-fact dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.art-fact dd {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-picker-setup {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.profile-picker-setup:hover {
+  background: var(--panel-hover);
+  border-color: var(--accent);
+}

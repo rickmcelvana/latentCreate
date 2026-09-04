@@ -5,6 +5,8 @@ import {
   DEFAULT_PROFILE_ID,
   effectiveImageProfileId,
   effectiveProfileId,
+  imageStudioNote,
+  imageStudioState,
   pickable,
   profileRow,
   selectedImageProfile,
@@ -148,6 +150,70 @@ describe('selectedImageProfile', () => {
     expect(
       selectedImageProfile(view([profile({ id: 'flux2-klein-9b', kind: 'image' })]), configWithImage(null)),
     ).toBeNull()
+  })
+})
+
+describe('imageStudioState', () => {
+  it('is loading when the view has not loaded', () => {
+    expect(imageStudioState(null, configWithImage(null))).toBe('loading')
+  })
+
+  it('is no-profiles when the list has no image profiles, even if a music id is configured', () => {
+    const music = profile({ id: 'music', kind: 'music' })
+    expect(imageStudioState(view([music]), configWithImage(null))).toBe('no-profiles')
+  })
+
+  it('is none-chosen when image profiles exist but none is chosen', () => {
+    const img = profile({ id: 'img', kind: 'image' })
+    expect(imageStudioState(view([img]), configWithImage(null))).toBe('none-chosen')
+  })
+
+  it('is missing when the configured id is not in the list', () => {
+    const img = profile({ id: 'img', kind: 'image' })
+    expect(imageStudioState(view([img]), configWithImage('gone'))).toBe('missing')
+  })
+
+  /**
+   * Invariant: a *music* id in the image slot is `missing`, never `ready`.
+   * The two default fields are independent and `config.json` is editable, so
+   * this is reachable -- and reading it as ready would put a music param panel
+   * in Cover Art with only the backend's kind guard behind it.
+   */
+  it('is missing when the configured id names a music profile', () => {
+    const music = profile({ id: 'music', kind: 'music' })
+    const img = profile({ id: 'img', kind: 'image' })
+    expect(imageStudioState(view([music, img]), configWithImage('music'))).toBe('missing')
+  })
+
+  it('is ready when a configured image profile is loaded', () => {
+    const img = profile({ id: 'img', kind: 'image' })
+    expect(imageStudioState(view([img]), configWithImage('img'))).toBe('ready')
+  })
+})
+
+describe('imageStudioNote', () => {
+  it('says nothing while loading', () => {
+    expect(imageStudioNote('loading', null)).toBeNull()
+  })
+
+  it('says nothing when ready', () => {
+    expect(imageStudioNote('ready', null)).toBeNull()
+  })
+
+  it('points to the catalog when no image profiles exist', () => {
+    expect(imageStudioNote('no-profiles', null)).toBe(
+      'No image model profile yet. Bring one in from the model catalog in Setup.',
+    )
+  })
+
+  it('asks the user to pick when profiles exist but none is chosen', () => {
+    expect(imageStudioNote('none-chosen', null)).toBe('Pick an image model to start.')
+  })
+
+  it('names the missing configured id', () => {
+    expect(imageStudioNote('missing', 'gone')).toBe(
+      'The configured image profile gone is not among the loaded profiles. Pick one below to continue.',
+    )
   })
 })
 
