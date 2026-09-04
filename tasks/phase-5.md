@@ -229,7 +229,8 @@ Headlines:
   auto-download, no URL-from-prose). An image curated entry also gives T-506 its profile.
 
 ### Cover art — generation over an image profile
-- **T-506 — CoverArt generation. SPLIT INTO FIVE LANES 2026-09-03**, scoped against a **live
+- **T-506 — CoverArt generation. ✅ COMPLETE 2026-09-03** (all five lanes landed; both
+  click-throughs passed). **SPLIT INTO FIVE LANES 2026-09-03**, scoped against a **live
   end-to-end run of the adopted Klein profile outside the app** — the same sequence
   `build_and_submit` performs, then `GET /history` to read what actually executed
   ([docs/MCP-SURFACE.md §35](../docs/MCP-SURFACE.md)). Three findings decide where the split falls:
@@ -449,7 +450,7 @@ Headlines:
       the survivor a mutation found, and the same shape as T-506c-c's `??`-swallowed default. Also
       restored the house confirm wording (curly quotes around the name, as `ProjectDelete` has).
       **Seventeen mutations, seventeen killed** after that fix. frontend 508->525.
-    - **T-506e-c — the cover views. ✅ LANDED 2026-09-03, AWAITING CLICK-THROUGH**
+    - **T-506e-c — the cover views. ✅ LANDED 2026-09-03; CLICK-THROUGH PASSED (all 12 steps)**
       ([t-506e-c-brief.md](t-506e-c-brief.md)).
       `CoverPicker` (presentational, reads **no store** -- its two callers write through different
       ones, and a store read inside would make the component pick a side), the control on a track
@@ -472,7 +473,13 @@ Headlines:
       comment written during T-506d's own review, none of them near anything it was asked to
       change. All restored. No mutations: this lane adds no decidable logic, which is the claim the
       brief makes and the reason the twelve-step click-through is its acceptance. frontend 525
-      (unchanged -- no new tests, by design).
+      (unchanged -- no new tests, by design). **Click-through: all twelve steps passed
+      2026-09-03** -- a cover attaches and clears on a track and an album with the track sidecar's
+      `provenance` untouched, deleting an artwork in use names both counts in its confirm and then
+      settles three views with no manual reload, the trashed files are in the Recycle Bin rather
+      than erased, a hand-edited dangling cover renders as missing and is repairable from the
+      picker, ids are still not reused after a delete, and covers follow their project across a
+      switch. **T-506 is complete.**
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start
