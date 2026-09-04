@@ -307,13 +307,20 @@ Headlines:
       a `Config` literal, which the wire-fixture tripwire found immediately and correctly. library
       124->126. `art.rs` has no tests, the same rule `tracks.rs` follows: both commands take Tauri
       `State`, which no test in the crate builds.
-    - **T-506c-b — the frontend stores** (no UI). The param-panel **store factory**
-      (`paramPanel.ts` is a module-level singleton today, so a CoverArt view loading an image
-      profile into it would reset the Audio Studio's values on every view switch -- the T-505d-d
-      singleton lesson, one store over), a `generateImage` bridge, an art submit store reusing
-      `specsFor` with an empty LoRA stack and no lyric document, an artwork listing store over
-      `library_art` + `art://saved`, and `effectiveImageProfileId` returning **`string | null`**
-      rather than a shipped default.
+    - **T-506c-b — the panel factory and the art submit store. BRIEFED 2026-09-03**
+      ([t-506c-b-brief.md](t-506c-b-brief.md)) (no UI). `paramPanel.ts` becomes
+      `createParamPanelStore()` with two instances -- it is a module-level singleton today, so a
+      CoverArt view loading an image profile into it would reset the Audio Studio's values on every
+      view switch and re-roll a seed the user had already seen (the T-505d-d singleton lesson, one
+      store over); the store body is unchanged and every existing importer keeps working. Plus a
+      `generateImage` bridge, `state/artGenerate.ts` reusing `specsFor` with an **empty LoRA stack
+      and no lyric document** (an adopted image profile declares neither, so nothing is invented),
+      and `effectiveImageProfileId` / `selectedImageProfile` returning **`string | null`** with no
+      fallback -- there is no shipped image profile to fall back to.
+    - **T-506c-c — the artwork listing store** (`bridge/art.ts`, `state/art.ts`): rows over
+      `library_art`, image paths over `art_image_path`, and the `art://saved` subscription that
+      makes a finished cover appear without a reload, mirroring what `track://saved` does for the
+      Library.
   - **T-506d — the CoverArt view** (frontend; **this lane has the click-through**). Image profile
     picker, param panel, Generate, the shared job queue, and a grid of what has been made.
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track
