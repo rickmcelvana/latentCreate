@@ -449,8 +449,21 @@ Headlines:
       the survivor a mutation found, and the same shape as T-506c-c's `??`-swallowed default. Also
       restored the house confirm wording (curly quotes around the name, as `ProjectDelete` has).
       **Seventeen mutations, seventeen killed** after that fix. frontend 508->525.
-    - **T-506e-c — the cover views**: `CoverPicker`, the control on a track card and an album row,
-      Delete on a gallery tile, the CSS, and **the click-through**. Briefed after e-b lands.
+    - **T-506e-c — the cover views. BRIEFED 2026-09-03** ([t-506e-c-brief.md](t-506e-c-brief.md)).
+      `CoverPicker` (presentational, reads **no store** -- its two callers write through different
+      ones, and a store read inside would make the component pick a side), the control on a track
+      card and an album row, Delete with its confirm on a gallery tile, and the CSS. **No new
+      logic**: every decision is already a tested function in `state/covers.ts`, and the brief makes
+      "if something seems to need a new one, stop and ask" an acceptance criterion. Cover Art loads
+      the library and albums stores on mount, which is not incidental -- `deleteArtPrompt` can only
+      name what a delete will detach if they are loaded, and the alternative is a confirm that
+      understates what it is about to do. **Twelve-step click-through**, reading the files rather
+      than the screen: the track sidecar's `provenance` unchanged by attaching a cover (step 2, the
+      rule the field is placed to keep), three views settling with no manual reload after a delete
+      (step 6, what `remove`'s three store reloads buy), the trashed files still in the Recycle Bin
+      (7), and a hand-made dangling cover rendering as missing and repairable (9 -- the state e-a's
+      non-atomic clearing can leave, named there so it would be designed for rather than
+      discovered).
 
 ### Packaging & public-repo readiness (original Phase 5 scope)
 - **T-507 — First-run polish + empty/degraded-states audit.** Sweep every view for the cold-start
