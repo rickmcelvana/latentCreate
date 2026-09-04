@@ -220,12 +220,81 @@ pub fn dimensions_of(path: &Path) -> Option<(u32, u32)> {
     png_dimensions(&head)
 }
 
+/// Delete one artwork -- image and sidecar to OS trash, id unlisted, and any
+/// cover references cleared.
+///
+/// **A cover reference does not block the delete; it is cleared.** This is the
+/// opposite of `lyrics::delete_doc`: a `LyricRef` is part of the recipe and must
+/// stay reproducible, but a cover is an editable pointer like `title`. Nothing
+/// about reproducing a track depends on it, so refusing would force the user to
+/// detach a cover from every track and album before deleting it -- friction
+/// bought with no protection.
+///
+/// **Order: files first, record last, missing files tolerated.** A crash after
+/// trashing but before the save leaves the project listing an artwork whose
+/// files are gone -- the "Missing" state `list_art` already renders -- and a
+/// retry completes cleanly because the trash step skips what is already missing.
+/// The reverse order would strand files nothing references with no id left to
+/// retry.
+///
+/// **Cover clearing is N separate atomic writes, not one transaction.** A crash
+/// part-way leaves some tracks with no cover and some naming a deleted one; both
+/// are states the view has to render anyway, which is why this is tolerable
+/// rather than hidden.
+///
+/// `next_art_seq` is untouched, so the freed id is never reissued and a
+/// surviving cover reference can never come to mean a different image.
+pub fn delete_art<F>(root: &Path, slug: &str, id: &ArtId, trash: F) -> Result<(), LibraryError>
+where
+    F: Fn(&Path) -> Result<(), LibraryError>,
+{
+    let mut project = crate::projects::load_project(root, slug)?;
+    if !project.art.contains(id) {
+        return Err(LibraryError::NotFound {
+            kind: "artwork",
+            id: id.0.clone(),
+        });
+    }
+
+    // Load the sidecar to learn the image filename, and trash the image. A
+    // sidecar that will not load is tolerated: the record is still cleaned, and
+    // at worst one orphan image is left for a degraded artwork the user is
+    // deleting anyway.
+    if let Ok(art) = load_art(root, slug, id) {
+        let image = resolve_art_file(root, slug, &art.file)?;
+        crate::tracks::trash_if_present(&image, &trash)?;
+    }
+    crate::tracks::trash_if_present(&sidecar_path(root, slug, id)?, &trash)?;
+
+    // Clear the cover from every track sidecar naming it.
+    for track_id in &project.tracks {
+        if let Ok(mut track) = crate::tracks::load_track(root, slug, track_id) {
+            if track.cover.as_ref() == Some(id) {
+                track.cover = None;
+                crate::tracks::save_track(root, slug, &track)?;
+            }
+        }
+    }
+
+    // Clear the cover from every album naming it.
+    for album in &mut project.albums {
+        if album.cover.as_ref() == Some(id) {
+            album.cover = None;
+        }
+    }
+
+    project.art.retain(|a| a != id);
+    crate::projects::save_project(root, &project)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::projects::{load_project, save_project};
     use create_core::generation::{GenerationSpec, InputValue};
     use create_core::profile::SlotAddress;
+    use create_core::project::TrackId;
     use create_core::provenance::{ComfyServerInfo, Provenance};
     use std::collections::BTreeMap;
 
@@ -280,6 +349,62 @@ mod tests {
                 prompt_id: Some("a1b2c3d4-e5f6-7890-abcd-ef1234567890".to_string()),
             },
         }
+    }
+
+    /// A fake trasher that records what it was asked to trash and moves it out
+    /// of the way, so a later `exists()` check sees it gone -- without touching
+    /// the real Recycle Bin. `RefCell` because the closure is `Fn`, not `FnMut`.
+    fn recording_trasher<'a>(
+        seen: &'a std::cell::RefCell<Vec<PathBuf>>,
+        graveyard: &Path,
+    ) -> impl Fn(&Path) -> Result<(), LibraryError> + 'a {
+        let graveyard = graveyard.to_path_buf();
+        move |path: &Path| {
+            seen.borrow_mut().push(path.to_path_buf());
+            let name = path.file_name().unwrap();
+            fs::rename(path, graveyard.join(name))?;
+            Ok(())
+        }
+    }
+
+    /// Create a track sidecar with an optional cover, registered on the project.
+    fn track_with_cover(
+        root: &Path,
+        slug: &str,
+        proj: &mut Project,
+        id: &str,
+        cover: Option<ArtId>,
+    ) -> create_core::provenance::Track {
+        use create_core::provenance::Track;
+
+        let track_id = TrackId(id.to_string());
+        let track = Track {
+            id: track_id.clone(),
+            title: None,
+            cover,
+            file: format!("tracks/{}.flac", id),
+            duration_s: None,
+            provenance: Provenance {
+                profile_id: "ace-step-1.5-turbo".to_string(),
+                profile_display_name: "ACE-Step".to_string(),
+                model_license: "Apache-2.0".to_string(),
+                template: None,
+                spec: GenerationSpec {
+                    title: None,
+                    profile_id: "ace-step-1.5-turbo".to_string(),
+                    inputs: BTreeMap::new(),
+                    loras: vec![],
+                    lyrics: None,
+                },
+                resolved_slots: BTreeMap::new(),
+                comfy: None,
+                created_at: NOW.to_string(),
+                prompt_id: None,
+            },
+        };
+        crate::tracks::save_track(root, slug, &track).unwrap();
+        proj.tracks.push(track_id);
+        track
     }
 
     /// Invariant: ids come from the counter, padded so sorting by name matches
@@ -541,5 +666,263 @@ mod tests {
         fs::write(&path, b"\x89PNG").unwrap();
 
         assert_eq!(dimensions_of(&path), None);
+    }
+
+    /// Invariant: **files first, record last.** A trash failure part-way leaves
+    /// the project still listing the artwork, so a retry completes -- the
+    /// `delete_track` discipline this mirrors. Writing the record first would
+    /// strand files nothing references with no id left to retry them under, and
+    /// this is the one half of that ordering a test can reach without
+    /// simulating a crash: trashing really can fail (a locked file, a volume
+    /// with no Recycle Bin).
+    #[test]
+    fn test_a_failed_trash_leaves_the_record_intact_for_a_retry() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let id = mint_art_id(&mut proj);
+        register_artwork(root.path(), &mut proj, &id);
+        fs::write(
+            image_path(root.path(), &proj.slug, &id, "png").unwrap(),
+            b"PNGDATA",
+        )
+        .unwrap();
+        save_project(root.path(), &proj).unwrap();
+
+        // Succeeds on the image, fails on the sidecar.
+        let calls = std::cell::RefCell::new(0usize);
+        let failing = |_: &Path| -> Result<(), LibraryError> {
+            let mut n = calls.borrow_mut();
+            *n += 1;
+            if *n == 1 {
+                Ok(())
+            } else {
+                Err(LibraryError::Trash("locked".to_string()))
+            }
+        };
+
+        let err = delete_art(root.path(), &proj.slug, &id, failing).unwrap_err();
+        assert!(matches!(err, LibraryError::Trash(_)));
+
+        let reloaded = load_project(root.path(), &proj.slug).unwrap();
+        assert!(
+            reloaded.art.contains(&id),
+            "the record must survive a failed trash so the delete can be retried"
+        );
+    }
+
+    /// Invariant: deleting an artwork trashes both its files and unlists the id.
+    #[test]
+    fn test_delete_art_trashes_both_files_and_unlists_the_id() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let id = mint_art_id(&mut proj);
+        let art = sample_artwork(id.clone(), format!("art/{}.png", id.0));
+        save_art(root.path(), &proj.slug, &art).unwrap();
+        fs::write(
+            image_path(root.path(), &proj.slug, &id, "png").unwrap(),
+            b"PNGDATA",
+        )
+        .unwrap();
+        proj.art.push(id.clone());
+        save_project(root.path(), &proj).unwrap();
+
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        delete_art(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let trashed = seen.into_inner();
+        assert_eq!(
+            trashed.len(),
+            2,
+            "both the image and the sidecar are trashed"
+        );
+        assert!(trashed.iter().any(|p| p.ends_with(format!("{}.png", id.0))));
+        assert!(trashed
+            .iter()
+            .any(|p| p.ends_with(format!("{}.json", id.0))));
+        assert!(graveyard.join(format!("{}.png", id.0)).exists());
+        assert!(graveyard.join(format!("{}.json", id.0)).exists());
+
+        let reloaded = load_project(root.path(), &proj.slug).unwrap();
+        assert!(!reloaded.art.contains(&id));
+    }
+
+    /// Invariant: a track whose cover names the deleted artwork loses the cover;
+    /// a track naming a *different* artwork is untouched. The twin of the lyric
+    /// version test: a clear-everything bug passes the first half and fails the
+    /// second.
+    #[test]
+    fn test_delete_art_clears_only_matching_track_covers() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let deleted = mint_art_id(&mut proj);
+        let other = mint_art_id(&mut proj);
+        register_artwork(root.path(), &mut proj, &deleted);
+        register_artwork(root.path(), &mut proj, &other);
+
+        // The slug is copied out first: `&proj.slug` and `&mut proj` in one call
+        // is an immutable and a mutable borrow of the same value.
+        let slug = proj.slug.clone();
+        let track_a = track_with_cover(
+            root.path(),
+            &slug,
+            &mut proj,
+            "tr-0001",
+            Some(deleted.clone()),
+        );
+        let track_b = track_with_cover(
+            root.path(),
+            &slug,
+            &mut proj,
+            "tr-0002",
+            Some(other.clone()),
+        );
+        save_project(root.path(), &proj).unwrap();
+
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+        delete_art(
+            root.path(),
+            &proj.slug,
+            &deleted,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let reloaded_a = crate::tracks::load_track(root.path(), &proj.slug, &track_a.id).unwrap();
+        let reloaded_b = crate::tracks::load_track(root.path(), &proj.slug, &track_b.id).unwrap();
+        assert_eq!(reloaded_a.cover, None);
+        assert_eq!(reloaded_b.cover, Some(other));
+    }
+
+    /// Invariant: an album whose cover names the deleted artwork loses the cover.
+    #[test]
+    fn test_delete_art_clears_matching_album_cover() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let id = mint_art_id(&mut proj);
+        register_artwork(root.path(), &mut proj, &id);
+
+        proj.albums.push(create_core::project::AlbumList {
+            name: "A".to_string(),
+            tracks: vec![],
+            cover: Some(id.clone()),
+        });
+        save_project(root.path(), &proj).unwrap();
+
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+        delete_art(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let reloaded = load_project(root.path(), &proj.slug).unwrap();
+        assert_eq!(reloaded.albums[0].cover, None);
+    }
+
+    /// Invariant: an unknown id is `NotFound` and the trasher is never called.
+    #[test]
+    fn test_delete_art_of_unknown_id_is_not_found_and_trashes_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = project(root.path());
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let err = delete_art(
+            root.path(),
+            &proj.slug,
+            &ArtId("ar-9999".to_string()),
+            recording_trasher(&seen, root.path()),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            LibraryError::NotFound {
+                kind: "artwork",
+                ..
+            }
+        ));
+        assert!(seen.into_inner().is_empty());
+    }
+
+    /// Invariant: a missing image file is tolerated -- the sidecar still goes
+    /// and the id still unlists.
+    #[test]
+    fn test_delete_art_tolerates_a_missing_image_file() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let id = mint_art_id(&mut proj);
+        let art = sample_artwork(id.clone(), format!("art/{}.png", id.0));
+        save_art(root.path(), &proj.slug, &art).unwrap();
+        // Deliberately do not write the image file.
+        proj.art.push(id.clone());
+        save_project(root.path(), &proj).unwrap();
+
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+        delete_art(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let trashed = seen.into_inner();
+        assert_eq!(trashed.len(), 1, "only the sidecar is trashed");
+        assert!(trashed[0].ends_with(format!("{}.json", id.0)));
+        assert!(!load_project(root.path(), &proj.slug)
+            .unwrap()
+            .art
+            .contains(&id));
+    }
+
+    /// Invariant: the id is not reissued after a delete.
+    #[test]
+    fn test_delete_art_does_not_reissue_the_id() {
+        let root = tempfile::tempdir().unwrap();
+        let mut proj = project(root.path());
+        let id = mint_art_id(&mut proj);
+        register_artwork(root.path(), &mut proj, &id);
+        save_project(root.path(), &proj).unwrap();
+
+        let graveyard = root.path().join("graveyard");
+        fs::create_dir_all(&graveyard).unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+        delete_art(
+            root.path(),
+            &proj.slug,
+            &id,
+            recording_trasher(&seen, &graveyard),
+        )
+        .unwrap();
+
+        let mut reloaded = load_project(root.path(), &proj.slug).unwrap();
+        let next = mint_art_id(&mut reloaded);
+        assert_ne!(next, id, "the deleted id must not be minted again");
+    }
+
+    /// Write an artwork sidecar and list its id on the project, so the artwork
+    /// is one this project owns. Built through `sample_artwork` rather than by
+    /// hand -- a third `Artwork` literal in this file would be a third thing to
+    /// update the next time the struct grows a field.
+    fn register_artwork(root: &Path, project: &mut Project, id: &ArtId) {
+        let art = sample_artwork(id.clone(), format!("art/{}.png", id.0));
+        save_art(root, &project.slug, &art).unwrap();
+        project.art.push(id.clone());
     }
 }

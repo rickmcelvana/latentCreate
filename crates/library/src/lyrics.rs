@@ -380,6 +380,7 @@ mod tests {
         let track = Track {
             id: id.clone(),
             title: None,
+            cover: None,
             file: format!("tracks/{}.flac", id.0),
             duration_s: None,
             provenance: Provenance {

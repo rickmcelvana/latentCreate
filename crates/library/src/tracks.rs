@@ -9,7 +9,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use create_core::audio::flac_duration_s;
-use create_core::project::{Project, TrackId};
+use create_core::project::{ArtId, Project, TrackId};
 use create_core::provenance::Track;
 use serde::{Deserialize, Serialize};
 
@@ -239,7 +239,7 @@ pub fn trash_to_os(path: &Path) -> Result<(), LibraryError> {
 }
 
 /// Trash a path only if it exists; a missing file is a no-op, not an error.
-fn trash_if_present<F>(path: &Path, trash: &F) -> Result<(), LibraryError>
+pub(crate) fn trash_if_present<F>(path: &Path, trash: &F) -> Result<(), LibraryError>
 where
     F: Fn(&Path) -> Result<(), LibraryError>,
 {
@@ -316,6 +316,36 @@ pub fn rename_track(
     } else {
         Some(trimmed.to_string())
     };
+    save_track(root, slug, &track)?;
+    Ok(track)
+}
+
+/// Set or clear a track's cover, returning the updated record.
+///
+/// Modelled on [`rename_track`]: the sidecar is the single source of truth, so
+/// this rewrites the sidecar and nothing else. `None` clears it.
+///
+/// **The id is checked against the project.** Adding is the one moment a
+/// dangling reference can be prevented -- the rule `albums::add_track` already
+/// states -- so a cover naming an artwork this project does not own is refused
+/// rather than written and rendered as missing later.
+pub fn set_track_cover(
+    root: &Path,
+    slug: &str,
+    id: &TrackId,
+    cover: Option<&ArtId>,
+) -> Result<Track, LibraryError> {
+    let project = load_project(root, slug)?;
+    if let Some(art_id) = cover {
+        if !project.art.contains(art_id) {
+            return Err(LibraryError::NotFound {
+                kind: "artwork",
+                id: art_id.0.clone(),
+            });
+        }
+    }
+    let mut track = load_track(root, slug, id)?;
+    track.cover = cover.cloned();
     save_track(root, slug, &track)?;
     Ok(track)
 }
@@ -397,6 +427,7 @@ mod tests {
         Track {
             id,
             title: Some("Midnight Drive".to_string()),
+            cover: None,
             file,
             duration_s: Some(120.0),
             provenance: Provenance {
@@ -799,10 +830,12 @@ mod tests {
         proj.albums.push(create_core::project::AlbumList {
             name: "Best of".to_string(),
             tracks: vec![id.clone()],
+            cover: None,
         });
         proj.albums.push(create_core::project::AlbumList {
             name: "B-sides".to_string(),
             tracks: vec![id.clone()],
+            cover: None,
         });
         save_project(root.path(), &proj).unwrap();
         let graveyard = root.path().join("graveyard");
@@ -930,6 +963,98 @@ mod tests {
         assert_eq!(reloaded.title, None);
     }
 
+    /// Invariant: setting a cover rewrites only the sidecar. `project.json` is
+    /// byte-identical afterwards -- the cover lives in the sidecar, not the
+    /// project record.
+    #[test]
+    fn test_set_track_cover_rewrites_only_the_sidecar() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let art_id = register_art_id(root.path(), &proj.slug);
+
+        let project_before = fs::read_to_string(
+            crate::projects::project_dir(root.path(), &proj.slug)
+                .unwrap()
+                .join("project.json"),
+        )
+        .unwrap();
+
+        set_track_cover(root.path(), &proj.slug, &id, Some(&art_id)).unwrap();
+
+        let project_after = fs::read_to_string(
+            crate::projects::project_dir(root.path(), &proj.slug)
+                .unwrap()
+                .join("project.json"),
+        )
+        .unwrap();
+        assert_eq!(
+            project_before, project_after,
+            "project.json must be unchanged"
+        );
+
+        let reloaded = load_track(root.path(), &proj.slug, &id).unwrap();
+        assert_eq!(reloaded.cover, Some(art_id));
+    }
+
+    /// Invariant: setting a cover leaves the provenance untouched. This is the
+    /// one invariant that makes putting `cover` on `Track` safe: if it could
+    /// rewrite the recipe, the field would belong inside `Provenance`.
+    #[test]
+    fn test_set_track_cover_leaves_provenance_unchanged() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let art_id = register_art_id(root.path(), &proj.slug);
+
+        let before = load_track(root.path(), &proj.slug, &id).unwrap();
+        set_track_cover(root.path(), &proj.slug, &id, Some(&art_id)).unwrap();
+        let after = load_track(root.path(), &proj.slug, &id).unwrap();
+
+        assert_eq!(after.provenance, before.provenance);
+        assert_eq!(after.cover, Some(art_id));
+    }
+
+    /// Invariant: a cover naming an artwork the project does not own is refused.
+    /// Nothing is written, so the sidecar stays as it was.
+    #[test]
+    fn test_set_track_cover_refuses_an_unowned_artwork() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+
+        let err = set_track_cover(
+            root.path(),
+            &proj.slug,
+            &id,
+            Some(&ArtId("ar-9999".to_string())),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            LibraryError::NotFound {
+                kind: "artwork",
+                ..
+            }
+        ));
+
+        let reloaded = load_track(root.path(), &proj.slug, &id).unwrap();
+        assert_eq!(reloaded.cover, None);
+    }
+
+    /// Invariant: `None` clears a cover that was set.
+    #[test]
+    fn test_set_track_cover_none_clears_a_cover() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_one_track(root.path());
+        let art_id = register_art_id(root.path(), &proj.slug);
+
+        set_track_cover(root.path(), &proj.slug, &id, Some(&art_id)).unwrap();
+        let with_cover = load_track(root.path(), &proj.slug, &id).unwrap();
+        assert_eq!(with_cover.cover, Some(art_id));
+
+        set_track_cover(root.path(), &proj.slug, &id, None).unwrap();
+        let cleared = load_track(root.path(), &proj.slug, &id).unwrap();
+        assert_eq!(cleared.cover, None);
+    }
+
     /// Invariant: export copies the audio to the destination and leaves the
     /// original in place -- a copy, never a move.
     #[test]
@@ -948,5 +1073,19 @@ mod tests {
                 .exists(),
             "the source must still be in the library after an export"
         );
+    }
+
+    /// List an artwork id on the project, so a cover may name it.
+    ///
+    /// **No sidecar is written.** The cover setters check `Project::art` and
+    /// never load the artwork, so a fixture that built one would be testing
+    /// something the code under test does not read. The `mint_art_id` /
+    /// `art.push` pair is exactly what ingest does.
+    fn register_art_id(root: &Path, slug: &str) -> ArtId {
+        let mut project = load_project(root, slug).unwrap();
+        let id = crate::art::mint_art_id(&mut project);
+        project.art.push(id.clone());
+        save_project(root, &project).unwrap();
+        id
     }
 }

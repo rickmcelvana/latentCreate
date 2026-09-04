@@ -398,7 +398,7 @@ Headlines:
     provenance record. **`delete_art` lands here, not in a**, because deleting an artwork has to
     decide what a cover reference means. Artwork is the first new *kind of created content* since
     T-408, so the delete rule follows it.
-    - **T-506e-a — the cover backend. BRIEFED 2026-09-03** ([t-506e-a-brief.md](t-506e-a-brief.md))
+    - **T-506e-a — the cover backend. ✅ LANDED 2026-09-03** ([t-506e-a-brief.md](t-506e-a-brief.md))
       (no frontend). The two fields, `set_track_cover` / `set_album_cover` / `delete_art`, and the
       three commands. **Correcting this entry's earlier guess:** a cover reference does **not** block
       a delete, and there is no `tracks_referencing`-style check. The repo has two precedents and
@@ -412,7 +412,21 @@ Headlines:
       record last. One thing the brief says plainly rather than hides: clearing covers is **N atomic
       writes, not one transaction**, so a crash part-way leaves some tracks with no cover and some
       naming a deleted one -- which is why e-b must render a dangling cover as missing, the way
-      T-403 renders a missing track.
+      T-403 renders a missing track. Landed matching the brief. **The gate was not run**: the crate
+      did not compile (`&proj.slug` and `&mut proj` in one call), and behind that four tests failed
+      on the same fixture bug -- `add_artwork_to_project` minted an id and wrote a sidecar but never
+      pushed the id onto `Project::art`, which is the only thing the cover setters check, so every
+      test that set a cover hit `NotFound` and the album test asserted the wrong error kind. Replaced
+      with a four-line `register_art_id`: the setters never load the artwork, so a fixture that built
+      one was testing something the code does not read. Also folded a third hand-built `Artwork`
+      literal in `art.rs` back onto its own `sample_artwork`. **Fifteen mutations, fifteen killed,**
+      two of them only after the count was made honest: `#[serde(default)]` on `Option<ArtId>` is an
+      **equivalent mutant** (serde already defaults a missing `Option`) -- the same fact T-506c-a
+      logged, so the attribute stays for consistency with every other optional field and the survivor
+      is noted rather than churned; and the files-first ordering survived until a test was added for
+      the half of it that is reachable -- a trasher that fails on the sidecar, asserting the project
+      still lists the artwork so the delete can be retried. create-core 191->193, library 126->139,
+      src-tauri 133->134.
     - **T-506e-b — the frontend**: attach/detach on a track and an album, delete from the Cover Art
       gallery, and a dangling cover rendered as missing. Briefed after e-a lands.
 

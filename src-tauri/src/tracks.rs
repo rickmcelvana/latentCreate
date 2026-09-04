@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use create_core::project::TrackId;
+use create_core::project::{ArtId, TrackId};
 use library::TrackSet;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
@@ -78,6 +78,24 @@ pub fn rename_track(
     let root = &config_dir.0;
     let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
     library::tracks::rename_track(root, &project.slug, &TrackId(id), &title)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Set or clear a track's cover. `None` clears it.
+///
+/// The artwork id is checked against the project so a dangling reference is
+/// never written; the sidecar is the single source of truth for a cover.
+#[tauri::command]
+pub fn set_track_cover(
+    config_dir: State<'_, ConfigDir>,
+    id: String,
+    cover: Option<String>,
+) -> Result<(), String> {
+    let root = &config_dir.0;
+    let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
+    let cover_id = cover.map(ArtId);
+    library::tracks::set_track_cover(root, &project.slug, &TrackId(id), cover_id.as_ref())
         .map_err(|e| e.to_string())?;
     Ok(())
 }

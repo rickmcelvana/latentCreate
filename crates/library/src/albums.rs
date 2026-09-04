@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use create_core::project::{AlbumList, Project, TrackId};
+use create_core::project::{AlbumList, ArtId, Project, TrackId};
 
 use crate::projects::{load_project, save_project};
 use crate::LibraryError;
@@ -32,6 +32,7 @@ pub fn create_album(root: &Path, slug: &str, name: &str) -> Result<Vec<AlbumList
     project.albums.push(AlbumList {
         name,
         tracks: Vec::new(),
+        cover: None,
     });
     save_project(root, &project)?;
     Ok(project.albums)
@@ -133,6 +134,32 @@ pub fn reorder_tracks(
         return Err(LibraryError::ReorderMismatch);
     }
     project.albums[index].tracks = track_ids.to_vec();
+    save_project(root, &project)?;
+    Ok(project.albums)
+}
+
+/// Set or clear an album's cover, returning the project's albums.
+///
+/// Albums are name-addressed (T-403); an unknown name is `NotFound`, never a
+/// silent no-op. The artwork id is checked against the project for the same
+/// reason `add_track` checks a track id.
+pub fn set_album_cover(
+    root: &Path,
+    slug: &str,
+    album: &str,
+    cover: Option<&ArtId>,
+) -> Result<Vec<AlbumList>, LibraryError> {
+    let mut project = load_project(root, slug)?;
+    if let Some(art_id) = cover {
+        if !project.art.contains(art_id) {
+            return Err(LibraryError::NotFound {
+                kind: "artwork",
+                id: art_id.0.clone(),
+            });
+        }
+    }
+    let index = find_album(&project, album)?;
+    project.albums[index].cover = cover.cloned();
     save_project(root, &project)?;
     Ok(project.albums)
 }
@@ -578,5 +605,57 @@ mod tests {
                 "expected album NotFound, got {err:?}"
             );
         }
+    }
+
+    /// Invariant: setting a cover on an unknown album is `NotFound`, not a
+    /// silent no-op.
+    #[test]
+    fn test_set_album_cover_refuses_unknown_album() {
+        let root = tempfile::tempdir().unwrap();
+        let project = project_with_tracks(root.path(), &[]);
+        let art_id = register_art_id(root.path(), &project.slug);
+
+        let err = set_album_cover(root.path(), &project.slug, "nope", Some(&art_id)).unwrap_err();
+        assert!(matches!(err, LibraryError::NotFound { kind: "album", .. }));
+    }
+
+    /// Invariant: a cover naming an artwork the project does not own is refused.
+    #[test]
+    fn test_set_album_cover_refuses_unowned_artwork() {
+        let root = tempfile::tempdir().unwrap();
+        let project = project_with_tracks(root.path(), &[]);
+        create_album(root.path(), &project.slug, "A").unwrap();
+
+        let err = set_album_cover(
+            root.path(),
+            &project.slug,
+            "A",
+            Some(&ArtId("ar-9999".to_string())),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            LibraryError::NotFound {
+                kind: "artwork",
+                ..
+            }
+        ));
+
+        let reloaded = list_albums(root.path(), &project.slug).unwrap();
+        assert_eq!(reloaded[0].cover, None);
+    }
+
+    /// List an artwork id on the project, so a cover may name it.
+    ///
+    /// **No sidecar is written.** The cover setters check `Project::art` and
+    /// never load the artwork, so a fixture that built one would be testing
+    /// something the code under test does not read. The `mint_art_id` /
+    /// `art.push` pair is exactly what ingest does.
+    fn register_art_id(root: &Path, slug: &str) -> ArtId {
+        let mut project = load_project(root, slug).unwrap();
+        let id = crate::art::mint_art_id(&mut project);
+        project.art.push(id.clone());
+        save_project(root, &project).unwrap();
+        id
     }
 }

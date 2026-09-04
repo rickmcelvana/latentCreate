@@ -67,6 +67,17 @@ pub struct Track {
     /// User-facing title, if the user has set one.
     #[serde(default)]
     pub title: Option<String>,
+    /// The artwork shown with this track, when the user has chosen one.
+    ///
+    /// **Not provenance.** `Provenance` records what *made* the asset and is never
+    /// rewritten; a cover is an editable pointer the user changes whenever they
+    /// like, which is why it sits beside `title` rather than inside the recipe.
+    /// Nothing about reproducing this track depends on it.
+    ///
+    /// It lives in the sidecar because the sidecar is the one source of truth for a
+    /// track (ARCHITECTURE 8) -- `project.json` holds only the id.
+    #[serde(default)]
+    pub cover: Option<ArtId>,
     /// Path relative to the project directory, e.g. `"tracks/abc123.flac"`.
     pub file: String,
     /// Length in seconds, when known.
@@ -141,6 +152,32 @@ mod tests {
         assert_eq!(track.file, "tracks/tr-0001.flac");
     }
 
+    /// Invariant: a track sidecar written before `cover` existed still loads,
+    /// with `cover: None`. Stripping the key proves `serde(default)`, not just
+    /// a round-trip of a fully-populated struct.
+    #[test]
+    fn test_a_track_sidecar_written_before_cover_existed_still_loads() {
+        let json = r#"{
+            "id": "tr-0001",
+            "title": null,
+            "file": "tracks/tr-0001.flac",
+            "duration_s": 120.0,
+            "provenance": {
+                "profile_id": "ace-step-1.5-turbo",
+                "profile_display_name": "ACE-Step 1.5 XL Turbo",
+                "model_license": "Apache-2.0",
+                "template": "audio_ace_step1_5_xl_turbo",
+                "spec": {"profile_id": "ace-step-1.5-turbo", "inputs": {}},
+                "created_at": "2026-08-29T05:56:07Z"
+            }
+        }"#;
+
+        let track: Track = serde_json::from_str(json).expect("an older sidecar still loads");
+
+        assert_eq!(track.cover, None);
+        assert_eq!(track.file, "tracks/tr-0001.flac");
+    }
+
     #[test]
     fn test_track_sidecar_roundtrips() {
         let mut inputs = BTreeMap::new();
@@ -191,6 +228,7 @@ mod tests {
         let original = Track {
             id: TrackId("track-1".to_string()),
             title: Some("Midnight Drive".to_string()),
+            cover: Some(ArtId("ar-0001".to_string())),
             file: "tracks/track-1.flac".to_string(),
             duration_s: Some(120.0),
             provenance: Provenance {

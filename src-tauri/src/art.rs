@@ -38,3 +38,21 @@ pub fn art_image_path(config_dir: State<'_, ConfigDir>, id: String) -> Result<St
         .map_err(|e| e.to_string())?;
     Ok(abs.to_string_lossy().into_owned())
 }
+
+/// Delete an artwork from the selected project.
+///
+/// The image and sidecar are moved to the OS trash, the id is unlisted, and any
+/// track or album cover pointing at it is cleared. Never a hard delete
+/// (CONVENTIONS): the real trasher is `library::tracks::trash_to_os`.
+#[tauri::command]
+pub fn delete_art(config_dir: State<'_, ConfigDir>, id: String) -> Result<(), String> {
+    let root = &config_dir.0;
+    let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
+    library::art::delete_art(
+        root,
+        &project.slug,
+        &ArtId(id),
+        library::tracks::trash_to_os,
+    )
+    .map_err(|e| e.to_string())
+}

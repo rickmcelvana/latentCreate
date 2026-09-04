@@ -120,6 +120,12 @@ pub struct AlbumList {
     /// Tracks in the order the user arranged them.
     #[serde(default)]
     pub tracks: Vec<TrackId>,
+    /// The artwork shown for this list, when the user has chosen one.
+    ///
+    /// An album has no file of its own (T-403), so unlike a track's cover this one
+    /// lives in `project.json` with the rest of the list. Same rule otherwise.
+    #[serde(default)]
+    pub cover: Option<ArtId>,
 }
 
 /// A working project. Holds *ids only* for tracks: every fact about a track lives in
@@ -422,5 +428,16 @@ mod tests {
         let project: Project = serde_json::from_str(json).unwrap();
         assert!(project.art.is_empty());
         assert_eq!(project.next_art_seq, 1);
+    }
+
+    /// Invariant: an album written before `cover` existed still loads, with
+    /// `cover: None`. The key must be stripped to prove `serde(default)`.
+    #[test]
+    fn test_album_written_before_cover_existed_still_loads() {
+        let json = r#"{"name":"Demo","tracks":["tr-0001"]}"#;
+        let album: AlbumList = serde_json::from_str(json).unwrap();
+        assert_eq!(album.name, "Demo");
+        assert_eq!(album.tracks, vec![TrackId("tr-0001".to_string())]);
+        assert_eq!(album.cover, None);
     }
 }

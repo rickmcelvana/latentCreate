@@ -6,7 +6,7 @@
 //! rules (reorder permutation, duplicate names, foreign track ids) live in
 //! `library` where their tests reach them.
 
-use create_core::project::{AlbumList, TrackId};
+use create_core::project::{AlbumList, ArtId, TrackId};
 use tauri::State;
 
 use crate::projectctx::selected_project;
@@ -83,5 +83,21 @@ pub fn album_reorder(
 ) -> AlbumsResult {
     let project = selected_project(&config_dir.0).map_err(|e| e.to_string())?;
     library::albums::reorder_tracks(&config_dir.0, &project.slug, &album, &track_ids)
+        .map_err(|e| e.to_string())
+}
+
+/// Set or clear an album's cover. `None` clears it.
+///
+/// The artwork id is checked against the project so a dangling reference is never
+/// written.
+#[tauri::command]
+pub fn album_set_cover(
+    config_dir: State<'_, ConfigDir>,
+    album: String,
+    cover: Option<String>,
+) -> AlbumsResult {
+    let project = selected_project(&config_dir.0).map_err(|e| e.to_string())?;
+    let cover_id = cover.map(ArtId);
+    library::albums::set_album_cover(&config_dir.0, &project.slug, &album, cover_id.as_ref())
         .map_err(|e| e.to_string())
 }

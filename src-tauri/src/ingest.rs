@@ -240,6 +240,9 @@ fn build_track(
         // the doc later never retitles a track already made. `None` stays the
         // untitled state the Library renders as the id.
         title: pending.spec.title.clone(),
+        // A new track has no cover until the user chooses one. Cover is not
+        // provenance -- it is an editable pointer, not part of the recipe.
+        cover: None,
         file: file.to_string(),
         duration_s,
         provenance: build_provenance(pending, created_at, prompt_id),
@@ -467,6 +470,27 @@ mod tests {
             _ => panic!("expected track"),
         };
         assert_eq!(track.title, None);
+    }
+
+    /// Protects: a new track has no cover. Cover is not provenance and must not
+    /// be invented during ingest.
+    #[test]
+    fn test_ingest_leaves_a_new_track_without_a_cover() {
+        let (root, slug) = root_with_project();
+        let src = root.path().join("tracks").join("prompt_000.flac");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        let head = include_bytes!("../../testdata/audio/ace-step.flac.head");
+        std::fs::write(&src, head).unwrap();
+
+        let pending = pending(&slug, false, 120.0, ModelKind::Music);
+        let batch = batch_with(&src);
+        let saved = ingest_outputs(root.path(), &pending, &batch, NOW, PROMPT).unwrap();
+
+        let track = match &saved[0] {
+            Saved::Track(t) => t,
+            _ => panic!("expected track"),
+        };
+        assert_eq!(track.cover, None);
     }
 
     /// Protects: the sidecar alone carries enough to reproduce the run.
