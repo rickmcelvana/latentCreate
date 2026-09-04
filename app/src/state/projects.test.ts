@@ -3,6 +3,7 @@ import type { Config } from '../bridge/config'
 import type { Project, ProjectWarning } from '../bridge/projects'
 import { useConfigStore } from './config'
 import { useLibraryStore } from './library'
+import { useArtStore } from './art'
 import {
   effectiveProjectSlug,
   projectRow,
@@ -16,6 +17,7 @@ const mockDeleteProject = vi.fn()
 const mockSaveConfig = vi.fn()
 const mockLoadConfig = vi.fn()
 const mockListTracks = vi.fn()
+const mockListArt = vi.fn()
 let mockIsTauri = true
 
 vi.mock('../bridge/projects', () => ({
@@ -36,6 +38,12 @@ vi.mock('../bridge/config', () => ({
 vi.mock('../bridge/library', () => ({
   listTracks: () => mockListTracks(),
   subscribeTracks: vi.fn(),
+}))
+
+vi.mock('../bridge/art', () => ({
+  listArt: () => mockListArt(),
+  artImageUrl: vi.fn(),
+  subscribeArt: vi.fn(),
 }))
 
 vi.mock('../bridge/jobs', () => ({
@@ -144,6 +152,7 @@ describe('projects store', () => {
     mockSaveConfig.mockReset()
     mockLoadConfig.mockReset()
     mockListTracks.mockReset()
+    mockListArt.mockReset()
 
     useProjectsStore.setState({
       projects: [],
@@ -166,8 +175,17 @@ describe('projects store', () => {
       error: null,
       listening: false,
     })
+    useArtStore.setState({
+      art: [],
+      byId: {},
+      warnings: null,
+      loading: false,
+      error: null,
+      listening: false,
+    })
 
     mockListTracks.mockResolvedValue({ tracks: [], warnings: [] })
+    mockListArt.mockResolvedValue({ art: [], warnings: [] })
   })
 
   it('load_populates_projects_and_the_warning_line', async () => {
@@ -248,6 +266,17 @@ describe('projects store', () => {
     expect(mockListTracks).toHaveBeenCalledTimes(1)
   })
 
+  it('select_reloads_artwork_as_well_as_tracks', async () => {
+    useProjectsStore.setState({
+      projects: [makeProject({ slug: 'a' }), makeProject({ slug: 'b' })],
+    })
+
+    const ok = await useProjectsStore.getState().select('b')
+
+    expect(ok).toBe(true)
+    expect(mockListArt).toHaveBeenCalledTimes(1)
+  })
+
   it('askDelete_and_cancelDelete_toggle_the_pending_confirm', () => {
     useProjectsStore.getState().askDelete('a')
     expect(useProjectsStore.getState().confirmingDelete).toBe('a')
@@ -281,6 +310,15 @@ describe('projects store', () => {
     await useProjectsStore.getState().deleteProject('a')
 
     expect(mockListTracks).toHaveBeenCalledTimes(1)
+  })
+
+  it('deleteProject_reloads_artwork_for_the_now_effective_project', async () => {
+    useProjectsStore.setState({ projects: [makeProject({ slug: 'a' })] })
+    mockDeleteProject.mockResolvedValue({ projects: [], warnings: [] })
+
+    await useProjectsStore.getState().deleteProject('a')
+
+    expect(mockListArt).toHaveBeenCalledTimes(1)
   })
 
   it('deleteProject_surfaces_an_error_and_clears_the_confirm', async () => {

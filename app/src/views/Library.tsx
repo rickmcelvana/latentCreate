@@ -366,7 +366,7 @@ function TrackDetails({ trackId }: { trackId: string }) {
   const [open, setOpen] = useState(false)
 
   if (track === undefined) return null
-  const sections = provenanceView(track)
+  const sections = provenanceView(track.provenance)
 
   return (
     <div className="track-details">

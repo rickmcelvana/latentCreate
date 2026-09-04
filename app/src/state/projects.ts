@@ -9,6 +9,7 @@ import {
 import type { Config } from '../bridge/config'
 import { useConfigStore } from './config'
 import { useLibraryStore } from './library'
+import { useArtStore } from './art'
 
 /**
  * The project the app is working in, derived the way the backend resolves it
@@ -127,10 +128,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
       return false
     }
     await useConfigStore.getState().save({ default_project_slug: slug })
-    // The track list belongs to the selected project, so a switch must reload
-    // it -- the frontend half of "generate, ingest, lyricdoc and tracks all
-    // target the same project".
+    // The track list and the artwork both belong to the selected project, so a
+    // switch must reload them -- the frontend half of "generate, ingest,
+    // lyricdoc, tracks and art all target the same project".
     await useLibraryStore.getState().load()
+    await useArtStore.getState().load()
     return true
   },
 
@@ -149,9 +151,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
       // The selection is not written on delete: dropping the slug from the list
       // lets `effectiveProjectSlug` fall back to the first remaining project,
       // the same resolution the backend's `selected_project` makes. Reload the
-      // library so its tracks are the now-effective project's; the album panel
-      // reloads on its own (Library keys its effect on the derived selection).
+      // library and the artwork so their rows are the now-effective project's;
+      // the album panel reloads on its own (Library keys its effect on the
+      // derived selection).
       await useLibraryStore.getState().load()
+      await useArtStore.getState().load()
       return true
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : String(err), confirmingDelete: null })

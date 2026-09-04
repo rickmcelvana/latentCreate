@@ -325,7 +325,7 @@ Headlines:
       killed**, including one re-run honestly: the first parallel-submit mutation did not actually
       parallelise, so the sequential-await invariant was re-checked with a real `Promise.all` over
       `generateImage`. frontend 459->476.
-    - **T-506c-c — the artwork listing store. BRIEFED 2026-09-03**
+    - **T-506c-c — the artwork listing store. ✅ LANDED 2026-09-03**
       ([t-506c-c-brief.md](t-506c-c-brief.md)) (no UI). `bridge/art.ts` (reusing `Provenance` from
       `bridge/library.ts`, because the Rust `Artwork` embeds it verbatim) and `state/art.ts`: rows
       over `library_art`, asset URLs over `art_image_path`, and the `art://saved` subscription that
@@ -341,7 +341,18 @@ Headlines:
       into `state/provenance.ts`** -- `library.ts`'s own comment says `queue.ts`'s `modelName` is a
       deliberate twin, and a third copy is where the fallback chain drifts, in the record a user
       reads to prove where a file came from. `provenanceView` takes a `Provenance` after the move,
-      which is also how T-506d gets an artwork inspector for free.
+      which is also how T-506d gets an artwork inspector for free. Landed matching the brief, and
+      the extraction was faithful -- every moved test kept its assertions. **The gate was not run**:
+      two tests failed and four `tsc` errors stood. One of the failures is worth keeping, because it
+      is a test that would have passed for the wrong reason if the default had been `null`:
+      `makeArtwork` built its overrides with `??`, so `width: null` was swallowed and re-defaulted
+      to 768 and the missing-size case was never constructed. The other was a `startListening` test
+      asserting one subscription under a fixed `isTauri: () => false`, which the guard refuses --
+      fixed by making the flag togglable, the idiom `projects.test.ts` already uses. **Fourteen
+      mutations, fourteen killed**, one after closing a gap it found: `modelLabel` dropping its
+      `.trim()` survived, a hole carried in unchanged from `trackModel` and now shared by two
+      stores, so a whitespace-only display name (an emitted profile takes its name from a workflow
+      filename) is pinned. frontend 476->497.
   - **T-506d — the CoverArt view** (frontend; **this lane has the click-through**). Image profile
     picker, param panel, Generate, the shared job queue, and a grid of what has been made.
   - **T-506e — attach artwork to a track or an album, and delete one.** A track's cover belongs in the **track

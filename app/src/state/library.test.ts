@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_LIBRARY,
-  provenanceView,
   trackRows,
   useLibraryStore,
   warningLine,
@@ -92,21 +91,6 @@ describe('trackRows', () => {
     expect(rows[2].name).toBe('Named')
   })
 
-  it('falls back to profile id, then to Unknown model', () => {
-    const rows = trackRows(
-      makeSet([
-        makeTrack({
-          id: 'tr-1',
-          profile_display_name: '',
-          profile_id: 'ace-step-1.5-turbo',
-        }),
-        makeTrack({ id: 'tr-2', profile_display_name: '', profile_id: '' }),
-      ]),
-    )
-    expect(rows[0].model).toBe('ace-step-1.5-turbo')
-    expect(rows[1].model).toBe('Unknown model')
-  })
-
   it('lists enabled LoRA stems in order with strengths and leaves stored paths untouched', () => {
     const loras: LoraRef[] = [
       {
@@ -141,64 +125,6 @@ describe('trackRows', () => {
       promptId: null,
       file: 'tracks/tr-0001.flac',
     })
-  })
-})
-
-describe('provenanceView', () => {
-  it('renders inputs by name, a seed as its number and not [object Object]', () => {
-    const track = makeTrack({
-      id: 'tr-1',
-      inputs: {
-        tags: { type: 'text', value: 'synthwave' },
-        seed: { type: 'seed', value: 42 },
-      },
-    })
-    const sections = provenanceView(track)
-    const inputs = sections.find((s) => s.title === 'Inputs')
-    expect(inputs?.facts).toEqual([
-      { label: 'tags', value: 'synthwave' },
-      { label: 'seed', value: '42' },
-    ])
-  })
-
-  it('builds every section from a full sidecar', () => {
-    const base = makeTrack({ id: 'tr-1', inputs: { seed: { type: 'seed', value: 7 } } })
-    const track: Track = {
-      ...base,
-      provenance: {
-        ...base.provenance,
-        template: 'audio_ace_step1_5_xl_turbo',
-        spec: { ...base.provenance.spec, lyrics: { doc_id: 'ld-0001', version: 2 } },
-        resolved_slots: { '94.duration': { type: 'float', value: 120 } },
-        comfy: {
-          comfyui_version: '0.3.26',
-          comfy_cli_version: '0.1.0',
-          url: 'http://127.0.0.1:8188',
-        },
-      },
-    }
-    const titles = provenanceView(track).map((s) => s.title)
-    expect(titles).toEqual(['Inputs', 'Lyrics', 'Resolved slots', 'Server'])
-
-    const view = provenanceView(track)
-    expect(view.find((s) => s.title === 'Lyrics')?.facts).toEqual([
-      { label: 'Document', value: 'ld-0001, v2' },
-    ])
-    expect(view.find((s) => s.title === 'Resolved slots')?.facts).toEqual([
-      { label: '94.duration', value: '120' },
-    ])
-    expect(view.find((s) => s.title === 'Server')?.facts).toEqual([
-      { label: 'ComfyUI', value: '0.3.26' },
-      { label: 'comfy-cli', value: '0.1.0' },
-      { label: 'Endpoint', value: 'http://127.0.0.1:8188' },
-      { label: 'Template', value: 'audio_ace_step1_5_xl_turbo' },
-    ])
-  })
-
-  it('omits empty sections, so an older sidecar still renders cleanly', () => {
-    // No inputs, no lyric ref, no resolved slots, no comfy, no template.
-    const track = makeTrack({ id: 'tr-1' })
-    expect(provenanceView(track)).toEqual([])
   })
 })
 

@@ -7,7 +7,17 @@ import {
   type TrackWarning,
 } from '../bridge/library'
 import { isTauri } from '../bridge/jobs'
-import type { InputValue } from './params'
+import {
+  createdDate,
+  modelLabel,
+  seedText,
+  provenanceView,
+  type ProvenanceFact,
+  type ProvenanceSection,
+} from './provenance'
+
+export type { ProvenanceFact, ProvenanceSection }
+export { provenanceView }
 
 /** Shown in place of the list when nothing has been generated yet. */
 export const EMPTY_LIBRARY =
@@ -27,21 +37,6 @@ export interface TrackRow {
   /** `null` when the track predates T-311d, which is not an error. */
   promptId: string | null
   file: string
-}
-
-/**
- * What a row calls the model that produced it.
- *
- * Deliberate twin of `state/queue.ts` `modelName`: the input is different
- * (a track, not a job), but the absent-versus-empty rule and the fallback
- * chain are the same.
- */
-function trackModel(track: Track): string {
-  const display = track.provenance.profile_display_name.trim()
-  if (display !== '') return display
-  const id = track.provenance.profile_id.trim()
-  if (id !== '') return id
-  return 'Unknown model'
 }
 
 function trackName(track: Track): string {
@@ -68,86 +63,20 @@ function loraStack(track: Track): string {
     .join(', ')
 }
 
-function seedValue(track: Track): string {
-  const value = track.provenance.spec.inputs.seed
-  if (value && value.type === 'seed') return String(value.value)
-  return '--'
-}
-
-function createdDate(track: Track): string {
-  return track.provenance.created_at.split('T')[0]
-}
-
 /** Map a `TrackSet` to the rows the Library will render. */
 export function trackRows(set: TrackSet): TrackRow[] {
   return set.tracks.map((track) => ({
     id: track.id,
     name: trackName(track),
-    model: trackModel(track),
+    model: modelLabel(track.provenance),
     license: track.provenance.model_license,
     duration: formatDuration(track.duration_s),
-    created: createdDate(track),
+    created: createdDate(track.provenance),
     loras: loraStack(track),
-    seed: seedValue(track),
+    seed: seedText(track.provenance),
     promptId: track.provenance.prompt_id,
     file: track.file,
   }))
-}
-
-/** One labelled fact in the provenance inspector. */
-export interface ProvenanceFact {
-  label: string
-  value: string
-}
-
-/** One titled group of facts in the inspector; omitted entirely when empty. */
-export interface ProvenanceSection {
-  title: string
-  facts: ProvenanceFact[]
-}
-
-/**
- * One tagged value as a string. **`v.value`, never `String(v)`** -- an
- * `InputValue` is `{ type, value }`, so stringifying the wrapper prints
- * `[object Object]`. A seed reads as its number, text/enum/int/float as theirs.
- */
-function formatValue(v: InputValue): string {
-  return String(v.value)
-}
-
-/**
- * The full sidecar as inspector sections (T-406): every semantic input, the
- * lyric ref, the resolved slots ComfyUI received, and the server that ran it.
- * The Library card already shows the summary (model/licence/seed/LoRAs/run);
- * this is the rest. A section with nothing in it is omitted, so an older sidecar
- * with no `prompt_id`, no resolved slots and no comfy info still renders cleanly.
- */
-export function provenanceView(track: Track): ProvenanceSection[] {
-  const p = track.provenance
-  const sections: ProvenanceSection[] = []
-
-  const inputs = Object.entries(p.spec.inputs).map(([label, v]) => ({ label, value: formatValue(v) }))
-  if (inputs.length > 0) sections.push({ title: 'Inputs', facts: inputs })
-
-  if (p.spec.lyrics !== null) {
-    const ref = p.spec.lyrics
-    sections.push({
-      title: 'Lyrics',
-      facts: [{ label: 'Document', value: `${ref.doc_id}, v${ref.version}` }],
-    })
-  }
-
-  const slots = Object.entries(p.resolved_slots).map(([label, v]) => ({ label, value: formatValue(v) }))
-  if (slots.length > 0) sections.push({ title: 'Resolved slots', facts: slots })
-
-  const server: ProvenanceFact[] = []
-  if (p.comfy?.comfyui_version) server.push({ label: 'ComfyUI', value: p.comfy.comfyui_version })
-  if (p.comfy?.comfy_cli_version) server.push({ label: 'comfy-cli', value: p.comfy.comfy_cli_version })
-  if (p.comfy?.url) server.push({ label: 'Endpoint', value: p.comfy.url })
-  if (p.template !== null) server.push({ label: 'Template', value: p.template })
-  if (server.length > 0) sections.push({ title: 'Server', facts: server })
-
-  return sections
 }
 
 /**
