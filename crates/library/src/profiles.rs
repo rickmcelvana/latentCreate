@@ -337,6 +337,7 @@ mod tests {
         assert!(profiles.contains_key("flux-1-schnell-fp8"));
         assert!(profiles.contains_key("chroma-1-hd"));
         assert!(profiles.contains_key("sdxl-base-1.0"));
+        assert!(profiles.contains_key("sd3.5-large-fp8"));
         for loaded in profiles.values() {
             assert_eq!(loaded.source, ProfileSource::Shipped);
             assert!(

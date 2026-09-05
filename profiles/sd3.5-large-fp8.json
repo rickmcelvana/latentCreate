@@ -1,0 +1,95 @@
+{
+  "id": "sd3.5-large-fp8",
+  "display_name": "SD 3.5 Large FP8",
+  "kind": "image",
+  "license": "Stability AI Community License",
+  "license_notes": "Free for commercial cover art for individuals and organisations under $1M USD annual revenue; above that an enterprise licence is required (see the Stability AI Community Licence).",
+  "comfy": {
+    "template": "sd3.5_simple_example",
+    "workflow": null,
+    "vram_gb_min": 12,
+    "models": [
+      {
+        "file": "sd3.5_large_fp8_scaled.safetensors",
+        "folder": "checkpoints",
+        "source_url": "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/sd3.5_large_fp8_scaled.safetensors",
+        "size_bytes": 14934922866
+      }
+    ],
+    "output": {
+      "save_node": "SaveImage",
+      "prefer_lossless": false
+    }
+  },
+  "loras": null,
+  "inputs": {
+    "tags": {
+      "type": "text",
+      "slots": [
+        "16.text"
+      ],
+      "default": "a bottle with a pink and red galaxy inside it on top of a wooden table on a table in the middle of a modern kitchen with a window to the outdoors mountain range bright sun clouds forest",
+      "label": "Prompt"
+    },
+    "negative": {
+      "type": "text",
+      "slots": [
+        "40.text"
+      ],
+      "default": "",
+      "label": "Negative prompt"
+    },
+    "seed": {
+      "type": "seed",
+      "slots": [
+        "3.seed"
+      ]
+    },
+    "steps": {
+      "type": "int",
+      "slots": [
+        "3.steps"
+      ],
+      "min": 1,
+      "max": 60,
+      "default": 20,
+      "label": "Steps"
+    },
+    "cfg": {
+      "type": "float",
+      "slots": [
+        "3.cfg"
+      ],
+      "min": 0.0,
+      "max": 20.0,
+      "default": 4.01,
+      "step": 0.01,
+      "label": "CFG",
+      "advanced": true
+    },
+    "width": {
+      "type": "int",
+      "slots": [
+        "53.width"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1024,
+      "label": "Width",
+      "advanced": true
+    },
+    "height": {
+      "type": "int",
+      "slots": [
+        "53.height"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1024,
+      "label": "Height",
+      "advanced": true
+    }
+  },
+  "lyrics_contract": null,
+  "prompt_guide": null
+}
