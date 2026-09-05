@@ -1,0 +1,83 @@
+{
+  "id": "qwen-image",
+  "display_name": "Qwen-Image",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "license_notes": "Model, text encoder, VAE and the 8-step Lightning LoRA are all Apache-2.0; usable for commercial cover art with no attribution requirement.",
+  "comfy": {
+    "template": "image_qwen_image",
+    "workflow": null,
+    "vram_gb_min": 24,
+    "models": [
+      {
+        "file": "qwen_image_fp8_e4m3fn.safetensors",
+        "folder": "diffusion_models",
+        "source_url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors",
+        "size_bytes": 20430635136
+      },
+      {
+        "file": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "folder": "text_encoders",
+        "source_url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "size_bytes": 9384670680
+      },
+      {
+        "file": "qwen_image_vae.safetensors",
+        "folder": "vae",
+        "source_url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+        "size_bytes": 253806246
+      },
+      {
+        "file": "Qwen-Image-Lightning-8steps-V1.0.safetensors",
+        "folder": "loras",
+        "source_url": "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-8steps-V1.0.safetensors",
+        "size_bytes": 1698951104
+      }
+    ],
+    "output": {
+      "save_node": "SaveImage",
+      "prefer_lossless": false
+    }
+  },
+  "loras": null,
+  "inputs": {
+    "tags": {
+      "type": "text",
+      "slots": [
+        "76.text"
+      ],
+      "default": "A vibrant, warm neon-lit street scene at night, a mix of colorful signs glowing brightly, lively cinematic atmosphere, rain-washed reflections on the pavement, vivid pink, blue, red and green hues, 1980s style.",
+      "label": "Prompt"
+    },
+    "seed": {
+      "type": "seed",
+      "slots": [
+        "76.seed"
+      ]
+    },
+    "width": {
+      "type": "int",
+      "slots": [
+        "76.width"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1328,
+      "label": "Width",
+      "advanced": true
+    },
+    "height": {
+      "type": "int",
+      "slots": [
+        "76.height"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1328,
+      "label": "Height",
+      "advanced": true
+    }
+  },
+  "lyrics_contract": null,
+  "prompt_guide": null
+}
