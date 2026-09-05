@@ -1,0 +1,79 @@
+{
+  "id": "flux-1-schnell-fp8",
+  "display_name": "Flux.1 Schnell FP8",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "license_notes": "Weights are Apache-2.0; usable for commercial cover art with no attribution requirement.",
+  "comfy": {
+    "template": "flux_schnell",
+    "workflow": null,
+    "vram_gb_min": 12,
+    "models": [
+      {
+        "file": "flux1-schnell-fp8.safetensors",
+        "folder": "checkpoints",
+        "source_url": "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors",
+        "size_bytes": 17236328572
+      }
+    ],
+    "output": {
+      "save_node": "SaveImage",
+      "prefer_lossless": false
+    }
+  },
+  "loras": null,
+  "inputs": {
+    "tags": {
+      "type": "text",
+      "slots": [
+        "6.text"
+      ],
+      "default": "a bottle with a beautiful rainbow galaxy inside it on top of a wooden table in the middle of a modern kitchen beside a plate of vegetables and mushrooms and a wine glasse that contains a planet earth with a plate with a half eaten apple pie on it",
+      "label": "Prompt"
+    },
+    "negative": {
+      "type": "unsupported",
+      "reason": "Flux.1 Schnell is distilled and runs at CFG 1, where a negative prompt has no effect."
+    },
+    "seed": {
+      "type": "seed",
+      "slots": [
+        "31.seed"
+      ]
+    },
+    "steps": {
+      "type": "int",
+      "slots": [
+        "31.steps"
+      ],
+      "min": 1,
+      "max": 12,
+      "default": 4,
+      "label": "Steps"
+    },
+    "width": {
+      "type": "int",
+      "slots": [
+        "27.width"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1024,
+      "label": "Width",
+      "advanced": true
+    },
+    "height": {
+      "type": "int",
+      "slots": [
+        "27.height"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1024,
+      "label": "Height",
+      "advanced": true
+    }
+  },
+  "lyrics_contract": null,
+  "prompt_guide": null
+}

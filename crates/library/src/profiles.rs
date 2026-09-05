@@ -322,8 +322,9 @@ mod tests {
     }
 
     /// Protects: the profiles this repo actually ships parse from disk under
-    /// the current schema. A schema change that breaks a shipped file fails
-    /// here rather than at first run.
+    /// the current schema. A schema change that breaks a shipped file -- or a
+    /// hand-authored curated profile (T-511) with a typo -- fails here rather
+    /// than vanishing silently at first run (`load_dir` only warns).
     #[test]
     fn test_shipped_profiles_directory_loads_every_model() {
         let shipped = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../profiles");
@@ -332,8 +333,20 @@ mod tests {
         assert!(warnings.is_empty(), "shipped profiles warned: {warnings:?}");
         assert!(profiles.contains_key("ace-step-1.5-turbo"));
         assert!(profiles.contains_key("minimax-music-3"));
+        // Curated image models (T-511) ship the same way; pin them as they land.
+        assert!(profiles.contains_key("flux-1-schnell-fp8"));
         for loaded in profiles.values() {
             assert_eq!(loaded.source, ProfileSource::Shipped);
+            assert!(
+                !loaded.profile.display_name.is_empty(),
+                "{}: empty display_name",
+                loaded.profile.id
+            );
+            assert!(
+                !loaded.profile.license.is_empty(),
+                "{}: empty license",
+                loaded.profile.id
+            );
         }
     }
 }
