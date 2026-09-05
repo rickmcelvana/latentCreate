@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Config } from '../bridge/config'
 import type { LyricBrief, PromptOptimization } from '../bridge/lyrics'
+import type { LlmModelRow, LlmStatus } from '../bridge/llm'
 import type { ProfileGuide } from '../bridge/profiles'
 import type { LyricDoc, LintFinding } from '../bridge/lyricdoc'
 import { useConfigStore } from './config'
@@ -9,7 +10,10 @@ import {
   approvedLabel,
   approvedText,
   generationPhase,
+  lyricsModelBlocks,
   lyricsModelConfigured,
+  lyricsModelNote,
+  lyricsModelState,
   nextVersionNumber,
   structureOptions,
   styleTagsFromGuide,
@@ -119,6 +123,20 @@ function config(over: Partial<Config> = {}): Config {
   }
 }
 
+function modelRow(id: string): LlmModelRow {
+  return { id, can_chat: null, thinks: null, is_remote: null, remote_host: null, size_bytes: null }
+}
+
+function ready(ids: string[]): LlmStatus {
+  return {
+    state: 'ready',
+    models: ids.map(modelRow),
+    enriched: false,
+    preselect: null,
+    has_key: false,
+  }
+}
+
 beforeEach(() => {
   mockIsTauri = true
   mockGenerateLyrics.mockReset()
@@ -180,6 +198,78 @@ describe('lyricsModelConfigured', () => {
   /** Protects: a real model is configured. */
   it('test_true_when_model_is_present', () => {
     expect(lyricsModelConfigured(config({ llm: { provider: 'open_ai_compat', base_url: null, model: 'gemma-4-12b', accepts_reasoning_effort: null } }))).toBe(true)
+  })
+})
+
+describe('lyricsModelState', () => {
+  /** no model named is no model, whatever the endpoint offers. */
+  it('test_none_when_model_is_null', () => {
+    expect(lyricsModelState(null, ready(['gemma-4-12b']))).toBe('none')
+  })
+
+  /** whitespace-only is unset (the T-507a rule). */
+  it('test_none_when_model_is_whitespace', () => {
+    expect(lyricsModelState('   ', null)).toBe('none')
+  })
+
+  /** a named model with no probe yet is not asserted broken; today's behaviour is preserved. */
+  it('test_unknown_when_status_is_null', () => {
+    expect(lyricsModelState('m', null)).toBe('unknown')
+  })
+
+  /** a down endpoint is a blocking state. */
+  it('test_unreachable_when_endpoint_down', () => {
+    expect(lyricsModelState('m', { state: 'unreachable', detail: 'x', hint: null })).toBe(
+      'unreachable',
+    )
+  })
+
+  /** the click-through case: named but the endpoint does not list it. */
+  it('test_not_offered_when_model_missing_from_list', () => {
+    expect(lyricsModelState('qwen3.5-27b', ready(['gemma-4-12b']))).toBe('not-offered')
+  })
+
+  /** named, reachable, offered. */
+  it('test_ready_when_model_in_list', () => {
+    expect(lyricsModelState('gemma-4-12b', ready(['gemma-4-12b']))).toBe('ready')
+  })
+
+  /** a contradictory state is not asserted as a failure. */
+  it('test_unknown_when_not_configured', () => {
+    expect(lyricsModelState('m', { state: 'not_configured' })).toBe('unknown')
+  })
+})
+
+describe('lyricsModelBlocks', () => {
+  /** the disable set is exactly the states that cannot generate. */
+  it('test_blocks_only_none_unreachable_not_offered', () => {
+    expect(lyricsModelBlocks('none')).toBe(true)
+    expect(lyricsModelBlocks('unreachable')).toBe(true)
+    expect(lyricsModelBlocks('not-offered')).toBe(true)
+    expect(lyricsModelBlocks('ready')).toBe(false)
+    expect(lyricsModelBlocks('unknown')).toBe(false)
+  })
+})
+
+describe('lyricsModelNote', () => {
+  /** nothing to say when it works or is unknown. */
+  it('test_null_for_ready_and_unknown', () => {
+    expect(lyricsModelNote('ready', 'm')).toBeNull()
+    expect(lyricsModelNote('unknown', 'm')).toBeNull()
+  })
+
+  /** non-null with the expected pill for blocking states. */
+  it('test_note_for_blocking_states', () => {
+    expect(lyricsModelNote('none', null)?.pill).toBe('No lyrics model')
+    expect(lyricsModelNote('unreachable', 'm')?.pill).toBe('Model unreachable')
+    expect(lyricsModelNote('not-offered', 'm')?.pill).toBe('Model unavailable')
+  })
+
+  /** the user must be able to see which model went stale. */
+  it('test_not_offered_names_the_model', () => {
+    const note = lyricsModelNote('not-offered', 'qwen3.5-27b')
+    expect(note).not.toBeNull()
+    expect(note!.message).toContain('qwen3.5-27b')
   })
 })
 

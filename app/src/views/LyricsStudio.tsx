@@ -4,12 +4,15 @@ import {
   approvedLabel,
   approvedText,
   generationPhase,
-  lyricsModelConfigured,
+  lyricsModelBlocks,
+  lyricsModelNote,
+  lyricsModelState,
   structureOptions,
   thinkingTail,
   useLyricsStore,
   type GenerationPhase,
 } from '../state/lyrics'
+import { useLlmStore } from '../state/llm'
 import { useNavStore } from '../state/nav'
 import { effectiveProfileId } from '../state/profiles'
 import { getProfileGuide, type ProfileGuide } from '../bridge/profiles'
@@ -59,8 +62,11 @@ export function LyricsStudio() {
   // the effective profile changes, where subscribing to `config` would rerun
   // on every unrelated setting (WORKFLOW 4.10).
   const profileId = useConfigStore((state) => effectiveProfileId(state.config))
-  // Same pattern: a derived boolean, not the whole config object.
-  const hasLyricsModel = useConfigStore((state) => lyricsModelConfigured(state.config))
+  // Same pattern: the model string and the llm status, never the whole config.
+  const lyricsModelName = useConfigStore((state) => state.config?.llm?.model ?? null)
+  const llmStatus = useLlmStore((state) => state.status)
+  const lyricsNote = lyricsModelNote(lyricsModelState(lyricsModelName, llmStatus), lyricsModelName)
+  const lyricsBlocked = lyricsModelBlocks(lyricsModelState(lyricsModelName, llmStatus))
   const [guide, setGuide] = useState<ProfileGuide | null>(null)
 
   useEffect(() => {
@@ -93,16 +99,13 @@ export function LyricsStudio() {
           : 'Describe the song; your local model writes the words.'}
       </p>
 
-      {!hasLyricsModel ? (
+      {lyricsNote !== null ? (
         <section className="panel profile-picker">
           <header className="setup-step-head">
             <h2 className="profile-picker-title">Lyrics model</h2>
-            <span className="status-pill status-pill-warn">No lyrics model</span>
+            <span className="status-pill status-pill-warn">{lyricsNote.pill}</span>
           </header>
-          <p className="profile-picker-fallback">
-            Lyrics are written by a model you provide, and none is set up yet. You can still
-            write and edit lyrics by hand below.
-          </p>
+          <p className="profile-picker-fallback">{lyricsNote.message}</p>
           <button
             type="button"
             className="profile-picker-setup"
@@ -232,7 +235,7 @@ export function LyricsStudio() {
           <button
             type="submit"
             className="setup-button setup-button-primary"
-            disabled={generating || !hasLyricsModel}
+            disabled={generating || lyricsBlocked}
           >
             {generating ? 'Generating...' : 'Generate'}
           </button>
@@ -240,7 +243,7 @@ export function LyricsStudio() {
             type="button"
             className="setup-button"
             onClick={() => void optimize(profileId)}
-            disabled={generating || optimizing || reviewing || accepted || !hasLyricsModel}
+            disabled={generating || optimizing || reviewing || accepted || lyricsBlocked}
           >
             {optimizing ? 'Optimizing...' : 'Optimize prompt'}
           </button>

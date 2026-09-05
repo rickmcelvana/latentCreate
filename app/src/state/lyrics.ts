@@ -11,6 +11,7 @@ import {
   type PromptOptimization,
 } from '../bridge/lyrics'
 import type { Config } from '../bridge/config'
+import type { LlmStatus } from '../bridge/llm'
 import type { ProfileGuide } from '../bridge/profiles'
 import {
   createLyricDoc,
@@ -148,6 +149,10 @@ export function thinkingTail(thinking: string[]): string {
   return joined.length > 140 ? joined.slice(-140) : joined
 }
 
+function modelPresent(model: string | null): boolean {
+  return model !== null && model.trim() !== ''
+}
+
 /**
  * Whether a lyrics model is configured.
  *
@@ -158,8 +163,82 @@ export function thinkingTail(thinking: string[]): string {
  * unset, matching `effectiveBaseUrl` -- a cleared field must not read as chosen.
  */
 export function lyricsModelConfigured(config: Config | null): boolean {
-  const model = config?.llm?.model ?? null
-  return model !== null && model.trim() !== ''
+  return modelPresent(config?.llm?.model ?? null)
+}
+
+/**
+ * What Lyrics can say about its model right now.
+ *
+ * `none` -- no model named (T-507a's first-run state).
+ * `unknown` -- a model is named but Setup has not probed the endpoint this
+ *   session, so reachability is genuinely unknown. We do NOT probe here (the
+ *   section 10 no-mount-probe rule) and do NOT block: this is today's
+ *   behaviour, a generation may still fail into the banner.
+ * `unreachable` -- the probe says the endpoint is down.
+ * `not-offered` -- the endpoint answered, but the configured model is not in
+ *   its list. This is the click-through's case: a model chosen once and since
+ *   removed from the server.
+ * `ready` -- named, reachable, and offered.
+ *
+ * `not_configured` maps to `unknown`: it cannot co-occur with a named model and
+ * a defaulted base URL (llm.ts notes the wizard never produces it), so it is
+ * not a failure we will assert against.
+ */
+export type LyricsModelState = 'ready' | 'unknown' | 'none' | 'unreachable' | 'not-offered'
+
+export function lyricsModelState(model: string | null, status: LlmStatus | null): LyricsModelState {
+  if (!modelPresent(model)) return 'none'
+  if (status === null) return 'unknown'
+  if (status.state === 'unreachable') return 'unreachable'
+  if (status.state === 'ready') {
+    const name = model!.trim()
+    return status.models.some((m) => m.id === name) ? 'ready' : 'not-offered'
+  }
+  return 'unknown'
+}
+
+/** The states where Generate/Optimize must be disabled. */
+export function lyricsModelBlocks(state: LyricsModelState): boolean {
+  return state === 'none' || state === 'unreachable' || state === 'not-offered'
+}
+
+export interface LyricsModelNote {
+  pill: string
+  message: string
+}
+
+/**
+ * The cue for a state, or null when there is nothing to say. Every message ends
+ * pointing at Setup, per CONVENTIONS (a user-facing degraded state names a next
+ * step). `model` is named only by `not-offered`, to help the user find what
+ * went stale.
+ */
+export function lyricsModelNote(
+  state: LyricsModelState,
+  model: string | null,
+): LyricsModelNote | null {
+  switch (state) {
+    case 'ready':
+    case 'unknown':
+      return null
+    case 'none':
+      return {
+        pill: 'No lyrics model',
+        message:
+          'Lyrics are written by a model you provide, and none is set up yet. You can still write and edit lyrics by hand below.',
+      }
+    case 'unreachable':
+      return {
+        pill: 'Model unreachable',
+        message:
+          "The lyrics model can't be reached right now. Check it's running, or pick another in Setup.",
+      }
+    case 'not-offered':
+      return {
+        pill: 'Model unavailable',
+        message: `"${model}" isn't offered by the endpoint anymore. Pick another in Setup.`,
+      }
+  }
 }
 
 /**
