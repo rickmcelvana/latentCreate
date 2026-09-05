@@ -1,0 +1,95 @@
+{
+  "id": "sdxl-base-1.0",
+  "display_name": "SDXL 1.0",
+  "kind": "image",
+  "license": "CreativeML Open RAIL++-M",
+  "license_notes": "Commercial cover art is permitted; the CreativeML Open RAIL++-M licence forbids certain harmful uses -- see the licence text.",
+  "comfy": {
+    "template": "image_sdxl_simple",
+    "workflow": null,
+    "vram_gb_min": 8,
+    "models": [
+      {
+        "file": "sd_xl_base_1.0.safetensors",
+        "folder": "checkpoints",
+        "source_url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors",
+        "size_bytes": 6938078334
+      }
+    ],
+    "output": {
+      "save_node": "SaveImage",
+      "prefer_lossless": false
+    }
+  },
+  "loras": null,
+  "inputs": {
+    "tags": {
+      "type": "text",
+      "slots": [
+        "10.text"
+      ],
+      "default": "a giant classical marble statue standing alone in a pure white empty void, soft diffused lighting, subtle shadows, surreal, minimalist, fine art photography, quiet atmosphere, sense of scale",
+      "label": "Prompt"
+    },
+    "negative": {
+      "type": "text",
+      "slots": [
+        "11.text"
+      ],
+      "default": "color, colored, lowres, blurry, out of focus, deformed, bad anatomy, extra limbs, mutated, watermark, text, logo, signature",
+      "label": "Negative prompt"
+    },
+    "seed": {
+      "type": "seed",
+      "slots": [
+        "12.seed"
+      ]
+    },
+    "steps": {
+      "type": "int",
+      "slots": [
+        "12.steps"
+      ],
+      "min": 1,
+      "max": 60,
+      "default": 25,
+      "label": "Steps"
+    },
+    "cfg": {
+      "type": "float",
+      "slots": [
+        "12.cfg"
+      ],
+      "min": 0.0,
+      "max": 20.0,
+      "default": 7.0,
+      "step": 0.1,
+      "label": "CFG",
+      "advanced": true
+    },
+    "width": {
+      "type": "int",
+      "slots": [
+        "13.width"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1024,
+      "label": "Width",
+      "advanced": true
+    },
+    "height": {
+      "type": "int",
+      "slots": [
+        "13.height"
+      ],
+      "min": 256,
+      "max": 2048,
+      "default": 1024,
+      "label": "Height",
+      "advanced": true
+    }
+  },
+  "lyrics_contract": null,
+  "prompt_guide": null
+}

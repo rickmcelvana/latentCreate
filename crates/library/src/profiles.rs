@@ -336,6 +336,7 @@ mod tests {
         // Curated image models (T-511) ship the same way; pin them as they land.
         assert!(profiles.contains_key("flux-1-schnell-fp8"));
         assert!(profiles.contains_key("chroma-1-hd"));
+        assert!(profiles.contains_key("sdxl-base-1.0"));
         for loaded in profiles.values() {
             assert_eq!(loaded.source, ProfileSource::Shipped);
             assert!(
