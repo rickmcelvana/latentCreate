@@ -335,6 +335,7 @@ mod tests {
         assert!(profiles.contains_key("minimax-music-3"));
         // Curated image models (T-511) ship the same way; pin them as they land.
         assert!(profiles.contains_key("flux-1-schnell-fp8"));
+        assert!(profiles.contains_key("chroma-1-hd"));
         for loaded in profiles.values() {
             assert_eq!(loaded.source, ProfileSource::Shipped);
             assert!(
