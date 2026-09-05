@@ -46,6 +46,33 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
 
 ## Key decisions log
 
+- **2026-09-05 -- the model catalog becomes a curated *installable* list; the full-gallery browse is
+  removed.** Opening this as T-507 wound down, the owner flagged that the catalog's whole reason for
+  existing is to **install models into ComfyUI from the app**, and the image side cannot: the app
+  ships **two audio profiles and zero image profiles** (`profiles/` -- ACE-Step, MiniMax), so every
+  image row is browse-and-adopt-only, usable only if the user already installed the model in ComfyUI
+  by other means. Re-verified live 2026-09-05 (MCP-SURFACE §36, contradicting nothing in §32-33 and
+  confirming it as of a new date): `download_model` is **URL-only** ("Fetches a known URL, no hub
+  search"); a gallery template exposes **no model URL** (`get_template` on `flux_dev_checkpoint_example`
+  returned `models: ["Flux.1","Flux"]` -- family labels -- and a `local_check` naming the missing
+  *filenames* but no source); and **ComfyUI-Manager's model DB is not exposed by comfy-mcp**
+  (`install_node` installs custom-node *packs*, not weights; `discover` is comfy-cli's own command
+  contract). So auto-installing an arbitrary gallery model is genuinely unreachable -- a comfy-mcp
+  limit, not a design choice. **Owner decision:** the catalog shows **only what the app can install**
+  -- a curated set of shipped profiles (audio + a few popular image), each with a hand-verified
+  `source_url`, installed one-click through the **existing Setup Models-step machinery** (which
+  already renders every shipped profile with readiness + Install, `curatedFirst(view.profiles)`, no
+  kind filter -- so shipped image profiles appear there for free). The full `search_templates`
+  gallery browse is **removed, not hidden** -- **T-504** backend, **T-505a/b** browse UI +
+  IntersectionObserver readiness, **T-505d** "Bring in" adopt -- because loading readiness for ~163
+  rows nobody can install is slow and, as the owner put it, pointless. **Import-your-own-workflow
+  (T-313) stays**: it is the separate bring-your-own valve for anything off the curated list, and
+  **T-507b's `comfy.models` enrichment still serves it**, so that lane is not wasted. Image models to
+  ship: **Flux.2 Klein 9B, Flux.1 Dev fp8, Flux.1 Schnell fp8, SDXL, SD 3.5 (simple)** -- licences
+  vary and must be shown honestly (Flux.1 Dev is **non-commercial**; Schnell is Apache-2.0). New
+  tasks **T-511** (curate the image profiles) and **T-512** (strip the catalog to the installable
+  list). This *re-simplifies* the 2026-09-02 "catalog rides the gallery" decision below, which built
+  the machinery but -- for images -- had nothing installable to point it at.
 - **2026-09-05 -- a degraded-state cue reuses a probe already taken; it does not take its own.**
   T-507a's click-through showed the Lyrics view needed to flag a *configured-but-unreachable* model,
   not just a missing one. The tempting fix -- probe the endpoint when Lyrics mounts -- is exactly the

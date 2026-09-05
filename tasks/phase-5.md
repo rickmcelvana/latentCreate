@@ -501,21 +501,50 @@ Headlines:
 - **T-510 — Public-repo readiness** — CONTRIBUTING, issue/PR templates, a README pass for a
   stranger cloning cold.
 
+### Catalog pivot (owner decision 2026-09-05 — see PROJECT.md decisions log)
+
+The catalog is refocused on **what the app can actually install**. comfy-mcp cannot auto-install an
+arbitrary gallery model (no URL from a template; `download_model` is URL-only; Manager's model DB is
+not exposed — re-verified live, MCP-SURFACE §36). So the browse-the-whole-gallery design is dropped
+and the catalog becomes the **curated installable set**, surfaced through the Setup Models step that
+already renders shipped profiles with one-click Install.
+
+- **T-511 — Curate the image model profiles.** Ship `profiles/*.json` (kind `image`) for **Flux.2
+  Klein 9B, Flux.1 Dev fp8, Flux.1 Schnell fp8, SDXL, SD 3.5 (simple)**, each in the ACE-Step/MiniMax
+  shape: `comfy.models` with per-file `folder`/`source_url`/`size_bytes`, a template or workflow ref,
+  the input controls, and the image save node. **Licences shown honestly and per model** — Flux.1
+  Dev is **non-commercial**, Schnell is Apache-2.0, SDXL is CreativeML OpenRAIL-M, SD 3.5 is the
+  Stability Community Licence, Klein is the BFL licence. Each URL + file list is **verified live**
+  (`fetch_template` → `local_check` for the exact filenames/folders; the download URL confirmed to
+  resolve) before it ships. This is architect-authored, not an Aider lane — it is verified content.
+- **T-512 — Strip the catalog to the installable list.** Remove `components/ModelCatalog.tsx`,
+  `components/RoleMapping.tsx`, `state/catalog.ts` (+ test), `bridge/catalog.ts`, the T-504
+  `search_templates` catalog backend, and the T-505d gallery-adopt path; drop `<ModelCatalog />`
+  from Setup. **Keep** `ImportWorkflow` (T-313, the bring-your-own valve) and everything the Models
+  step and generation depend on. The Models step becomes the whole catalog; give it an `Audio |
+  Image` split or headings so the two kinds read clearly.
+
 **Build order, as it actually ran:** the three polish items first (T-501/502/503, independent and
-cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506). **All of that
-is landed as of 2026-09-03.** What is left -- T-507, T-508, T-509, T-510 -- has no feature work in
-it, and T-508 is the closing milestone by nature.
+cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506), then T-507
+(first-run + empty-state polish). **All landed by 2026-09-05.** The 2026-09-05 catalog pivot adds
+**T-511** (curate image profiles) and **T-512** (strip the gallery); do T-511 first so there is
+something installable before the gallery is removed. What remains after: **T-508** installers (the
+closing milestone), **T-509** THIRD-PARTY-LICENSES (now covering the shipped image-model licences
+too), **T-510** public-repo readiness.
 
 ---
 
 ## Milestone check (live)
-A person on a machine that never had the dev toolchain installs the build, opens Setup, **searches
-the catalog and installs an image model**, generates **cover art** over it with a provenance
-sidecar, sees the **player docked on screen** with a **sharp** visualizer, and the lyrics document
-picker reads as a card. Installable build produced by CI for at least Windows.
+A person on a machine that never had the dev toolchain installs the build, opens Setup, **installs a
+curated image model** from the Models step (one click, a real download), generates **cover art** over
+it with a provenance sidecar, sees the **player docked on screen** with a **sharp** visualizer, and
+the lyrics document picker reads as a card. Installable build produced by CI for at least Windows.
 
-**Everything after "opens Setup" is already discharged in a dev build** (2026-09-03): the catalog
-search + install and the adopt path by T-505's click-throughs, cover art with its sidecar by
-T-506d's and T-506e-c's, and the three polish items by T-501/502/503. **What the milestone still
-needs is the installer itself (T-508)** -- and then the whole sequence run once on a machine that
-never had the toolchain, which is the only part a dev-machine click-through cannot stand in for.
+**The image-install half is what the 2026-09-05 pivot exists to deliver.** Before it, images had
+**no** installable path at all (zero shipped image profiles), so this line could not be met for
+images even in a dev build. After **T-511** (curated image profiles) a one-click install works
+through the existing Models-step machinery; **T-512** removes the gallery that could not honour it.
+Cover art with its sidecar, the docked player and sharp visualizer, and the lyrics card are already
+discharged (T-506d/T-506e-c, T-501/502/503). **What the milestone still needs is T-511 + the
+installer (T-508)** -- then the whole sequence run once on a machine that never had the toolchain,
+the only part a dev-machine click-through cannot stand in for.

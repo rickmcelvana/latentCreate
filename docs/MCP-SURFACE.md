@@ -2578,3 +2578,29 @@ happens to the outputs afterwards. `validate_workflow` returned `valid: true` wi
 35.6 **Cost of one cover.** 22.0 s wall for 8 steps at 768x768 with the loaders already warm
 (`execution_cached` listed the sampler and all three loaders). The card is the same RTX 5060 Ti
 (15.93 GiB) as every other measurement in this file.
+
+## 36. The catalog cannot auto-install an arbitrary gallery model -- re-verified 2026-09-05
+
+Re-checked live before the catalog pivot (PROJECT.md decisions log, 2026-09-05), against the running
+server (comfy-cli 1.16.0, ComfyUI v0.34.3). **Confirms §32-33 as of a new date; nothing changed.**
+The question was whether comfy-mcp had grown any way to install a model the app does not already
+carry a URL for. It has not.
+
+36.1 **`download_model` is URL-only.** The tool's own description: "Fetches a known URL, no hub
+search." It takes `url` and writes to a `models/` sub-path; there is no name/hub-resolution mode.
+
+36.2 **A gallery template still yields no model URL.** `get_template("flux_dev_checkpoint_example")`
+returned `template.models: ["Flux.1", "Flux"]` (model *family labels*) and a `local_check` with
+`runnable: false` naming the missing **filenames** (`flux1-dev.safetensors`, `ae.safetensors`,
+`clip_l.safetensors`, `t5xxl_fp16.safetensors`) and their slots/folders -- **but no source**. Enough
+for a precise readiness verdict, not for a download.
+
+36.3 **ComfyUI-Manager's model database is not reachable through comfy-mcp**, even though the Manager
+is installed here (`server_info.workspace.manager_mode: enable-gui`). `install_node` installs custom
+**node packs** (third-party code), not weights; `discover` returns comfy-cli's own command contract,
+not a model registry. There is no Manager-model-list tool. Reaching it would mean raw HTTP to the
+Manager endpoints -- which OQ-3 rules out.
+
+**Consequence:** the only reliable, safe install path remains an **app-curated `source_url`** per
+file (the ACE-Step/MiniMax `ModelFileSpec` pattern). This is what T-511 generalizes to image models,
+and why T-512 removes the gallery browse that could never honour an install.
