@@ -10,6 +10,7 @@ import {
   type LyricEvent,
   type PromptOptimization,
 } from '../bridge/lyrics'
+import type { Config } from '../bridge/config'
 import type { ProfileGuide } from '../bridge/profiles'
 import {
   createLyricDoc,
@@ -145,6 +146,20 @@ export function generationPhase(snapshot: LyricsSnapshot): GenerationPhase {
 export function thinkingTail(thinking: string[]): string {
   const joined = thinking.join('')
   return joined.length > 140 ? joined.slice(-140) : joined
+}
+
+/**
+ * Whether a lyrics model is configured.
+ *
+ * A pure config read, not a probe: the LLM is optional in Setup, so "none
+ * configured" is a real first-run state the Lyrics view must show before a
+ * generation fails, not after. Reachability of a *configured* endpoint is a
+ * different question, left to the generate error banner. Whitespace-only is
+ * unset, matching `effectiveBaseUrl` -- a cleared field must not read as chosen.
+ */
+export function lyricsModelConfigured(config: Config | null): boolean {
+  const model = config?.llm?.model ?? null
+  return model !== null && model.trim() !== ''
 }
 
 /**

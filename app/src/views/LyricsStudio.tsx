@@ -4,11 +4,13 @@ import {
   approvedLabel,
   approvedText,
   generationPhase,
+  lyricsModelConfigured,
   structureOptions,
   thinkingTail,
   useLyricsStore,
   type GenerationPhase,
 } from '../state/lyrics'
+import { useNavStore } from '../state/nav'
 import { effectiveProfileId } from '../state/profiles'
 import { getProfileGuide, type ProfileGuide } from '../bridge/profiles'
 import { isTauri, type PointOfView } from '../bridge/lyrics'
@@ -57,6 +59,8 @@ export function LyricsStudio() {
   // the effective profile changes, where subscribing to `config` would rerun
   // on every unrelated setting (WORKFLOW 4.10).
   const profileId = useConfigStore((state) => effectiveProfileId(state.config))
+  // Same pattern: a derived boolean, not the whole config object.
+  const hasLyricsModel = useConfigStore((state) => lyricsModelConfigured(state.config))
   const [guide, setGuide] = useState<ProfileGuide | null>(null)
 
   useEffect(() => {
@@ -88,6 +92,26 @@ export function LyricsStudio() {
           ? `Writing for ${guide.display_name}. Describe the song, then generate.`
           : 'Describe the song; your local model writes the words.'}
       </p>
+
+      {!hasLyricsModel ? (
+        <section className="panel profile-picker">
+          <header className="setup-step-head">
+            <h2 className="profile-picker-title">Lyrics model</h2>
+            <span className="status-pill status-pill-warn">No lyrics model</span>
+          </header>
+          <p className="profile-picker-fallback">
+            Lyrics are written by a model you provide, and none is set up yet. You can still
+            write and edit lyrics by hand below.
+          </p>
+          <button
+            type="button"
+            className="profile-picker-setup"
+            onClick={() => useNavStore.getState().setView('setup')}
+          >
+            Open Setup
+          </button>
+        </section>
+      ) : null}
 
       <DocumentPicker />
 
@@ -205,14 +229,18 @@ export function LyricsStudio() {
         </label>
 
         <div className="lyrics-actions">
-          <button type="submit" className="setup-button setup-button-primary" disabled={generating}>
+          <button
+            type="submit"
+            className="setup-button setup-button-primary"
+            disabled={generating || !hasLyricsModel}
+          >
             {generating ? 'Generating...' : 'Generate'}
           </button>
           <button
             type="button"
             className="setup-button"
             onClick={() => void optimize(profileId)}
-            disabled={generating || optimizing || reviewing || accepted}
+            disabled={generating || optimizing || reviewing || accepted || !hasLyricsModel}
           >
             {optimizing ? 'Optimizing...' : 'Optimize prompt'}
           </button>

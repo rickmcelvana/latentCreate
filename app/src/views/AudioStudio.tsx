@@ -57,6 +57,10 @@ export function AudioStudio() {
       <section className="panel profile-picker">
         <h2 className="profile-picker-title">Model profile</h2>
 
+        {view === null ? (
+          <p className="profile-picker-disclaimer">Checking for installed models…</p>
+        ) : null}
+
         {/* No fallback happens here, and the wording must not promise one:
             `effectiveProfileId` returns the configured id whether or not a
             profile answers to it, so generation would fail on that id rather

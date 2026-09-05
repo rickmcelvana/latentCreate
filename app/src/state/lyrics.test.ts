@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Config } from '../bridge/config'
 import type { LyricBrief, PromptOptimization } from '../bridge/lyrics'
 import type { ProfileGuide } from '../bridge/profiles'
 import type { LyricDoc, LintFinding } from '../bridge/lyricdoc'
@@ -8,6 +9,7 @@ import {
   approvedLabel,
   approvedText,
   generationPhase,
+  lyricsModelConfigured,
   nextVersionNumber,
   structureOptions,
   styleTagsFromGuide,
@@ -105,6 +107,18 @@ function optimization(over: Partial<PromptOptimization> = {}): PromptOptimizatio
   }
 }
 
+function config(over: Partial<Config> = {}): Config {
+  return {
+    schema_version: 1,
+    comfy: { mode: 'local', url: null, comfy_bin: null },
+    llm: null,
+    default_profile_id: null,
+    default_image_profile_id: null,
+    default_project_slug: null,
+    ...over,
+  }
+}
+
 beforeEach(() => {
   mockIsTauri = true
   mockGenerateLyrics.mockReset()
@@ -139,6 +153,33 @@ beforeEach(() => {
     proposed: '',
     optimizing: false,
     promptOverride: null,
+  })
+})
+
+describe('lyricsModelConfigured', () => {
+  /** Protects: before config loads, the view must not promise a model it cannot confirm. */
+  it('test_false_when_config_is_null', () => {
+    expect(lyricsModelConfigured(null)).toBe(false)
+  })
+
+  /** Protects: the skippable step was skipped. */
+  it('test_false_when_llm_block_is_null', () => {
+    expect(lyricsModelConfigured(config())).toBe(false)
+  })
+
+  /** Protects: an endpoint set but no model chosen is not a usable lyrics model. */
+  it('test_false_when_model_is_null', () => {
+    expect(lyricsModelConfigured(config({ llm: { provider: 'open_ai_compat', base_url: 'http://127.0.0.1:11434/v1', model: null, accepts_reasoning_effort: null } }))).toBe(false)
+  })
+
+  /** Protects: whitespace-only is unset (the effectiveBaseUrl rule), or a cleared field would read as chosen. */
+  it('test_false_when_model_is_whitespace_only', () => {
+    expect(lyricsModelConfigured(config({ llm: { provider: 'open_ai_compat', base_url: null, model: '   ', accepts_reasoning_effort: null } }))).toBe(false)
+  })
+
+  /** Protects: a real model is configured. */
+  it('test_true_when_model_is_present', () => {
+    expect(lyricsModelConfigured(config({ llm: { provider: 'open_ai_compat', base_url: null, model: 'gemma-4-12b', accepts_reasoning_effort: null } }))).toBe(true)
   })
 })
 
