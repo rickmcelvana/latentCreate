@@ -509,14 +509,16 @@ not exposed — re-verified live, MCP-SURFACE §36). So the browse-the-whole-gal
 and the catalog becomes the **curated installable set**, surfaced through the Setup Models step that
 already renders shipped profiles with one-click Install.
 
-- **T-511 — Curate the image model profiles.** Ship `profiles/*.json` (kind `image`) for **Flux.2
-  Klein 9B, Flux.1 Dev fp8, Flux.1 Schnell fp8, SDXL, SD 3.5 (simple)**, each in the ACE-Step/MiniMax
-  shape: `comfy.models` with per-file `folder`/`source_url`/`size_bytes`, a template or workflow ref,
-  the input controls, and the image save node. **Licences shown honestly and per model** — Flux.1
-  Dev is **non-commercial**, Schnell is Apache-2.0, SDXL is CreativeML OpenRAIL-M, SD 3.5 is the
-  Stability Community Licence, Klein is the BFL licence. Each URL + file list is **verified live**
-  (`fetch_template` → `local_check` for the exact filenames/folders; the download URL confirmed to
-  resolve) before it ships. This is architect-authored, not an Aider lane — it is verified content.
+- **T-511 — Curate the image model profiles.** Ship `profiles/*.json` (kind `image`), all
+  **commercial-safe** (the 2026-09-05 licence decision — cover art is for music people may release):
+  **Flux.1 Schnell fp8** (Apache-2.0), **Chroma** (Apache-2.0), **SDXL** (CreativeML OpenRAIL-M),
+  **SD 3.5** (Stability Community Licence), **Qwen-Image** (Apache-2.0). Each in the ACE-Step/MiniMax
+  shape: `comfy.models` with per-file `folder`/`source_url`/`size_bytes`, a `template` ref, the input
+  controls, the image save node, and an honest `vram_gb_min` (Qwen-Image is 20B — a higher-VRAM
+  option that will not fit the 16 GB dev card). Each URL + file list is **verified live**
+  (`fetch_template` → `list_workflow_slots` for the exact filenames/folders/addresses; the download
+  URL confirmed to resolve on Hugging Face) before it ships. This is architect-authored, not an Aider
+  lane — it is verified content. Klein 9B and Flux.1 Dev were dropped as non-commercial.
 - **T-512 — Strip the catalog to the installable list.** Remove `components/ModelCatalog.tsx`,
   `components/RoleMapping.tsx`, `state/catalog.ts` (+ test), `bridge/catalog.ts`, the T-504
   `search_templates` catalog backend, and the T-505d gallery-adopt path; drop `<ModelCatalog />`

@@ -68,11 +68,22 @@ in the OS keychain (T-004), and no Tauri command returns a secret value.
   rows nobody can install is slow and, as the owner put it, pointless. **Import-your-own-workflow
   (T-313) stays**: it is the separate bring-your-own valve for anything off the curated list, and
   **T-507b's `comfy.models` enrichment still serves it**, so that lane is not wasted. Image models to
-  ship: **Flux.2 Klein 9B, Flux.1 Dev fp8, Flux.1 Schnell fp8, SDXL, SD 3.5 (simple)** -- licences
-  vary and must be shown honestly (Flux.1 Dev is **non-commercial**; Schnell is Apache-2.0). New
-  tasks **T-511** (curate the image profiles) and **T-512** (strip the catalog to the installable
-  list). This *re-simplifies* the 2026-09-02 "catalog rides the gallery" decision below, which built
-  the machinery but -- for images -- had nothing installable to point it at.
+  ship (**commercial-safe only** -- second owner decision the same day, below). New tasks **T-511**
+  (curate the image profiles) and **T-512** (strip the catalog to the installable list). This
+  *re-simplifies* the 2026-09-02 "catalog rides the gallery" decision below, which built the
+  machinery but -- for images -- had nothing installable to point it at.
+- **2026-09-05 -- the curated image set is commercial-safe only, because cover art is for music
+  people may release.** The first pick (Klein 9B, Flux.1 Dev, Schnell, SDXL, SD 3.5) was made before
+  checking licences; verifying Klein live showed **`flux-non-commercial-license`** on the HF card,
+  and **Flux.1 Dev is non-commercial** too -- two of five unusable for commercial cover art, the
+  exact use case. Rather than ship non-commercial models behind an honest label (the other option the
+  owner weighed), the owner chose an **all-commercial-safe** set so nothing installable can trip a
+  user releasing a track. Final five, every licence verified: **Flux.1 Schnell fp8** (Apache-2.0,
+  ~12B fp8, 16 GB-friendly, 4-step), **Chroma** (Apache-2.0, 8.9B, Flux-Schnell-derived, 16 GB),
+  **SDXL** (CreativeML OpenRAIL-M, light/ubiquitous), **SD 3.5** (Stability Community Licence, free
+  under $1M revenue), **Qwen-Image** (Apache-2.0, 20B MMDiT -- best text rendering, a **higher-VRAM**
+  option labelled honestly since it will not fit the dev machine's 16 GB). The licence is shown per
+  row regardless (CONVENTIONS), and T-509's THIRD-PARTY-LICENSES must carry all five.
 - **2026-09-05 -- a degraded-state cue reuses a probe already taken; it does not take its own.**
   T-507a's click-through showed the Lyrics view needed to flag a *configured-but-unreachable* model,
   not just a missing one. The tempting fix -- probe the endpoint when Lyrics mounts -- is exactly the
