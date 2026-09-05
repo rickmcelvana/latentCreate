@@ -151,9 +151,11 @@ in the OS keychain.
 
 **Pre-alpha.** Phases 0–4 are complete — setup and connections, Lyrics Studio, the audio pipeline
 with workflow import, and the Library with playback, albums and provenance. **Phase 5 is in
-progress:** the model catalog and cover art have landed; first-run polish, installers, third-party
-licence generation and public-repo readiness remain. There is **no released build yet** — build from
-source. See [PROJECT.md](PROJECT.md) for the live state.
+progress:** cover art, first-run/empty-state polish, and the **model catalog** have landed — the
+catalog is a curated, one-click-installable list of **nine** commercial-safe models (four audio,
+five image) surfaced on the Setup screen. What remains: installers, third-party licence generation,
+and public-repo readiness. There is **no released build yet** — build from source. See
+[PROJECT.md](PROJECT.md) for the live state.
 
 ## Contributing
 
