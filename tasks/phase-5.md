@@ -520,11 +520,18 @@ already renders shipped profiles with one-click Install.
   URL confirmed to resolve on Hugging Face) before it ships. This is architect-authored, not an Aider
   lane — it is verified content. Klein 9B and Flux.1 Dev were dropped as non-commercial.
 - **T-512 — Strip the catalog to the installable list.** Remove `components/ModelCatalog.tsx`,
-  `components/RoleMapping.tsx`, `state/catalog.ts` (+ test), `bridge/catalog.ts`, the T-504
-  `search_templates` catalog backend, and the T-505d gallery-adopt path; drop `<ModelCatalog />`
-  from Setup. **Keep** `ImportWorkflow` (T-313, the bring-your-own valve) and everything the Models
-  step and generation depend on. The Models step becomes the whole catalog; give it an `Audio |
-  Image` split or headings so the two kinds read clearly.
+  `state/catalog.ts` (+ test), `bridge/catalog.ts`, and the `src-tauri/catalog.rs` backend (its three
+  commands), plus the T-505d gallery-adopt path (`adopt`/`adopting`/`catalogAdoptBegin` cut from the
+  shared `state/import.ts`). **Kept** `RoleMapping` and `ImportWorkflow` (T-313, the bring-your-own
+  valve). The Models step gained an `Audio | Image` split and is the whole catalog. **Landed
+  2026-09-05, awaiting click-through.**
+- **T-513 — Curate the audio model profiles.** The audio complement to T-511 — the catalog shipped
+  five image models but only two audio (ACE Turbo, MiniMax). **Landed 2026-09-05:** **ACE-Step 1.5 XL
+  Base** and **SFT** (Apache-2.0), each a clone of the Turbo profile with a swapped unet + 50-step
+  default, verified the T-511 way. **Stable Audio deferred to backlog** (PROJECT.md decisions log): SA
+  3.0's gallery template is an LLM-prompt-expansion subgraph comfy-cli flags as slot-unreliable, and
+  SA Open 1.0's `t5-base` encoder has no ungated ComfyUI-ready source. Audio catalog is now
+  Turbo/Base/SFT/MiniMax.
 
 **Build order, as it actually ran:** the three polish items first (T-501/502/503, independent and
 cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506), then T-507
