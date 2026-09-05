@@ -332,6 +332,8 @@ mod tests {
 
         assert!(warnings.is_empty(), "shipped profiles warned: {warnings:?}");
         assert!(profiles.contains_key("ace-step-1.5-turbo"));
+        assert!(profiles.contains_key("ace-step-1.5-xl-base"));
+        assert!(profiles.contains_key("ace-step-1.5-xl-sft"));
         assert!(profiles.contains_key("minimax-music-3"));
         // Curated image models (T-511) ship the same way; pin them as they land.
         assert!(profiles.contains_key("flux-1-schnell-fp8"));
