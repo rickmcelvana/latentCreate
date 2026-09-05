@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Candidate, ImportReport, RoleSuggestion } from '../bridge/import'
 import { importWorkflow } from '../bridge/import'
-import { catalogAdoptBegin } from '../bridge/catalog'
 import {
   canSave,
   initialSelection,
@@ -17,23 +16,6 @@ vi.mock('../bridge/import', () => ({
   importWorkflow: vi.fn(),
   saveImportedProfile: vi.fn(),
 }))
-
-vi.mock('../bridge/catalog', () => ({
-  catalogAdoptBegin: vi.fn(),
-}))
-
-/** The report an adopt returns. The `workflow_id` is the real shape: the slug of
- *  `catalog_adopt_begin`'s temp file, which must never become the profile name. */
-function emptyReport(overrides: Partial<ImportReport> = {}): ImportReport {
-  return {
-    workflow_id: 'latentcreate-adopt-image-flux2-text-to-image-9b',
-    stored_path: '/tmp/adopt.json',
-    slots: [],
-    suggestions: [],
-    warnings: [],
-    ...overrides,
-  }
-}
 
 function strong(address: string, nodeType = 'TextEncodeAceStepAudio1.5'): Candidate {
   return { address, node_type: nodeType, confidence: 'strong', reason: `on ${nodeType}` }
@@ -72,7 +54,6 @@ beforeEach(() => {
     report: null,
     selected: {},
     name: '',
-    adopting: null,
   })
 })
 
@@ -229,55 +210,33 @@ describe('saveNotes', () => {
 })
 
 describe('useImportStore', () => {
-  it('seeds the name from the gallery title, not the temp workflow id', async () => {
-    vi.mocked(catalogAdoptBegin).mockResolvedValue(emptyReport())
-    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
+  it('reads a workflow and moves to mapping', async () => {
+    vi.mocked(importWorkflow).mockResolvedValue({
+      workflow_id: 'my-workflow',
+      stored_path: '/tmp/workflow.json',
+      slots: [],
+      suggestions: [],
+      warnings: [],
+    } satisfies ImportReport)
+    await useImportStore.getState().begin('/path/to/workflow.json')
 
-    expect(useImportStore.getState().name).toBe('Klein 9B: Text to Image')
-  })
-
-  it('falls back to the row name when the gallery has no title', async () => {
-    vi.mocked(catalogAdoptBegin).mockResolvedValue(emptyReport())
-    await useImportStore.getState().adopt('image_flux2', '')
-
-    expect(useImportStore.getState().name).toBe('image_flux2')
-  })
-
-  it('marks the row that owns the flow', async () => {
-    vi.mocked(catalogAdoptBegin).mockResolvedValue(emptyReport())
-    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
-
-    expect(useImportStore.getState().adopting).toBe('image_flux2')
     expect(useImportStore.getState().phase.kind).toBe('mapping')
+    expect(useImportStore.getState().name).toBe('my-workflow')
   })
 
-  it('keeps the row marked when the adopt fails', async () => {
-    vi.mocked(catalogAdoptBegin).mockRejectedValue(new Error('not runnable'))
-    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
+  it('reports a failed import', async () => {
+    vi.mocked(importWorkflow).mockRejectedValue(new Error('not a workflow'))
+    await useImportStore.getState().begin('/path/to/workflow.json')
 
-    expect(useImportStore.getState().adopting).toBe('image_flux2')
     expect(useImportStore.getState().phase.kind).toBe('failed')
   })
 
-  it('refuses a second adopt while a flow is open', async () => {
-    useImportStore.setState({ phase: { kind: 'mapping' } })
-    await useImportStore.getState().adopt('image_flux2', 'Klein 9B: Text to Image')
-
-    expect(catalogAdoptBegin).not.toHaveBeenCalled()
-    expect(useImportStore.getState().adopting).toBeNull()
-  })
-
-  it('clears the adopt marker on a file import and on reset', async () => {
-    vi.mocked(importWorkflow).mockResolvedValue(
-      emptyReport({ workflow_id: 'my-workflow', stored_path: '/tmp/workflow.json' }),
-    )
-
-    useImportStore.setState({ adopting: 'image_flux2' })
-    await useImportStore.getState().begin('/path/to/workflow.json')
-    expect(useImportStore.getState().adopting).toBeNull()
-
-    useImportStore.setState({ adopting: 'image_flux2' })
+  it('resets to idle', () => {
+    useImportStore.setState({ phase: { kind: 'mapping' }, name: 'x', selected: { tags: ['a'] } })
     useImportStore.getState().reset()
-    expect(useImportStore.getState().adopting).toBeNull()
+
+    expect(useImportStore.getState().phase.kind).toBe('idle')
+    expect(useImportStore.getState().name).toBe('')
+    expect(useImportStore.getState().selected).toEqual({})
   })
 })

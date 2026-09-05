@@ -444,6 +444,19 @@ body {
 
 /* --- Setup wizard, models step --- */
 
+.model-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.model-group-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .model-row {
   display: flex;
   flex-direction: column;

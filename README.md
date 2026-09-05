@@ -18,9 +18,9 @@ through the app carry their own licenses, which you are responsible for reviewin
 
 - **Guided setup** — detect or configure your local ComfyUI + Comfy MCP, pick an LLM provider,
   and install the model files a profile needs straight into ComfyUI, one click per model.
-- **Model catalog** — browse ComfyUI's built-in template gallery for audio *and* image models,
-  install one in a click, and bring it in as a profile you can generate from. Local models only in
-  v1.
+- **Model catalog** — a curated list of audio *and* image models (all commercial-use-safe) that
+  install into your ComfyUI in one click, then generate from them. Bring your own ComfyUI workflow
+  for anything off the list. Local models only in v1.
 - **Lyrics Studio** — a structured brief (genre, mood, theme, structure, language) is sent to your
   LLM, which writes lyrics in the exact format your music model expects (`[verse]` / `[chorus]`
   tags and so on). Edit, version, approve, send to audio.

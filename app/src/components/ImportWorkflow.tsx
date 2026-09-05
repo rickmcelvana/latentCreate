@@ -11,7 +11,6 @@ import { useImportStore } from '../state/import'
  */
 export function ImportWorkflow() {
   const phase = useImportStore((s) => s.phase)
-  const adopting = useImportStore((s) => s.adopting)
   const begin = useImportStore((s) => s.begin)
 
   async function pick() {
@@ -25,19 +24,6 @@ export function ImportWorkflow() {
     // fault.
     if (typeof chosen !== 'string') return
     await begin(chosen)
-  }
-
-  if (adopting !== null) {
-    return (
-      <div className="import-workflow">
-        <button type="button" className="import-button" disabled>
-          Import a workflow…
-        </button>
-        <p className="import-note">
-          Bringing in a model on the Setup screen. Finish there first.
-        </p>
-      </div>
-    )
   }
 
   if (phase.kind === 'idle') {

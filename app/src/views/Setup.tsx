@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { ModelCatalog } from '../components/ModelCatalog'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
@@ -75,7 +74,6 @@ export function Setup() {
       </section>
 
       <ModelsStep />
-      <ModelCatalog />
       <LlmStep />
     </>
   )
@@ -323,6 +321,8 @@ function ModelsStep() {
   }, [refresh])
 
   const profiles = view === null ? [] : curatedFirst(view.profiles)
+  const music = profiles.filter((p) => p.kind === 'music')
+  const image = profiles.filter((p) => p.kind === 'image')
 
   return (
     <section className="panel setup-step">
@@ -339,9 +339,23 @@ function ModelsStep() {
         </p>
       ) : null}
 
-      {profiles.map((profile) => (
-        <ModelRow key={profile.id} profile={profile} />
-      ))}
+      {music.length > 0 ? (
+        <div className="model-group">
+          <h3 className="model-group-title">Music models</h3>
+          {music.map((p) => (
+            <ModelRow key={p.id} profile={p} />
+          ))}
+        </div>
+      ) : null}
+
+      {image.length > 0 ? (
+        <div className="model-group">
+          <h3 className="model-group-title">Image models</h3>
+          {image.map((p) => (
+            <ModelRow key={p.id} profile={p} />
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

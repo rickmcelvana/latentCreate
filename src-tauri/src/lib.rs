@@ -9,7 +9,6 @@ use tauri::Manager;
 
 mod albums;
 mod art;
-mod catalog;
 mod comfy;
 mod generate;
 mod import;
@@ -70,9 +69,6 @@ pub fn run() {
             comfy::comfy_status,
             comfy::comfy_launch,
             models::models_status,
-            catalog::catalog_browse,
-            catalog::catalog_readiness,
-            catalog::catalog_adopt_begin,
             generate::generate_audio,
             generate::generate_image,
             llm::llm_probe,
