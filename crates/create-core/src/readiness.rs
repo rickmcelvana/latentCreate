@@ -46,6 +46,20 @@ impl ModelInventory {
             .is_some_and(|files| files.contains(file))
     }
 
+    /// The folder holding `file`, or `None` when no listed folder has it.
+    ///
+    /// The inverse of `has`: readiness asks "is this file in *that* folder?"; the
+    /// adopt path (T-507b) has a filename and must discover which folder it lives
+    /// in. First match wins -- a file of the same name in two folders is not a
+    /// case any real model install produces, and either answer is correct for
+    /// readiness (both folders have it).
+    pub fn folder_of(&self, file: &str) -> Option<&str> {
+        self.by_folder
+            .iter()
+            .find(|(_, files)| files.contains(file))
+            .map(|(folder, _)| folder.as_str())
+    }
+
     /// Every folder this inventory covers.
     pub fn folders(&self) -> impl Iterator<Item = &str> {
         self.by_folder.keys().map(String::as_str)
@@ -260,5 +274,22 @@ mod tests {
             .missing()
             .iter()
             .all(|f| f.folder != "diffusion_models"));
+    }
+
+    /// Protects: a filename resolves to the folder that holds it, and an
+    /// unknown filename resolves to nothing. T-507b uses this to discover
+    /// which folder an adopted graph's COMBO value lives in.
+    #[test]
+    fn test_folder_of_resolves_to_the_holding_folder() {
+        let inventory = installed(&[
+            ("diffusion_models", &["klein.safetensors"]),
+            ("vae", &["ae.safetensors"]),
+        ]);
+        assert_eq!(
+            inventory.folder_of("klein.safetensors"),
+            Some("diffusion_models")
+        );
+        assert_eq!(inventory.folder_of("ae.safetensors"), Some("vae"));
+        assert_eq!(inventory.folder_of("euler"), None);
     }
 }

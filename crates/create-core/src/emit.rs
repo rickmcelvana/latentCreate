@@ -14,11 +14,14 @@
 //! not filled in -- a slider with invented limits is worse than an absent
 //! control.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use crate::profile::{ComfySpec, InputSpec, ModelKind, ModelProfile, OutputSpec, SlotAddress};
+use crate::profile::{
+    ComfySpec, InputSpec, ModelFileSpec, ModelKind, ModelProfile, OutputSpec, SlotAddress,
+};
+use crate::readiness::ModelInventory;
 use crate::roles::Role;
 
 /// The save node an emitted audio profile writes through, matching both shipped
@@ -155,6 +158,45 @@ fn detect_output_kind(workflow: &Value) -> Option<ModelKind> {
     } else {
         None
     }
+}
+
+/// The model files a graph's COMBO slot values name, resolved to their folders.
+///
+/// `candidates` are the string values of the graph's COMBO slots. Most are model
+/// filenames (`flux_klein.safetensors`); a COMBO also carries choices like a
+/// sampler name or a language code. `inventory` is the filter and the folder
+/// source at once: a value present in some model folder becomes a
+/// `ModelFileSpec`, one in no folder is dropped.
+///
+/// `source_url`/`size_bytes` stay `None`. The app resolved where a file *is*,
+/// not where to *fetch* it, and must never imply it can download someone else's
+/// weights (the T-505d rule). Duplicates -- the same file named by two slots --
+/// collapse; order follows first appearance so the emitted list is stable.
+pub fn resolve_model_files(
+    candidates: &[String],
+    inventory: &ModelInventory,
+) -> Vec<ModelFileSpec> {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut out = Vec::new();
+    for file in candidates {
+        if !seen.insert(file.as_str()) {
+            continue;
+        }
+        if let Some(folder) = inventory.folder_of(file) {
+            out.push(ModelFileSpec {
+                file: file.clone(),
+                folder: folder.to_string(),
+                // The app resolved where the file *is*, not where to fetch it or
+                // under what terms -- all three stay None. `license` is per-file
+                // and only set when it differs from the profile's own; an adopted
+                // graph declares none.
+                source_url: None,
+                size_bytes: None,
+                license: None,
+            });
+        }
+    }
+    out
 }
 
 /// Build a runnable profile from accepted mappings.
@@ -321,6 +363,23 @@ mod tests {
             "C:/workflows/my-import.json",
             mappings,
         )
+    }
+
+    fn klein_inventory() -> ModelInventory {
+        ModelInventory::new([
+            (
+                "diffusion_models".to_string(),
+                BTreeSet::from(["klein.safetensors".to_string()]),
+            ),
+            (
+                "text_encoders".to_string(),
+                BTreeSet::from(["clip.safetensors".to_string()]),
+            ),
+            (
+                "vae".to_string(),
+                BTreeSet::from(["ae.safetensors".to_string()]),
+            ),
+        ])
     }
 
     /// Protects: an emitted profile loads through exactly the path a shipped
@@ -510,5 +569,68 @@ mod tests {
         // Adopted, so workflow-backed, never a gallery template.
         assert_eq!(profile.comfy.template, None);
         assert!(profile.comfy.workflow.is_some());
+    }
+
+    /// Protects: an adopted graph's loader COMBO values become declared model
+    /// files, each resolved to the folder that holds it, with no download URL
+    /// invented.
+    #[test]
+    fn test_resolve_model_files_maps_loader_values_to_folders() {
+        let specs = resolve_model_files(
+            &[
+                "klein.safetensors".to_string(),
+                "clip.safetensors".to_string(),
+                "ae.safetensors".to_string(),
+            ],
+            &klein_inventory(),
+        );
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].file, "klein.safetensors");
+        assert_eq!(specs[0].folder, "diffusion_models");
+        assert_eq!(specs[1].file, "clip.safetensors");
+        assert_eq!(specs[1].folder, "text_encoders");
+        assert_eq!(specs[2].file, "ae.safetensors");
+        assert_eq!(specs[2].folder, "vae");
+        for spec in &specs {
+            assert!(spec.source_url.is_none());
+            assert!(spec.size_bytes.is_none());
+            assert!(spec.license.is_none());
+        }
+    }
+
+    /// Protects: the inventory is the filter. A sampler, scheduler or language
+    /// COMBO value is not a weight and must not be declared as one.
+    #[test]
+    fn test_resolve_model_files_drops_non_model_combo_values() {
+        let specs = resolve_model_files(
+            &["euler".to_string(), "klein.safetensors".to_string()],
+            &klein_inventory(),
+        );
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].file, "klein.safetensors");
+    }
+
+    /// Protects: two slots naming the same checkpoint declare it once.
+    #[test]
+    fn test_resolve_model_files_collapses_duplicates() {
+        let specs = resolve_model_files(
+            &[
+                "klein.safetensors".to_string(),
+                "klein.safetensors".to_string(),
+            ],
+            &klein_inventory(),
+        );
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].file, "klein.safetensors");
+    }
+
+    /// Protects: when nothing in the candidate list is a model file, the
+    /// emitted list stays empty -- the profile remains Undeclared rather than
+    /// inventing a declaration.
+    #[test]
+    fn test_resolve_model_files_returns_empty_when_nothing_is_a_model() {
+        let specs =
+            resolve_model_files(&["euler".to_string(), "en".to_string()], &klein_inventory());
+        assert!(specs.is_empty());
     }
 }

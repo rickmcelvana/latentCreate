@@ -17,10 +17,11 @@
 //! - A refused import leaves **nothing** behind, so the copy is staged under a
 //!   dot-name and only renamed into place once it has passed.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
-use create_core::emit::{build_profile, Bounds, MappedSlot};
+use create_core::emit::{build_profile, resolve_model_files, Bounds, MappedSlot};
+use create_core::readiness::ModelInventory;
 use create_core::roles::{suggest_roles, Role, RoleSuggestion, SlotInfo};
 use create_core::workflow::{detect_format, WorkflowFormat};
 use mcp_bridge::{Finding, LocalComfy, NodeOptions, NodeSchema, Slot, SlotList, Verdict};
@@ -270,7 +271,7 @@ pub(crate) async fn emit_profile(
     let resolved = resolve_mappings(comfy, &slots, mappings).await?;
 
     let profile_id = free_profile_id(root, display_name)?;
-    let profile = build_profile(
+    let mut profile = build_profile(
         &profile_id,
         display_name,
         &graph,
@@ -278,6 +279,18 @@ pub(crate) async fn emit_profile(
         &resolved,
     )
     .map_err(|e| e.to_string())?;
+
+    // Declare the model files the graph's COMBO slots name, so an adopted row
+    // reads Ready instead of "Cannot check". Best-effort: an inventory we could
+    // not take leaves the list empty, which is today's Undeclared state.
+    let candidates: Vec<String> = slots
+        .slots
+        .iter()
+        .filter(|s| s.ty == "COMBO")
+        .filter_map(|s| s.current_value.as_str().map(str::to_string))
+        .collect();
+    let inventory = full_inventory(comfy).await;
+    profile.comfy.models = resolve_model_files(&candidates, &inventory);
 
     let dir = root.join("profiles");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -289,6 +302,34 @@ pub(crate) async fn emit_profile(
         profile_id,
         path: path.display().to_string(),
     })
+}
+
+/// The model files ComfyUI currently has, across every folder it knows.
+///
+/// Unlike `models::take_inventory` (which lists only the folders a set of
+/// profiles already name), an adopted profile names no folders yet, so this
+/// walks them all -- `list_model_folders` then one listing per folder. It is a
+/// one-shot cost on a deliberate adopt, not a hot path.
+///
+/// **Best-effort:** any transport failure yields an empty inventory, and the
+/// profile then saves with `comfy.models = []` -- exactly today's behaviour
+/// (`Undeclared`), never a failed adopt. The profile is usable regardless;
+/// nothing gates on readiness.
+async fn full_inventory(comfy: &LocalComfy) -> ModelInventory {
+    let folders = match comfy.list_model_folders().await {
+        Ok(f) => f.folders,
+        Err(_) => return ModelInventory::default(),
+    };
+    let mut listed: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for folder in folders {
+        if let Ok(contents) = comfy.list_models_in(&folder.name).await {
+            listed.insert(
+                folder.name.clone(),
+                contents.files.into_iter().map(|f| f.name).collect(),
+            );
+        }
+    }
+    ModelInventory::new(listed)
 }
 
 /// Attach each mapped address to its slot, and each numeric one to its bounds.
@@ -678,17 +719,21 @@ mod tests {
         assert!(workflows(tmp.path()).is_empty());
     }
 
-    /// Replies for an emit: slots, then one node schema per distinct class.
+    /// Replies for an emit: slots, then one node schema per distinct class,
+    /// then the model folder list and one folder listing.
     fn emit_replies() -> Vec<Reply> {
         vec![
             Reply::Json(json!({
-                "workflow": "stored", "count": 2,
+                "workflow": "stored", "count": 3,
                 "slots": [
                     { "address": "94.tags", "name": "tags", "type": "STRING",
                       "current_value": "late night trap", "instance_id": "94",
                       "node_type": "TextEncodeAceStepAudio1.5" },
                     { "address": "3.steps", "name": "steps", "type": "INT",
-                      "current_value": 8, "instance_id": "3", "node_type": "KSampler" }
+                      "current_value": 8, "instance_id": "3", "node_type": "KSampler" },
+                    { "address": "5.ckpt_name", "name": "ckpt_name", "type": "COMBO",
+                      "current_value": "ace_step.safetensors", "instance_id": "5",
+                      "node_type": "CheckpointLoaderSimple" }
                 ]
             })),
             Reply::Json(json!({
@@ -704,6 +749,16 @@ mod tests {
                     "options": { "min": 1, "max": 10000, "step": null, "default": 20 }
                 }],
                 "outputs": []
+            })),
+            Reply::Json(json!({
+                "count": 1,
+                "folders": [{ "name": "checkpoints", "subfolders": [] }]
+            })),
+            Reply::Json(json!({
+                "folder": "checkpoints",
+                "total": 1,
+                "shown": 1,
+                "files": [{ "name": "ace_step.safetensors", "pathIndex": 0 }]
             })),
         ]
     }
@@ -759,6 +814,16 @@ mod tests {
         assert!(loaded.profile.comfy.workflow.is_some());
         assert!(loaded.profile.inputs.contains_key("tags"));
         assert!(loaded.profile.inputs.contains_key("steps"));
+
+        // T-507b: the COMBO model slot became a declared file, so the row
+        // reads Ready instead of Undeclared.
+        assert_eq!(loaded.profile.comfy.models.len(), 1);
+        let spec = &loaded.profile.comfy.models[0];
+        assert_eq!(spec.file, "ace_step.safetensors");
+        assert_eq!(spec.folder, "checkpoints");
+        assert!(spec.source_url.is_none());
+        assert!(spec.size_bytes.is_none());
+        assert!(spec.license.is_none());
     }
 
     /// Protects: an address the stored graph does not expose is refused with
