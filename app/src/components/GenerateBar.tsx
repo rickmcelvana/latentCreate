@@ -1,8 +1,6 @@
 import {
   BATCH_CHOICES,
   GENERATE,
-  USE_APPROVED,
-  approvedOffer,
   blockers,
   canBatch,
   effectiveCount,
@@ -24,32 +22,17 @@ export function GenerateBar() {
   const submit = useGenerateStore((s) => s.submit)
   const setCount = useGenerateStore((s) => s.setCount)
   const setTitle = useGenerateStore((s) => s.setTitle)
-  const useApprovedLyric = useGenerateStore((s) => s.useApprovedLyric)
 
   const profileId = useParamPanelStore((s) => s.profileId)
   const model = useParamPanelStore((s) => s.model)
   const values = useParamPanelStore((s) => s.values)
   const doc = useLyricsStore((s) => s.doc)
 
-  const offer = approvedOffer(doc, model, values)
   const reasons = blockers(profileId, model, values)
   const notes = notesFor(last, lastProfileId, profileId, queued)
 
   return (
     <section className="panel generate-bar">
-      {offer !== null ? (
-        <p className="generate-lyric-offer">
-          {offer}{' '}
-          <button
-            type="button"
-            className="generate-use-lyric"
-            onClick={useApprovedLyric}
-          >
-            {USE_APPROVED}
-          </button>
-        </p>
-      ) : null}
-
       {reasons.map((reason) => (
         <p className="generate-blocked" key={reason}>
           {reason}

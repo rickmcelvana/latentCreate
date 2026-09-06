@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { ApprovedLyricOffer } from '../components/ApprovedLyricOffer'
 import { GenerateBar } from '../components/GenerateBar'
 import { JobQueue } from '../components/JobQueue'
 import { LoraStack } from '../components/LoraStack'
@@ -73,7 +74,7 @@ export function AudioStudio() {
         />
       </section>
 
-      <ParamPanel store={useParamPanelStore} />
+      <ParamPanel store={useParamPanelStore} lyricAccessory={<ApprovedLyricOffer />} />
 
       <LoraStack />
 

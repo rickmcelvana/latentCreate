@@ -82,7 +82,9 @@ export function Setup() {
         </div>
       </section>
 
-      <ModelsStep />
+      <ModelsStep kind="music" />
+      <ModelsStep kind="image" />
+      <ImportStep />
       <LlmStep />
       <ProjectsStep />
     </>
@@ -313,15 +315,35 @@ function LlmStep() {
   )
 }
 
+/** The copy that differs between the two model steps. Kept as data so the two
+ *  cards are one component: a music card and an image card that drifted apart
+ *  is exactly what this session's rework existed to undo. */
+const MODEL_STEPS = {
+  music: {
+    title: 'Music models',
+    blurb: 'Install a model, and pick the one the Audio studio starts with.',
+    group: 'setup-music',
+  },
+  image: {
+    title: 'Image models',
+    blurb: 'Install a model, and pick the one Cover Art starts with.',
+    group: 'setup-image',
+  },
+} as const
+
 /**
- * Setup wizard, models step.
+ * Setup wizard, models step -- one card per kind.
  *
  * Readiness is decided by comparing each profile's declared files against what
  * ComfyUI reports it has -- never by `local_check.runnable`, which answers a
  * different question and calls a working MiniMax install unrunnable over a
  * filename the profile already corrects.
+ *
+ * The step also owns the **default** for its studio: the quick-swap menus on
+ * Audio and Cover Art offer installed models only, so what is picked here is
+ * what a screen with nothing installed still reads.
  */
-function ModelsStep() {
+function ModelsStep({ kind }: { kind: ProfileStatus['kind'] }) {
   const view = useModelsStore((state) => state.view)
   const busy = useModelsStore((state) => state.busy)
   const refresh = useModelsStore((state) => state.refresh)
@@ -332,67 +354,71 @@ function ModelsStep() {
     void refresh()
   }, [refresh])
 
-  const profiles = view === null ? [] : curatedFirst(view.profiles)
-  const music = profiles.filter((p) => p.kind === 'music')
-  const image = profiles.filter((p) => p.kind === 'image')
-  const chosenMusic = effectiveProfileId(config)
-  const chosenImage = effectiveImageProfileId(config)
+  const step = MODEL_STEPS[kind]
+  const profiles = view === null ? [] : curatedFirst(view.profiles).filter((p) => p.kind === kind)
+  const chosen = kind === 'music' ? effectiveProfileId(config) : effectiveImageProfileId(config)
 
   return (
     <section className="panel setup-step">
       <header className="setup-step-head">
-        <h2 className="setup-step-title">Models</h2>
+        <h2 className="setup-step-title">{step.title}</h2>
         <button type="button" className="setup-button" onClick={() => void refresh()} disabled={busy}>
           {busy ? 'Checking...' : 'Retry'}
         </button>
       </header>
 
-      {/* The step chooses the app's default model as well as installing them:
-          the studios' quick-swap menus offer installed models only, so what is
-          picked here is what a screen with nothing installed still reads. */}
-      <p className="setup-next-step">
-        Install the models you want, and pick the one each studio starts with.
-      </p>
+      <p className="setup-next-step">{step.blurb}</p>
 
+      {/* Said on both cards rather than once above them: the cards are
+          separate now, and a warning that only appears on the first is a
+          warning half the readers never see. */}
       {view !== null && !view.inventory_available ? (
         <p className="setup-next-step">
           Cannot see which models are installed. {view.inventory_detail ?? 'Start ComfyUI above.'}
         </p>
       ) : null}
 
-      {music.length > 0 ? (
-        <div className="model-group">
-          <h3 className="model-group-title">Music models</h3>
-          <ul className="picker-list">
-            {music.map((p) => (
-              <ModelRow
-                key={p.id}
-                profile={p}
-                group="setup-music"
-                selected={p.id === chosenMusic}
-                onSelect={() => void save({ default_profile_id: p.id })}
-              />
-            ))}
-          </ul>
-        </div>
+      {profiles.length > 0 ? (
+        <ul className="picker-list">
+          {profiles.map((p) => (
+            <ModelRow
+              key={p.id}
+              profile={p}
+              group={step.group}
+              selected={p.id === chosen}
+              onSelect={() =>
+                void save(
+                  kind === 'music'
+                    ? { default_profile_id: p.id }
+                    : { default_image_profile_id: p.id },
+                )
+              }
+            />
+          ))}
+        </ul>
       ) : null}
+    </section>
+  )
+}
 
-      {image.length > 0 ? (
-        <div className="model-group">
-          <h3 className="model-group-title">Image models</h3>
-          <ul className="picker-list">
-            {image.map((p) => (
-              <ModelRow
-                key={p.id}
-                profile={p}
-                group="setup-image"
-                selected={p.id === chosenImage}
-                onSelect={() => void save({ default_image_profile_id: p.id })}
-              />
-            ))}
-          </ul>
-        </div>
-      ) : null}
+/**
+ * Setup wizard, import step.
+ *
+ * Its own card under the two model lists: importing a workflow is how a model
+ * that is *not* on the curated list gets in (ARCHITECTURE 5b), which is a
+ * different act from installing one that is -- and it was reading as a footer
+ * to whichever list it sat inside.
+ */
+function ImportStep() {
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">Your own workflow</h2>
+      </header>
+
+      <p className="setup-next-step">
+        For anything not on the lists above: import a ComfyUI workflow and map its inputs.
+      </p>
 
       <ImportWorkflow />
     </section>

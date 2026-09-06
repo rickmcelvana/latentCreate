@@ -559,6 +559,13 @@ already renders shipped profiles with one-click Install.
     named "Midnight" gave eight identical play bars, and the transport shows a title alone.
   - `.setup-step` gained `margin-bottom`; the four Setup cards ran together as one.
 
+  **Owner review the same day, four fixes landed:** the two model lists split into **separate cards**
+  per kind (they shared one "Models" card and ran together), **Import a workflow** moved to its own
+  "Your own workflow" card under them, the Lyrics swap panel constrained to that view's 720px column
+  (`.quick-swap-panel-narrow`), and the **approved-lyric offer moved from `GenerateBar` to the Lyrics
+  field's own label row** (`ApprovedLyricOffer`, passed to `ParamPanel` as `lyricAccessory`) -- it
+  offers to fill one specific box and was sitting several controls below it.
+
   Frontend 522 → 543 tests. Dead rules removed (`.profile-*`, `.project-list/row`, `.model-row*`);
   `.profile-picker-setup` renamed `.setup-link`, the last survivor of a family that no longer exists.
 

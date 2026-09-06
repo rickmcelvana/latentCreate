@@ -1,7 +1,17 @@
+import type { ReactNode } from 'react'
 import { groupsOf, seedError, type Control, type ControlValue } from '../state/params'
 import { MAX_SAFE_SEED, type ParamPanelStore } from '../state/paramPanel'
 
-export function ParamPanel({ store }: { store: ParamPanelStore }) {
+export function ParamPanel({
+  store,
+  lyricAccessory,
+}: {
+  store: ParamPanelStore
+  /** Rendered beside the **lyrics** field's label, if the model has one. Audio
+   *  passes the approved-version offer here; Cover Art passes nothing, and an
+   *  image model has no lyrics control to hang it on either way. */
+  lyricAccessory?: ReactNode
+}) {
   const model = store((s) => s.model)
   const values = store((s) => s.values)
   const showAdvanced = store((s) => s.showAdvanced)
@@ -27,6 +37,7 @@ export function ParamPanel({ store }: { store: ParamPanelStore }) {
               onChange={(value) => setValue(control.name, value)}
               onReroll={control.kind === 'seed' ? rerollSeed : undefined}
               onRetryOptions={() => void refreshChoices()}
+              accessory={control.kind === 'lyrics' ? lyricAccessory : undefined}
             />
           ))}
 
@@ -53,6 +64,7 @@ export function ParamPanel({ store }: { store: ParamPanelStore }) {
                         onChange={(value) => setValue(control.name, value)}
                         onReroll={control.kind === 'seed' ? rerollSeed : undefined}
                         onRetryOptions={() => void refreshChoices()}
+                        accessory={control.kind === 'lyrics' ? lyricAccessory : undefined}
                       />
                     ))}
 
@@ -69,6 +81,7 @@ export function ParamPanel({ store }: { store: ParamPanelStore }) {
                             onChange={(value) => setValue(control.name, value)}
                             onReroll={control.kind === 'seed' ? rerollSeed : undefined}
                             onRetryOptions={() => void refreshChoices()}
+                            accessory={control.kind === 'lyrics' ? lyricAccessory : undefined}
                           />
                         ))}
                     </fieldset>
@@ -104,6 +117,8 @@ interface ParamFieldProps {
   onChange: (value: ControlValue) => void
   onReroll?: () => void
   onRetryOptions?: () => void
+  /** Extra content on the label row, e.g. the approved-lyric offer. */
+  accessory?: ReactNode
 }
 
 function ParamField({
@@ -112,14 +127,18 @@ function ParamField({
   onChange,
   onReroll,
   onRetryOptions,
+  accessory,
 }: ParamFieldProps) {
   const inputId = control.name
 
   return (
     <div className="param-field">
-      <label className="param-field-label" htmlFor={inputId}>
-        {control.label}
-      </label>
+      <div className="param-field-head">
+        <label className="param-field-label" htmlFor={inputId}>
+          {control.label}
+        </label>
+        {accessory}
+      </div>
 
       {control.kind === 'text' || control.kind === 'lyrics' ? (
         <textarea

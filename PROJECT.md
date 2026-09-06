@@ -6972,3 +6972,22 @@ names only the second, and **MCP-SURFACE 36 already records that `download_model
 with a remote target configured** -- which makes the entire curated one-click install local-only,
 something the Models step would have to say rather than offer. Full scope in
 [tasks/phase-5.md](tasks/phase-5.md) T-515. **It blocks v1, not the Phase 5 milestone.**
+
+**Owner review of T-514, same day -- four fixes, all landed.** (1) The two model lists shared one
+**Models** card and ran together; they are now **separate cards** per kind, each with its own Retry,
+its own one-line purpose ("pick the one the Audio studio starts with" / "...Cover Art starts with")
+and its own copy of the inventory warning -- a warning that appears only on the first of two cards
+is one half the readers never see. (2) **Import a workflow** got its own card under them, "Your own
+workflow": bringing in a model that is *not* on the curated list (ARCHITECTURE 5b) is a different
+act from installing one that is, and inside a list it read as that list's footer. (3) The Lyrics
+swap panel was **full-bleed** while every other card on that view sits in a 720px column
+(`.lyrics-form`, `.doc-picker`, `.lyrics-output`); `.quick-swap-panel-narrow` matches it, as a
+modifier -- the studios and Library have no such column. (4) **The approved-lyric offer moved to
+the field it fills.** "The Lyrics Studio has vN approved. Use it" was rendered by `GenerateBar`,
+several controls below the **Lyrics** box it offers to fill; it is now on that box's own label row,
+via a new `ApprovedLyricOffer` passed into `ParamPanel` as `lyricAccessory` (Cover Art passes none,
+and an image model has no lyrics control to hang it on anyway). Worth noting for the log because
+the owner reported all four against the **Lyrics** page and the last one lives on **Audio** -- the
+Lyrics view's own approval line is the separate "vN is approved and ready for audio"; what they
+were describing (a Generate button at the foot, a box labelled Lyrics above it) is the Audio view.
+Frontend stays 543 tests -- the moved offer is the same `approvedOffer` selector, already covered.

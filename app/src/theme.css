@@ -448,19 +448,6 @@ body {
 
 /* --- Setup wizard, models step --- */
 
-.model-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-sm);
-}
-
-.model-group-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
 .model-files {
   margin: 0;
   padding: 0;
@@ -782,6 +769,15 @@ body {
   flex-direction: column;
   gap: var(--gap-sm);
 }
+
+/* Lyrics lays its cards out in a 720px column (`.lyrics-form`, `.doc-picker`,
+   `.lyrics-output`); a full-bleed swap panel above them read as a different
+   page. The studios and Library have no such column, so this is a modifier
+   rather than the default. */
+.quick-swap-panel-narrow {
+  max-width: 720px;
+}
+
 
 .quick-swap-row {
   display: flex;
@@ -1389,9 +1385,41 @@ body {
   gap: var(--gap-xs);
 }
 
+/* The label row. Carries the label alone for every field but one: the lyrics
+   field also hangs the approved-version offer here, at the box it fills,
+   rather than at the Generate button several controls further down. */
+.param-field-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+}
+
 .param-field-label {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.lyric-offer {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lyric-offer-use {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.lyric-offer-use:hover {
+  color: var(--accent-hover);
 }
 
 .param-field textarea,
@@ -1725,29 +1753,6 @@ body {
   flex-direction: column;
   gap: var(--gap-md);
   margin-bottom: var(--gap-lg);
-}
-
-.generate-lyric-offer {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.generate-use-lyric {
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: 13px;
-  text-decoration: underline;
-  cursor: pointer;
-  transition: color var(--transition);
-}
-
-.generate-use-lyric:hover {
-  color: var(--accent-hover);
 }
 
 .generate-blocked {
