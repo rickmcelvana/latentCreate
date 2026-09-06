@@ -1,10 +1,9 @@
 import { useEffect } from 'react'
 import { GenerateBar } from '../components/GenerateBar'
-import { ImportWorkflow } from '../components/ImportWorkflow'
 import { JobQueue } from '../components/JobQueue'
 import { LoraStack } from '../components/LoraStack'
 import { ParamPanel } from '../components/ParamPanel'
-import { ProfilePickerRow } from '../components/ProfilePickerRow'
+import { QuickSwap } from '../components/QuickSwap'
 import { useConfigStore } from '../state/config'
 import { useJobsStore } from '../state/jobs'
 import { useLoraPanelStore } from '../state/loraPanel'
@@ -12,8 +11,9 @@ import { useModelsStore } from '../state/models'
 import { useParamPanelStore } from '../state/paramPanel'
 import {
   effectiveProfileId,
+  installedOptions,
+  optionsNote,
   pickable,
-  profileRow,
   selectedProfile,
 } from '../state/profiles'
 
@@ -54,44 +54,23 @@ export function AudioStudio() {
         Style tags, lyrics, and the settings worth changing.
       </p>
 
-      <section className="panel profile-picker">
-        <h2 className="profile-picker-title">Model profile</h2>
-
-        {view === null ? (
-          <p className="profile-picker-disclaimer">Checking for installed models…</p>
-        ) : null}
-
-        {/* No fallback happens here, and the wording must not promise one:
-            `effectiveProfileId` returns the configured id whether or not a
-            profile answers to it, so generation would fail on that id rather
-            than quietly using another model. Saying "falling back" would
-            describe behaviour the app does not have. */}
-        {selected === null && view !== null ? (
-          <p className="profile-picker-fallback">
-            The configured profile <code>{effectiveId}</code> is not among the loaded
-            profiles. Pick one below to continue.
-          </p>
-        ) : null}
-
-        {view !== null && !view.inventory_available ? (
-          <p className="profile-picker-disclaimer">
-            Readiness could not be checked because ComfyUI is not running.
-          </p>
-        ) : null}
-
-        <ul className="profile-list">
-          {rows.map((profile) => (
-            <ProfilePickerRow
-              key={profile.id}
-              row={profileRow(profile)}
-              selected={profile.id === effectiveId}
-              group="profile"
-              onSelect={() => void save({ default_profile_id: profile.id })}
-            />
-          ))}
-        </ul>
-
-        <ImportWorkflow />
+      {/* A menu, not a list: the model is chosen and installed on Setup, and
+          this is the fast swap between what is already installed. Every fact
+          that decides a choice -- licence, VRAM, readiness, install -- stays
+          on Setup rather than being half-repeated here. */}
+      <section className="panel quick-swap-panel">
+        <QuickSwap
+          label="Model"
+          value={selected === null ? null : effectiveId}
+          options={installedOptions(view, 'music', effectiveId)}
+          onChange={(id) => void save({ default_profile_id: id })}
+          note={
+            selected === null && view !== null
+              ? `The configured profile ${effectiveId} is not among the loaded profiles. Pick one here to continue.`
+              : optionsNote(view, 'music', effectiveId)
+          }
+          emptyLabel="No music model installed"
+        />
       </section>
 
       <ParamPanel store={useParamPanelStore} />

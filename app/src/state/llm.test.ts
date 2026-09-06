@@ -6,6 +6,7 @@ import {
   DEFAULT_BASE_URL,
   effectiveBaseUrl,
   keyField,
+  lyricsOptions,
   modelView,
   testSummary,
   useLlmStore,
@@ -381,5 +382,43 @@ describe('keyField', () => {
     expect(keyField(null)).toBe('entry')
     expect(keyField({ state: 'not_configured' })).toBe('entry')
     expect(keyField({ state: 'unreachable', detail: 'refused', hint: null })).toBe('entry')
+  })
+})
+
+describe('lyricsOptions', () => {
+  const ready = (models: LlmModelRow[]): LlmStatus => ({
+    state: 'ready',
+    models,
+    enriched: true,
+    preselect: null,
+    has_key: false,
+  })
+
+  it('offers nothing before the endpoint has answered', () => {
+    expect(lyricsOptions(null, null)).toEqual([])
+  })
+
+  // Nothing to offer, but the control still has to show what is configured
+  // rather than falling to a blank -- the endpoint being down is not a reason
+  // to imply no lyrics model is set.
+  it('offers only the configured model when the endpoint is unreachable', () => {
+    expect(lyricsOptions({ state: 'unreachable', detail: 'down', hint: null }, 'a')).toEqual(['a'])
+  })
+
+  it('drops models the endpoint says cannot chat', () => {
+    const status = ready([row({ id: 'chatty' }), row({ id: 'embedder', can_chat: false })])
+    expect(lyricsOptions(status, null)).toEqual(['chatty'])
+  })
+
+  it('keeps models whose capabilities are unknown', () => {
+    expect(lyricsOptions(ready([{ ...UNCHECKED, id: 'mystery' }]), null)).toEqual(['mystery'])
+  })
+
+  it('includes the configured model the endpoint no longer offers', () => {
+    expect(lyricsOptions(ready([row({ id: 'here' })]), 'gone')).toEqual(['gone', 'here'])
+  })
+
+  it('does not duplicate the configured model', () => {
+    expect(lyricsOptions(ready([row({ id: 'here' })]), 'here')).toEqual(['here'])
   })
 })

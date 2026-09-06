@@ -533,6 +533,58 @@ already renders shipped profiles with one-click Install.
   SA Open 1.0's `t5-base` encoder has no ungated ComfyUI-ready source. Audio catalog is now
   Turbo/Base/SFT/MiniMax.
 
+### Setup/studio rework (owner design pass 2026-09-06)
+
+- **T-514 — Setup owns choosing; the studios only swap. ✅ LANDED 2026-09-06** (architect-direct,
+  no Aider — owner's call for a design session). Two things were true before it: the Setup Models
+  step had a *different* row layout from the studios' pickers and no scroll, and each studio carried
+  a full model list — licence, VRAM claim, readiness pill, origin — on a screen whose job is to
+  generate. Now **Setup is where a model is chosen, installed and read about**; the studios carry a
+  **name-only dropdown over what is installed**. Concretely:
+  - One **`.picker-list` / `.picker-row`** family replaces the three near-identical copies
+    (`.profile-list`, `.project-list`, and the models step's own `.model-row`). `ProfilePickerRow`
+    takes `children`, which is how Setup hangs its file list, download progress and **Install**
+    inside the shared row rather than forking the style.
+  - Setup gains **radio selection** on every model row (writing `default_profile_id` /
+    `default_image_profile_id`) and a **Projects step** — the list, create and delete moved off
+    Library. `ImportWorkflow` moved off Audio to sit with the other model management.
+  - **`QuickSwap`** is the new shared control on Audio, Cover Art, Lyrics and Library. Its options
+    come from `installedOptions` / `optionsNote` (`state/profiles.ts`), `lyricsOptions`
+    (`state/llm.ts`) and the project list. Two rules earn their tests: an **unreadable inventory**
+    offers everything rather than nothing (`unknown` is "could not check", not "not installed"), and
+    the **chosen id is always an option** even when uninstalled, because a `<select>` whose value
+    matches no option silently renders the first one.
+  - Library: **Play leads the row** (a round icon button before the title, actions pushed right by
+    `margin-left: auto`), and the loaded track carries a **`nowPlayingLabel`** tag — eight takes
+    named "Midnight" gave eight identical play bars, and the transport shows a title alone.
+  - `.setup-step` gained `margin-bottom`; the four Setup cards ran together as one.
+
+  Frontend 522 → 543 tests. Dead rules removed (`.profile-*`, `.project-list/row`, `.model-row*`);
+  `.profile-picker-setup` renamed `.setup-link`, the last survivor of a family that no longer exists.
+
+- **T-515 — Reach a ComfyUI that is not on this machine.** ⏳ **OPEN — must land before v1**
+  (owner, 2026-09-06). The Setup ComfyUI card silently assumes the local install: `comfy.rs` builds
+  a `LocalComfy` unconditionally, and nothing in the app ever reads `ComfyConfig.mode` or
+  `ComfyConfig.url`. **The schema is already there and unused** — `ComfyMode::{Local, Cloud}`,
+  `ComfyConfig.url`, and a whitelisted `comfy_cloud_api_key` keychain secret — so this is wiring and
+  a surface check, not a redesign. What the task must establish, live, before any UI is written:
+  1. **Which remote is meant.** comfy-mcp's own instructions name a **`comfy_target`** remote
+     (a self-hosted ComfyUI at another address) as distinct from **Comfy Cloud** (the paid tier
+     `list_partner_models` / `partner_generate` belong to). `ComfyMode::Cloud` names the second; the
+     more likely first need is the first. **Both must be priced separately** — do not let one enum
+     variant stand for two different products.
+  2. **What breaks at distance.** Verify against a real remote target, the MCP-SURFACE way, and
+     record the answers there: does `download_model` still refuse with a target configured (§36 says
+     it does — so **the whole curated-install path is local-only**, and the Models step must say so
+     rather than offering an Install that cannot work); does `search_models` report the *remote's*
+     inventory (readiness is meaningless otherwise); do `fetch_outputs` and the `asset://` track/art
+     URLs resolve when the file is on another machine (ingest, playback and the art gallery all
+     assume a local path).
+  3. **Only then the UI**: a mode control on the ComfyUI card, an address field, and the API key
+     through the existing keychain path — never `config.json` (T-004).
+  The honest scope is that (2) probably reshapes several screens' degraded states, which is why this
+  is its own session and not a field on a card.
+
 **Build order, as it actually ran:** the three polish items first (T-501/502/503, independent and
 cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506), then T-507
 (first-run + empty-state polish). **All landed by 2026-09-05.** The 2026-09-05 catalog pivot adds
@@ -557,3 +609,7 @@ Cover art with its sidecar, the docked player and sharp visualizer, and the lyri
 discharged (T-506d/T-506e-c, T-501/502/503). **What the milestone still needs is T-511 + the
 installer (T-508)** -- then the whole sequence run once on a machine that never had the toolchain,
 the only part a dev-machine click-through cannot stand in for.
+
+**T-515 (remote ComfyUI) is a v1 blocker but not a milestone line**: the milestone is a person
+installing a build and generating against *their own local* ComfyUI, which T-515 does not change.
+It blocks the version, not this check.

@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useConfigStore } from '../state/config'
-import {
-  effectiveProjectSlug,
-  projectRow,
-  useProjectsStore,
-  type ProjectRow,
-} from '../state/projects'
+import { effectiveProjectSlug, projectRow, useProjectsStore } from '../state/projects'
+import { QuickSwap } from '../components/QuickSwap'
 import {
   EMPTY_LIBRARY,
   provenanceView,
@@ -13,7 +9,7 @@ import {
   type TrackRow,
 } from '../state/library'
 import { Player } from '../components/Player'
-import { usePlayerStore } from '../state/player'
+import { nowPlayingLabel, usePlayerStore } from '../state/player'
 import { useGenerateStore } from '../state/generatePanel'
 import { AlbumPanel } from '../components/AlbumPanel'
 import { useAlbumsStore } from '../state/albums'
@@ -81,24 +77,18 @@ export function Library() {
         Everything you have made, with the recipe that made it.
       </p>
 
-      <section className="panel project-picker">
-        <h2 className="project-picker-title">Project</h2>
-
-        {projectError !== null ? <p className="library-error">{projectError}</p> : null}
-        {projectWarnings !== null ? <p className="library-warning">{projectWarnings}</p> : null}
-
-        <ul className="project-list">
-          {rows.map((row) => (
-            <ProjectRow
-              key={row.slug}
-              row={row}
-              selected={row.slug === selected}
-              onSelect={() => void selectProject(row.slug)}
-            />
-          ))}
-        </ul>
-
-        <ProjectCreate />
+      {/* Creating, naming and deleting projects lives on Setup. This is the
+          swap between the ones that exist -- the same rule the studios' model
+          menus follow. */}
+      <section className="panel quick-swap-panel">
+        <QuickSwap
+          label="Project"
+          value={selected}
+          options={rows.map((row) => ({ id: row.slug, name: row.name }))}
+          onChange={(slug) => void selectProject(slug)}
+          note={projectError ?? projectWarnings}
+          emptyLabel="No projects yet"
+        />
       </section>
 
       {error !== null ? (
@@ -133,107 +123,13 @@ export function Library() {
   )
 }
 
-function ProjectRow({
-  row,
-  selected,
-  onSelect,
-}: {
-  row: ProjectRow
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <li className={`project-row ${selected ? 'project-row-selected' : ''}`}>
-      <label className="project-row-pick">
-        <input
-          type="radio"
-          name="project"
-          checked={selected}
-          onChange={onSelect}
-        />
-        <span className="project-row-name">{row.name}</span>
-      </label>
-
-      <div className="project-row-meta">
-        <span className="project-row-created">{row.created}</span>
-        <ProjectDelete slug={row.slug} name={row.name} />
-      </div>
-    </li>
-  )
-}
-
-/** Inline delete: a button that becomes a "Delete 'name'? … Delete / Cancel". */
-function ProjectDelete({ slug, name }: { slug: string; name: string }) {
-  const confirming = useProjectsStore((state) => state.confirmingDelete === slug)
-  const askDelete = useProjectsStore((state) => state.askDelete)
-  const cancelDelete = useProjectsStore((state) => state.cancelDelete)
-  const deleteProject = useProjectsStore((state) => state.deleteProject)
-
-  if (!confirming) {
-    return (
-      <button
-        type="button"
-        className="project-row-delete"
-        onClick={() => askDelete(slug)}
-      >
-        Delete
-      </button>
-    )
-  }
-  return (
-    <div className="project-delete-confirm">
-      <span className="project-delete-prompt">
-        Delete “{name}”? This trashes the whole project — every track, lyric and
-        album in it — to the Recycle Bin.
-      </span>
-      <button
-        type="button"
-        className="project-delete-yes"
-        onClick={() => void deleteProject(slug)}
-      >
-        Delete
-      </button>
-      <button
-        type="button"
-        className="project-delete-cancel"
-        onClick={() => cancelDelete()}
-      >
-        Cancel
-      </button>
-    </div>
-  )
-}
-
-function ProjectCreate() {
-  const [name, setName] = useState('')
-  const create = useProjectsStore((state) => state.create)
-  return (
-    <form
-      className="project-create"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void create(name).then((ok) => {
-          if (ok) setName('')
-        })
-      }}
-    >
-      <input
-        className="project-create-input"
-        type="text"
-        value={name}
-        placeholder="New project name"
-        onChange={(event) => setName(event.target.value)}
-      />
-      <button type="submit" className="project-create-button" disabled={name.trim() === ''}>
-        Create
-      </button>
-    </form>
-  )
-}
-
 function TrackCard({ row }: { row: TrackRow }) {
   const art = useArtStore((state) => state.art)
   const play = usePlayerStore((state) => state.play)
+  // Subscribe to the label, not the player state: this re-renders a row only
+  // when *its own* tag changes, not on every `timeupdate` the transport fires
+  // several times a second across the whole list.
+  const playingTag = usePlayerStore((state) => nowPlayingLabel(state, row.id))
   const send = useSendToStore((state) => state.send)
   const sending = useSendToStore((state) => state.sending)
   const sendFailure = useSendToStore((state) => state.failure)
@@ -248,17 +144,23 @@ function TrackCard({ row }: { row: TrackRow }) {
   const renaming = isRow(actions.renaming, row.id)
 
   return (
-    <li className="panel track-row">
+    <li className={`panel track-row ${playingTag !== null ? 'track-row-playing' : ''}`}>
       <div className="track-head">
+        {/* Play leads the row. The transport shows a title and nothing else, so
+            the button that loaded it has to sit with the title rather than at
+            the far end of a row of unrelated actions. */}
+        <button
+          type="button"
+          className="track-play"
+          onClick={() => void play(row.id, row.name)}
+          aria-label={`Play ${row.name}`}
+        >
+          ▶
+        </button>
         <span className="track-name">{row.name}</span>
+        {/* Which of eight takes named "Midnight" the transport is holding. */}
+        {playingTag !== null ? <span className="track-playing-tag">{playingTag}</span> : null}
         <div className="track-head-actions">
-          <button
-            type="button"
-            className="track-play"
-            onClick={() => void play(row.id, row.name)}
-          >
-            Play
-          </button>
           <span className="track-send-label">Send to</span>
           {SEND_TARGETS.map((target) => (
             <button

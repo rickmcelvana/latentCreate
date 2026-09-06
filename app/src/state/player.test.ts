@@ -4,6 +4,7 @@ import {
   clampPosition,
   formatTime,
   initialPlayerState,
+  nowPlayingLabel,
   statusLabel,
   togglePlayer,
   type PlayerState,
@@ -156,5 +157,29 @@ describe('togglePlayer', () => {
     const next = togglePlayer(stateWith({ status: 'ended', position: 120, duration: 120 }))
     expect(next.status).toBe('playing')
     expect(next.position).toBe(0)
+  })
+})
+
+describe('nowPlayingLabel', () => {
+  it('tags no row when nothing has been loaded', () => {
+    expect(nowPlayingLabel(initialPlayerState, 'tr-0001')).toBeNull()
+  })
+
+  it('tags only the loaded track', () => {
+    const state = stateWith({ status: 'playing' })
+    expect(nowPlayingLabel(state, 'tr-0001')).toBe('Now playing')
+    expect(nowPlayingLabel(state, 'tr-0002')).toBeNull()
+  })
+
+  it('reads "Now playing" while the URL is still resolving', () => {
+    expect(nowPlayingLabel(stateWith({ status: 'loading' }), 'tr-0001')).toBe('Now playing')
+  })
+
+  // The tag exists to say *which* of eight identically named takes the
+  // transport holds, so a stopped row must still carry it.
+  it('still tags a paused, ended or failed track', () => {
+    expect(nowPlayingLabel(stateWith({ status: 'paused' }), 'tr-0001')).toBe('Paused')
+    expect(nowPlayingLabel(stateWith({ status: 'ended' }), 'tr-0001')).toBe('Ended')
+    expect(nowPlayingLabel(stateWith({ status: 'error' }), 'tr-0001')).toBe('Playback error')
   })
 })

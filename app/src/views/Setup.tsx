@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
-import { curatedFirst, formatBytes, installView, rowFor, useModelsStore } from '../state/models'
+import { curatedFirst, formatBytes, installView, useModelsStore } from '../state/models'
+import { ImportWorkflow } from '../components/ImportWorkflow'
+import { ProfilePickerRow } from '../components/ProfilePickerRow'
+import { ProjectPickerRow } from '../components/ProjectPickerRow'
+import {
+  effectiveImageProfileId,
+  effectiveProfileId,
+  profileRow,
+} from '../state/profiles'
+import { effectiveProjectSlug, projectRow, useProjectsStore } from '../state/projects'
 import {
   canTest,
   DEFAULT_BASE_URL,
@@ -75,6 +84,7 @@ export function Setup() {
 
       <ModelsStep />
       <LlmStep />
+      <ProjectsStep />
     </>
   )
 }
@@ -315,6 +325,8 @@ function ModelsStep() {
   const view = useModelsStore((state) => state.view)
   const busy = useModelsStore((state) => state.busy)
   const refresh = useModelsStore((state) => state.refresh)
+  const config = useConfigStore((state) => state.config)
+  const save = useConfigStore((state) => state.save)
 
   useEffect(() => {
     void refresh()
@@ -323,6 +335,8 @@ function ModelsStep() {
   const profiles = view === null ? [] : curatedFirst(view.profiles)
   const music = profiles.filter((p) => p.kind === 'music')
   const image = profiles.filter((p) => p.kind === 'image')
+  const chosenMusic = effectiveProfileId(config)
+  const chosenImage = effectiveImageProfileId(config)
 
   return (
     <section className="panel setup-step">
@@ -333,6 +347,13 @@ function ModelsStep() {
         </button>
       </header>
 
+      {/* The step chooses the app's default model as well as installing them:
+          the studios' quick-swap menus offer installed models only, so what is
+          picked here is what a screen with nothing installed still reads. */}
+      <p className="setup-next-step">
+        Install the models you want, and pick the one each studio starts with.
+      </p>
+
       {view !== null && !view.inventory_available ? (
         <p className="setup-next-step">
           Cannot see which models are installed. {view.inventory_detail ?? 'Start ComfyUI above.'}
@@ -342,49 +363,67 @@ function ModelsStep() {
       {music.length > 0 ? (
         <div className="model-group">
           <h3 className="model-group-title">Music models</h3>
-          {music.map((p) => (
-            <ModelRow key={p.id} profile={p} />
-          ))}
+          <ul className="picker-list">
+            {music.map((p) => (
+              <ModelRow
+                key={p.id}
+                profile={p}
+                group="setup-music"
+                selected={p.id === chosenMusic}
+                onSelect={() => void save({ default_profile_id: p.id })}
+              />
+            ))}
+          </ul>
         </div>
       ) : null}
 
       {image.length > 0 ? (
         <div className="model-group">
           <h3 className="model-group-title">Image models</h3>
-          {image.map((p) => (
-            <ModelRow key={p.id} profile={p} />
-          ))}
+          <ul className="picker-list">
+            {image.map((p) => (
+              <ModelRow
+                key={p.id}
+                profile={p}
+                group="setup-image"
+                selected={p.id === chosenImage}
+                onSelect={() => void save({ default_image_profile_id: p.id })}
+              />
+            ))}
+          </ul>
         </div>
       ) : null}
+
+      <ImportWorkflow />
     </section>
   )
 }
 
-/** One model, its licence, and whether it can be used. */
-function ModelRow({ profile }: { profile: ProfileStatus }) {
+/** One model: pick it as the default, read its licence, and install it. */
+function ModelRow({
+  profile,
+  group,
+  selected,
+  onSelect,
+}: {
+  profile: ProfileStatus
+  group: string
+  selected: boolean
+  onSelect: () => void
+}) {
   const install = useModelsStore((state) => state.install)
   const installing = useModelsStore((state) => state.installing)
   const progress = useModelsStore((state) => state.progress)
 
-  const row = rowFor(profile.readiness)
+  const row = profileRow(profile)
   const active = installing === profile.id
   const live = active ? installView(progress) : null
 
   return (
-    <article className="model-row">
-      <header className="model-row-head">
-        <h3 className="model-row-title">{profile.display_name}</h3>
-        <span className={`status-pill status-pill-${row.tone}`}>{row.label}</span>
-      </header>
-
-      {/* Shown for every model, installed or not: some weights are open with
-          conditions the user takes on by generating with them (CONVENTIONS). */}
-      <p className="model-row-license">
-        <span className="model-row-license-name">{profile.license}</span>
-        {profile.license_notes !== null ? ` -- ${profile.license_notes}` : null}
-      </p>
-
-      {row.nextStep !== null && !active ? <p className="setup-next-step">{row.nextStep}</p> : null}
+    <ProfilePickerRow row={row} selected={selected} group={group} onSelect={onSelect}>
+      {row.readiness.nextStep !== null && !active ? (
+        <p className="setup-next-step">{row.readiness.nextStep}</p>
+      ) : null}
 
       {live !== null ? (
         <p className="setup-next-step">
@@ -420,7 +459,84 @@ function ModelRow({ profile }: { profile: ProfileStatus }) {
           </button>
         </div>
       ) : null}
-    </article>
+    </ProfilePickerRow>
+  )
+}
+
+/**
+ * Setup wizard, projects step.
+ *
+ * A project is the folder every track, lyric, album and cover files into, so
+ * creating and deleting them belongs with the rest of setup. The Library keeps
+ * a quick-swap menu for changing which one is open, and nothing else.
+ */
+function ProjectsStep() {
+  const config = useConfigStore((state) => state.config)
+  const projects = useProjectsStore((state) => state.projects)
+  const error = useProjectsStore((state) => state.error)
+  const warnings = useProjectsStore((state) => state.warnings)
+  const load = useProjectsStore((state) => state.load)
+  const select = useProjectsStore((state) => state.select)
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const selected = effectiveProjectSlug(config, projects)
+
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">Projects</h2>
+      </header>
+
+      <p className="setup-next-step">
+        Every track, lyric, album and cover files into the open project.
+      </p>
+
+      {error !== null ? <p className="library-error">{error}</p> : null}
+      {warnings !== null ? <p className="library-warning">{warnings}</p> : null}
+
+      <ul className="picker-list">
+        {projects.map(projectRow).map((row) => (
+          <ProjectPickerRow
+            key={row.slug}
+            row={row}
+            selected={row.slug === selected}
+            onSelect={() => void select(row.slug)}
+          />
+        ))}
+      </ul>
+
+      <ProjectCreate />
+    </section>
+  )
+}
+
+function ProjectCreate() {
+  const [name, setName] = useState('')
+  const create = useProjectsStore((state) => state.create)
+  return (
+    <form
+      className="project-create"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void create(name).then((ok) => {
+          if (ok) setName('')
+        })
+      }}
+    >
+      <input
+        className="project-create-input"
+        type="text"
+        value={name}
+        placeholder="New project name"
+        onChange={(event) => setName(event.target.value)}
+      />
+      <button type="submit" className="project-create-button" disabled={name.trim() === ''}>
+        Create
+      </button>
+    </form>
   )
 }
 

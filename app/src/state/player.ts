@@ -77,6 +77,27 @@ export function statusLabel(status: PlayerStatus): string {
   }
 }
 
+/**
+ * The tag a Library row shows when it is the track in the transport, else `null`.
+ *
+ * Exists because the transport shows a title and nothing else: eight takes named
+ * "Midnight" give eight identical play bars, and the only way to know which one
+ * is loaded is to mark it in the list. So this answers for the *loaded* track,
+ * not only the playing one -- a paused or finished row still has to be findable.
+ *
+ * `idle` is the one status with no tag: nothing has ever been loaded, so no row
+ * is the transport's.
+ */
+export function nowPlayingLabel(
+  state: Pick<PlayerState, 'track' | 'status'>,
+  trackId: string,
+): string | null {
+  if (state.track === null || state.track.id !== trackId) return null
+  if (state.status === 'playing' || state.status === 'loading') return 'Now playing'
+  const label = statusLabel(state.status)
+  return label === '' ? null : label
+}
+
 /** One thing the media element or the user told the player. */
 export type PlayerEvent =
   | { kind: 'load'; payload: { id: string; name: string; url: string } }

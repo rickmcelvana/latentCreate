@@ -119,11 +119,11 @@ export function imageStudioNote(state: ImageStudioState, id: string | null): str
     case 'loading':
       return null
     case 'no-profiles':
-      return 'No image model profile yet. Bring one in from the model catalog in Setup.'
+      return 'No image model profile yet. Install one on Setup.'
     case 'none-chosen':
       return 'Pick an image model to start.'
     case 'missing':
-      return `The configured image profile ${id} is not among the loaded profiles. Pick one below to continue.`
+      return `The configured image profile ${id} is not among the loaded profiles. Pick one here to continue.`
     case 'ready':
       return null
   }
@@ -163,4 +163,72 @@ export function profileRow(profile: ProfileStatus): ProfileRow {
       profile.vram_gb_min === null ? null : `Profile states ${profile.vram_gb_min} GB VRAM`,
     readiness: rowFor(profile.readiness),
   }
+}
+
+/** One entry in a studio's quick-swap dropdown: a name and the id behind it. */
+export interface PickerOption {
+  id: string
+  name: string
+}
+
+/**
+ * The models a studio's dropdown offers.
+ *
+ * The dropdown exists to swap fast while generating, so it carries **only the
+ * models that can actually run** -- no licence, no VRAM claim, no readiness
+ * pill; that detail lives on Setup, where models are chosen and installed.
+ *
+ * Two cases stop it being a plain `filter`:
+ *
+ * - **ComfyUI is not running.** Every readiness is then `unknown`, which is
+ *   "could not check", not "not installed" -- filtering on `ready` would empty
+ *   the dropdown and strand a user whose models are all fine. The whole list is
+ *   offered instead, and `optionsNote` says why.
+ * - **The chosen model is not installed.** It is included anyway, because a
+ *   `<select>` whose `value` names no option renders as the *first* option --
+ *   the control would silently claim a model the user never picked, which is
+ *   the same fault as substituting a default (`selectedProfile`).
+ */
+export function installedOptions(
+  view: ModelsView | null,
+  kind: ProfileStatus['kind'],
+  chosenId: string | null,
+): PickerOption[] {
+  if (view === null) return []
+  const all = pickable(view, kind)
+  const offered = view.inventory_available ? all.filter((p) => p.readiness.state === 'ready') : all
+  const chosen =
+    chosenId === null || offered.some((p) => p.id === chosenId)
+      ? null
+      : (all.find((p) => p.id === chosenId) ?? null)
+  const rows = chosen === null ? offered : [chosen, ...offered]
+  return rows.map((p) => ({ id: p.id, name: p.display_name }))
+}
+
+/**
+ * The sentence under a studio's dropdown, or `null` when it needs none.
+ *
+ * Every non-null answer ends in a next step (CONVENTIONS). The order matters:
+ * an unreadable inventory is reported before "nothing installed", because with
+ * ComfyUI down the app does not know that nothing is installed.
+ */
+export function optionsNote(
+  view: ModelsView | null,
+  kind: ProfileStatus['kind'],
+  chosenId: string | null,
+): string | null {
+  if (view === null) return null
+  const noun = kind === 'music' ? 'music' : 'image'
+  if (!view.inventory_available) {
+    return `ComfyUI is not running, so this lists every ${noun} model rather than only the installed ones. Start it on Setup to check.`
+  }
+  const all = pickable(view, kind)
+  if (all.filter((p) => p.readiness.state === 'ready').length === 0) {
+    return `No ${noun} model is installed. Install one on Setup.`
+  }
+  const chosen = all.find((p) => p.id === chosenId) ?? null
+  if (chosen !== null && chosen.readiness.state !== 'ready') {
+    return `${chosen.display_name} is selected but not installed. Install it on Setup, or pick another here.`
+  }
+  return null
 }

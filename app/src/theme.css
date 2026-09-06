@@ -336,6 +336,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);
+  /* Setup stacks four `.panel` cards with nothing between them, so they read
+     as one long card with rules through it. Every other view separates its
+     panels; this is that gap. */
+  margin-bottom: var(--gap-lg);
 }
 
 .setup-step-head {
@@ -455,40 +459,6 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-muted);
-}
-
-.model-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-sm);
-  padding: var(--gap-md) 0;
-  border-top: 1px solid var(--border);
-}
-
-.model-row-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--gap-md);
-}
-
-.model-row-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.model-row-license {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
-.model-row-license-name {
-  font-weight: 600;
-  color: var(--text);
 }
 
 .model-files {
@@ -709,74 +679,61 @@ body {
   color: var(--warning);
 }
 
-/* --- AudioStudio: profile picker --- */
+/* --- The picker list: one style for every list a model or project is
+   chosen from (Setup's music models, image models and projects). Was three
+   identical copies -- `.profile-list`, `.project-list` and the Setup models
+   step's own layout -- which is how they were about to drift apart. The
+   studios now use a dropdown instead and no longer render this. --- */
 
-.profile-picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-md);
-  margin-bottom: var(--gap-lg);
-}
-
-.profile-picker-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.profile-picker-fallback,
-.profile-picker-disclaimer {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--warning);
-}
-
-.profile-list {
+.picker-list {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: var(--gap-sm);
+  /* The scrolling window: nine curated models plus a user's own imports is
+     already longer than a step should be. `* { scrollbar-* }` (T-407) styles
+     the bar. */
   max-height: 320px;
   overflow-y: auto;
 }
 
-.profile-row {
+.picker-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: var(--gap-sm) 0;
+  gap: var(--gap-xs);
+  padding: var(--gap-sm);
   border-top: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-.profile-row-selected {
+.picker-row-selected {
   background: var(--panel-hover);
 }
 
-.profile-row-pick {
+.picker-row-pick {
   display: flex;
   align-items: center;
   gap: var(--gap-sm);
   cursor: pointer;
 }
 
-.profile-row-name {
+.picker-row-name {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
 }
 
-.profile-row-meta {
+.picker-row-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding-left: 26px;
 }
 
-.profile-row-origin,
-.profile-row-vram {
+.picker-row-tag {
   font-size: 11px;
   line-height: 1.6;
   padding: 0 8px;
@@ -786,7 +743,7 @@ body {
   white-space: nowrap;
 }
 
-.profile-row-license {
+.picker-row-license {
   margin: 0;
   padding-left: 26px;
   font-size: 12px;
@@ -794,9 +751,89 @@ body {
   color: var(--text-muted);
 }
 
-.profile-row-license-name {
+.picker-row-license-name {
   font-weight: 600;
   color: var(--text);
+}
+
+/* Setup hangs its file list, download progress and Install button here; the
+   studios pass no children and this never renders for them. */
+.picker-row-extra {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding-left: 26px;
+}
+
+/* --- The quick-swap menu: swapping what is already set up, on the four
+   screens that generate or browse. Names only -- licence, VRAM, readiness and
+   install live on Setup, and repeating half of that here is how two screens
+   start disagreeing about the same model. --- */
+
+.quick-swap-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  margin-bottom: var(--gap-lg);
+}
+
+.quick-swap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.quick-swap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.quick-swap-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.quick-swap-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.quick-swap-select:hover:not(:disabled),
+.quick-swap-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.quick-swap-select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.quick-swap-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.quick-swap-aside {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
 }
 
 /* --- LyricsStudio: the brief form --- */
@@ -1782,8 +1819,24 @@ body {
 
 .track-head {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+/* The transport shows a title alone, so eight takes named "Midnight" give
+   eight identical play bars. This says which row the transport is holding. */
+.track-playing-tag {
+  padding: 0 var(--gap-sm);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.8;
+  white-space: nowrap;
+}
+
+.track-row-playing {
+  border-color: var(--accent-dim);
 }
 
 .track-name {
@@ -2121,73 +2174,9 @@ body {
   gap: var(--gap-sm);
 }
 
-/* --- Project picker (T-401b) --- */
-
-.project-picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-md);
-  margin-bottom: var(--gap-lg);
-}
-
-.project-picker-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.project-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-sm);
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.project-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--gap-sm) 0;
-  border-top: 1px solid var(--border);
-}
-
-.project-row-selected {
-  background: var(--panel-hover);
-}
-
-.project-row-pick {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-sm);
-  cursor: pointer;
-}
-
-.project-row-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.project-row-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-left: 26px;
-}
-
-.project-row-created {
-  font-size: 11px;
-  line-height: 1.6;
-  padding: 0 8px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-bright);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
+/* --- Project rows (T-401b): the list moved to Setup and now uses
+   `.picker-row`; only the delete confirm and the create form are still the
+   project picker's own. --- */
 
 .project-row-delete {
   font: inherit;
@@ -2378,6 +2367,9 @@ body {
   display: flex;
   align-items: center;
   gap: var(--gap-sm);
+  /* Pushes Send-to and the duration to the right edge, so Play and the title
+     lead the row without the two groups needing separate rows. */
+  margin-left: auto;
 }
 
 .track-actions {
@@ -2408,6 +2400,22 @@ body {
 .track-action:hover {
   color: var(--accent-hover);
   border-color: var(--accent);
+}
+
+/* Play is an icon now, not a word: a fixed round footprint so it reads as one
+   control beside the title rather than as the first of the row's buttons.
+   After the shared rule above, which sets the padding this overrides. */
+.track-play {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .track-send:disabled,
@@ -2840,7 +2848,7 @@ body {
   overflow-wrap: anywhere;
 }
 
-.profile-picker-setup {
+.setup-link {
   margin-left: 8px;
   padding: 2px 8px;
   font: inherit;
@@ -2855,7 +2863,7 @@ body {
     border-color var(--transition);
 }
 
-.profile-picker-setup:hover {
+.setup-link:hover {
   background: var(--panel-hover);
   border-color: var(--accent);
 }

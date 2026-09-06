@@ -7,6 +7,8 @@ import {
   effectiveProfileId,
   imageStudioNote,
   imageStudioState,
+  installedOptions,
+  optionsNote,
   pickable,
   profileRow,
   selectedImageProfile,
@@ -202,7 +204,7 @@ describe('imageStudioNote', () => {
 
   it('points to the catalog when no image profiles exist', () => {
     expect(imageStudioNote('no-profiles', null)).toBe(
-      'No image model profile yet. Bring one in from the model catalog in Setup.',
+      'No image model profile yet. Install one on Setup.',
     )
   })
 
@@ -212,7 +214,7 @@ describe('imageStudioNote', () => {
 
   it('names the missing configured id', () => {
     expect(imageStudioNote('missing', 'gone')).toBe(
-      'The configured image profile gone is not among the loaded profiles. Pick one below to continue.',
+      'The configured image profile gone is not among the loaded profiles. Pick one here to continue.',
     )
   })
 })
@@ -242,5 +244,93 @@ describe('profileRow', () => {
   it('license is non-empty for shipped profiles', () => {
     const row = profileRow(profile({ id: 'shipped', source: 'shipped', license: 'Apache-2.0' }))
     expect(row.license).not.toBe('')
+  })
+})
+
+/** A view whose inventory could not be read -- ComfyUI down. */
+function blindView(profiles: ProfileStatus[]): ModelsView {
+  return {
+    profiles,
+    warnings: [],
+    inventory_available: false,
+    inventory_detail: 'Start ComfyUI.',
+  }
+}
+
+describe('installedOptions', () => {
+  it('offers nothing while the list has not loaded', () => {
+    expect(installedOptions(null, 'music', 'a')).toEqual([])
+  })
+
+  it('offers only installed models of the asked-for kind', () => {
+    const v = view([
+      profile({ id: 'ready-music', display_name: 'Ready', readiness: { state: 'ready' } }),
+      profile({ id: 'missing-music', readiness: { state: 'missing', files: [], total_bytes: null, installable: true } }),
+      profile({ id: 'ready-image', kind: 'image', readiness: { state: 'ready' } }),
+    ])
+    expect(installedOptions(v, 'music', null)).toEqual([{ id: 'ready-music', name: 'Ready' }])
+  })
+
+  // The whole point of the guard: `unknown` is "could not check", so filtering
+  // on it would hand a user with a working install an empty dropdown.
+  it('offers every model when the inventory could not be read', () => {
+    const v = blindView([
+      profile({ id: 'one', display_name: 'One' }),
+      profile({ id: 'two', display_name: 'Two' }),
+    ])
+    expect(installedOptions(v, 'music', null).map((o) => o.id)).toEqual(['one', 'two'])
+  })
+
+  // A `<select>` whose value matches no option renders the first one, which
+  // would claim a model the user never chose.
+  it('includes the chosen model even when it is not installed', () => {
+    const v = view([
+      profile({ id: 'chosen', display_name: 'Chosen', readiness: { state: 'missing', files: [], total_bytes: null, installable: true } }),
+      profile({ id: 'other', display_name: 'Other', readiness: { state: 'ready' } }),
+    ])
+    expect(installedOptions(v, 'music', 'chosen').map((o) => o.id)).toEqual(['chosen', 'other'])
+  })
+
+  it('does not duplicate the chosen model when it is installed', () => {
+    const v = view([profile({ id: 'chosen', readiness: { state: 'ready' } })])
+    expect(installedOptions(v, 'music', 'chosen').map((o) => o.id)).toEqual(['chosen'])
+  })
+
+  it('ignores a chosen id no profile answers to', () => {
+    const v = view([profile({ id: 'real', readiness: { state: 'ready' } })])
+    expect(installedOptions(v, 'music', 'ghost').map((o) => o.id)).toEqual(['real'])
+  })
+})
+
+describe('optionsNote', () => {
+  it('says nothing while the list has not loaded', () => {
+    expect(optionsNote(null, 'music', null)).toBeNull()
+  })
+
+  it('says nothing when the chosen model is installed', () => {
+    const v = view([profile({ id: 'a', readiness: { state: 'ready' } })])
+    expect(optionsNote(v, 'music', 'a')).toBeNull()
+  })
+
+  // Reported before "nothing installed": with ComfyUI down the app does not
+  // know that nothing is installed.
+  it('blames the unreadable inventory before claiming nothing is installed', () => {
+    const v = blindView([profile({ id: 'a' })])
+    const note = optionsNote(v, 'music', 'a')
+    expect(note).toContain('ComfyUI is not running')
+    expect(note).toContain('Setup')
+  })
+
+  it('points at Setup when no model of the kind is installed', () => {
+    const v = view([profile({ id: 'a', kind: 'image', readiness: { state: 'missing', files: [], total_bytes: null, installable: true } })])
+    expect(optionsNote(v, 'image', null)).toBe('No image model is installed. Install one on Setup.')
+  })
+
+  it('names a chosen model that is not installed', () => {
+    const v = view([
+      profile({ id: 'a', display_name: 'Chroma', readiness: { state: 'missing', files: [], total_bytes: null, installable: true } }),
+      profile({ id: 'b', readiness: { state: 'ready' } }),
+    ])
+    expect(optionsNote(v, 'music', 'a')).toContain('Chroma is selected but not installed')
   })
 })

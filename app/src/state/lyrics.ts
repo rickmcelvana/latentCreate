@@ -236,7 +236,7 @@ export function lyricsModelNote(
     case 'not-offered':
       return {
         pill: 'Model unavailable',
-        message: `"${model}" isn't offered by the endpoint anymore. Pick another in Setup.`,
+        message: `"${model}" isn't offered by the endpoint anymore. Pick another from the menu, or fix the endpoint in Setup.`,
       }
   }
 }

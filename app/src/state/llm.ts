@@ -71,6 +71,29 @@ export function testSummary(result: LlmTestResult): string {
     : 'Answered.'
 }
 
+/**
+ * The models the Lyrics quick-swap dropdown offers.
+ *
+ * Only what the endpoint actually reports and only what can chat -- the same
+ * `selectable` rule the Setup picker enforces, so a model this endpoint refuses
+ * to chat with can never be swapped in from a generation screen. The chosen
+ * model is included even when the endpoint no longer offers it, for the reason
+ * `installedOptions` gives: a `<select>` whose value matches no option renders
+ * the *first* one, which would silently repoint lyrics at another model.
+ *
+ * The dropdown carries ids alone. Capability chips and the remote-privacy
+ * disclosure stay on Setup, where the model is configured -- a swap menu is the
+ * wrong place to first learn that a model sends your lyrics off the machine.
+ */
+export function lyricsOptions(status: LlmStatus | null, chosen: string | null): string[] {
+  const offered =
+    status === null || status.state !== 'ready'
+      ? []
+      : status.models.filter((row) => modelView(row).selectable).map((row) => row.id)
+  if (chosen === null || chosen === '' || offered.includes(chosen)) return offered
+  return [chosen, ...offered]
+}
+
 /** Whether the step can offer a test call yet. */
 export function canTest(status: LlmStatus | null, model: string | null): boolean {
   return status !== null && status.state === 'ready' && model !== null && model !== ''

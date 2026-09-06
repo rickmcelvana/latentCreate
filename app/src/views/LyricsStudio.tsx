@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useConfigStore } from '../state/config'
 import {
   approvedLabel,
@@ -12,7 +12,8 @@ import {
   useLyricsStore,
   type GenerationPhase,
 } from '../state/lyrics'
-import { useLlmStore } from '../state/llm'
+import { effectiveBaseUrl, lyricsOptions, useLlmStore } from '../state/llm'
+import { QuickSwap } from '../components/QuickSwap'
 import { useNavStore } from '../state/nav'
 import { effectiveProfileId } from '../state/profiles'
 import { getProfileGuide, type ProfileGuide } from '../bridge/profiles'
@@ -65,6 +66,11 @@ export function LyricsStudio() {
   // Same pattern: the model string and the llm status, never the whole config.
   const lyricsModelName = useConfigStore((state) => state.config?.llm?.model ?? null)
   const llmStatus = useLlmStore((state) => state.status)
+  const chooseLyricsModel = useLlmStore((state) => state.choose)
+  const probeLlm = useLlmStore((state) => state.probe)
+  const llmBaseUrl = useConfigStore((state) => effectiveBaseUrl(state.config))
+  const configStatus = useConfigStore((state) => state.status)
+  const probed = useRef(false)
   const lyricsNote = lyricsModelNote(lyricsModelState(lyricsModelName, llmStatus), lyricsModelName)
   const lyricsBlocked = lyricsModelBlocks(lyricsModelState(lyricsModelName, llmStatus))
   const [guide, setGuide] = useState<ProfileGuide | null>(null)
@@ -76,6 +82,17 @@ export function LyricsStudio() {
   useEffect(() => {
     void useLyricsStore.getState().loadDocs()
   }, [])
+
+  // Ask the endpoint what it offers, once, so the swap menu has models to
+  // offer to someone who came straight here without opening Setup. Guarded on
+  // config the same way Setup's step is: `probe` re-seeds the selection from
+  // its `preselect`, so probing before config has loaded would pass `null` and
+  // discard the model the user configured.
+  useEffect(() => {
+    if (probed.current || configStatus === 'idle' || configStatus === 'loading') return
+    probed.current = true
+    void probeLlm(llmBaseUrl, lyricsModelName)
+  }, [probeLlm, configStatus, llmBaseUrl, lyricsModelName])
 
   useEffect(() => {
     if (!isTauri()) return
@@ -99,22 +116,32 @@ export function LyricsStudio() {
           : 'Describe the song; your local model writes the words.'}
       </p>
 
-      {lyricsNote !== null ? (
-        <section className="panel profile-picker">
-          <header className="setup-step-head">
-            <h2 className="profile-picker-title">Lyrics model</h2>
+      {/* The swap menu, on the same rule as the studios': names only, and the
+          endpoint, key, capability chips and remote-privacy disclosure stay on
+          Setup where the model is configured. */}
+      <section className="panel quick-swap-panel">
+        <QuickSwap
+          label="Lyrics model"
+          value={lyricsModelName}
+          options={lyricsOptions(llmStatus, lyricsModelName).map((id) => ({ id, name: id }))}
+          onChange={(id) => void chooseLyricsModel(llmBaseUrl, id)}
+          note={lyricsNote?.message ?? null}
+          emptyLabel="None chosen"
+        />
+
+        {lyricsNote !== null ? (
+          <div className="quick-swap-aside">
             <span className="status-pill status-pill-warn">{lyricsNote.pill}</span>
-          </header>
-          <p className="profile-picker-fallback">{lyricsNote.message}</p>
-          <button
-            type="button"
-            className="profile-picker-setup"
-            onClick={() => useNavStore.getState().setView('setup')}
-          >
-            Open Setup
-          </button>
-        </section>
-      ) : null}
+            <button
+              type="button"
+              className="setup-link"
+              onClick={() => useNavStore.getState().setView('setup')}
+            >
+              Open Setup
+            </button>
+          </div>
+        ) : null}
+      </section>
 
       <DocumentPicker />
 

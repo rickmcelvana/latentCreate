@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { GenerateArtBar } from '../components/GenerateArtBar'
 import { JobQueue } from '../components/JobQueue'
 import { ParamPanel } from '../components/ParamPanel'
-import { ProfilePickerRow } from '../components/ProfilePickerRow'
+import { QuickSwap } from '../components/QuickSwap'
 import { useConfigStore } from '../state/config'
 import { useArtStore, EMPTY_ART, type ArtRow } from '../state/art'
 import { useJobsStore } from '../state/jobs'
@@ -13,8 +13,9 @@ import {
   effectiveImageProfileId,
   imageStudioNote,
   imageStudioState,
+  installedOptions,
+  optionsNote,
   pickable,
-  profileRow,
 } from '../state/profiles'
 import { useAlbumsStore } from '../state/albums'
 import { useLibraryStore } from '../state/library'
@@ -75,40 +76,27 @@ export function CoverArt() {
         Artwork for singles and albums, from the same ComfyUI.
       </p>
 
-      <section className="panel profile-picker">
-        <h2 className="profile-picker-title">Image model</h2>
-
-        {note !== null ? (
-          <p className="profile-picker-fallback">{note}</p>
-        ) : null}
-
-        {view !== null && !view.inventory_available ? (
-          <p className="profile-picker-disclaimer">
-            Readiness could not be checked because ComfyUI is not running.
-          </p>
-        ) : null}
+      {/* Same rule as the Audio studio: a menu over what is installed, with
+          licence, readiness and install left on Setup. */}
+      <section className="panel quick-swap-panel">
+        <QuickSwap
+          label="Model"
+          value={state === 'ready' ? chosenId : null}
+          options={installedOptions(view, 'image', chosenId)}
+          onChange={(id) => void save({ default_image_profile_id: id })}
+          note={note ?? optionsNote(view, 'image', chosenId)}
+          emptyLabel="No image model installed"
+        />
 
         {state === 'no-profiles' ? (
           <button
             type="button"
-            className="profile-picker-setup"
+            className="setup-link"
             onClick={() => useNavStore.getState().setView('setup')}
           >
             Open Setup
           </button>
         ) : null}
-
-        <ul className="profile-list">
-          {rows.map((profile) => (
-            <ProfilePickerRow
-              key={profile.id}
-              row={profileRow(profile)}
-              selected={profile.id === chosenId}
-              group="image-profile"
-              onSelect={() => void save({ default_image_profile_id: profile.id })}
-            />
-          ))}
-        </ul>
       </section>
 
       {state === 'ready' ? <ParamPanel store={useArtPanelStore} /> : null}
