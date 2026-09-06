@@ -1,0 +1,87 @@
+name: Release
+
+# Builds and publishes the desktop installers. Runs on a version tag push
+# (`v*`) or manually. This is the T-508 milestone: an installable build on a
+# machine that never had the dev toolchain.
+#
+# Unsigned for now (owner decision 2026-09-06): NSIS .exe, macOS .dmg and
+# Linux AppImage are produced and attached to a GitHub release, but nothing is
+# code-signed. Windows SmartScreen and macOS Gatekeeper will warn; macOS users
+# right-click -> Open. Signing (and MSIX) is a later task gated on the owner
+# providing a Windows cert and an Apple Developer ID.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies (Linux only)
+        if: matrix.platform == 'ubuntu-22.04'
+        # The README's documented Linux prerequisites (the set CI already
+        # compiles against) plus `patchelf`, which the AppImage bundler needs.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The two macOS targets are only needed on the macOS runners.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform }}
+
+      # `app` is an npm workspace, so one install at the root covers it -- the
+      # same path the README gives a contributor (WORKFLOW section 4b).
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'latentCreate v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -497,8 +497,14 @@ Headlines:
   Klein names all three (`75/70.unet_name`, `75/71.clip_name`, `75/72.vae_name`) — resolving each
   file's folder via `search_models`. `source_url`/`size_bytes` are both `Option` and stay `None`, so
   the row would read **Ready** without ever claiming the app can fetch someone else's weights.
-- **T-508 — Installer builds.** Windows first (NSIS/MSIX), then macOS `.dmg` + Linux AppImage via
-  CI. The milestone gate for the phase.
+- **T-508 — Installer builds. ✅ LANDED 2026-09-06** ([t-508-brief.md](t-508-brief.md)).
+  `.github/workflows/release.yml` builds Windows NSIS `.exe`, macOS `.dmg` (Apple Silicon + Intel)
+  and Linux AppImage via `tauri-action`, on a `v*` tag push or manual run, attached to a **draft**
+  GitHub release. **Unsigned** (owner decision 2026-09-06): no code signing, no MSIX — SmartScreen
+  and Gatekeeper will warn. `tauri.conf.json` gained `bundle.macOS.signingIdentity: "-"` (ad-hoc
+  signing, so an Apple Silicon build is not reported "damaged"). The milestone gate for the phase;
+  its in-app half was already discharged, and the build half now awaits the owner's one `v*` tag
+  push to produce the four installers.
 - **T-509 — THIRD-PARTY-LICENSES generation** (Rust + npm dependency licenses; the ported-viz
   bookkeeping ARCHITECTURE §9 notes).
 - **T-510 — Public-repo readiness** — CONTRIBUTING, issue/PR templates, a README pass for a
@@ -654,8 +660,8 @@ cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-5
 (first-run + empty-state polish). **All landed by 2026-09-05.** The 2026-09-05 catalog pivot adds
 **T-511** (curate image profiles) and **T-512** (strip the gallery); do T-511 first so there is
 something installable before the gallery is removed. What remains after: **T-508** installers (the
-closing milestone), **T-509** THIRD-PARTY-LICENSES (now covering the shipped image-model licences
-too), **T-510** public-repo readiness.
+closing milestone, **landed 2026-09-06**), **T-509** THIRD-PARTY-LICENSES (now covering the shipped
+image-model licences too), **T-510** public-repo readiness.
 
 ---
 
@@ -670,9 +676,10 @@ the lyrics document picker reads as a card. Installable build produced by CI for
 images even in a dev build. After **T-511** (curated image profiles) a one-click install works
 through the existing Models-step machinery; **T-512** removes the gallery that could not honour it.
 Cover art with its sidecar, the docked player and sharp visualizer, and the lyrics card are already
-discharged (T-506d/T-506e-c, T-501/502/503). **What the milestone still needs is T-511 + the
-installer (T-508)** -- then the whole sequence run once on a machine that never had the toolchain,
-the only part a dev-machine click-through cannot stand in for.
+discharged (T-506d/T-506e-c, T-501/502/503). **T-511 and the installer (T-508) are both landed** --
+what remains is the whole sequence run once on a machine that never had the toolchain, the only part
+a dev-machine click-through cannot stand in for. That is the owner's one `v*` tag push, which
+produces the four installers on a draft release.
 
 **T-515 (remote ComfyUI) is a v1 blocker but not a milestone line**: the milestone is a person
 installing a build and generating against *their own local* ComfyUI, which T-515 does not change.

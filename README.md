@@ -123,6 +123,17 @@ sudo apt-get install -y \
 > `tauri build` — a green `npm run gate` is not a check of bundling. Run `npm run build` locally
 > to verify a distributable installer.
 
+## Releases
+
+Installers are built by the **Release** workflow (`.github/workflows/release.yml`), which
+runs on a `v*` tag push or manually. It produces a Windows NSIS `.exe`, a macOS `.dmg`
+(both Apple Silicon and Intel), and a Linux AppImage, and attaches them to a **draft**
+GitHub release for the owner to publish.
+
+**These builds are unsigned.** Windows SmartScreen and macOS Gatekeeper will warn on
+first run — on macOS, right-click the app and choose **Open**. Code signing (and MSIX) is
+planned but not yet set up.
+
 ## Configuration & data
 
 Everything the app writes lives under the OS app-data directory for the identifier
