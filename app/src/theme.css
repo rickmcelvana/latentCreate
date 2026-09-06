@@ -2518,8 +2518,12 @@ body {
 
 /* --- Albums (T-403) --- */
 
+/* Bottom, not top. The panel hung below the track list until T-514 moved it up
+   under the project menu, so its gap was on the wrong side: above, it now
+   doubles the one `.quick-swap-panel` already carries, and below there was
+   nothing between it and the first track. */
 .album-panel {
-  margin-top: var(--gap-lg);
+  margin-bottom: var(--gap-lg);
 }
 
 .album-panel-title {
