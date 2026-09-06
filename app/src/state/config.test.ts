@@ -26,6 +26,7 @@ const fixture: LoadedConfig = {
     default_profile_id: 'ace-step-1.5-turbo',
     default_image_profile_id: null,
     default_project_slug: null,
+    export: { artist: null },
   },
   warnings: [
     { kind: 'corrupt', backup: 'C:/x/config.json.corrupt-1', detail: 'expected value' },

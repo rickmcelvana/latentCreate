@@ -46,6 +46,7 @@ function baseConfig(over: Partial<Config> = {}): Config {
     default_profile_id: null,
     default_image_profile_id: null,
     default_project_slug: null,
+    export: { artist: null },
     ...over,
   }
 }

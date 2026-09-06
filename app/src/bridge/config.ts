@@ -27,6 +27,18 @@ export interface LlmConfig {
   accepts_reasoning_effort: boolean | null
 }
 
+/**
+ * Details about the person releasing the music, written into exported files.
+ *
+ * Mirrors Rust `library::config::ExportConfig`. Its own section rather than a
+ * loose field: the app already knows title, album, track number, year and
+ * artwork from the project, and the artist is the one fact it cannot infer.
+ */
+export interface ExportConfig {
+  /** Written to the exported file's ARTIST tag. Blank or null leaves it off. */
+  artist: string | null
+}
+
 /** Mirrors Rust `library::config::Config`. Field names are snake_case on the wire. */
 export interface Config {
   schema_version: number
@@ -38,6 +50,10 @@ export interface Config {
   default_image_profile_id: string | null
   /** `Project::slug` last selected; `null` means the first project. */
   default_project_slug: string | null
+  /** Who exported files say made them. Added without a schema bump -- it is
+   *  `#[serde(default)]` on the Rust side, so an older config.json loads and
+   *  gains an empty section. */
+  export: ExportConfig
 }
 
 /** Something the user should be told about loading config; never fatal. */

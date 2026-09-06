@@ -17,6 +17,7 @@
 pub mod audio;
 pub mod audit;
 pub mod emit;
+pub mod export;
 pub mod generation;
 pub mod graph;
 pub mod image;

@@ -87,6 +87,7 @@ export function Setup() {
       <ImportStep />
       <LlmStep />
       <ProjectsStep />
+      <ReleaseStep />
     </>
   )
 }
@@ -486,6 +487,70 @@ function ModelRow({
         </div>
       ) : null}
     </ProfilePickerRow>
+  )
+}
+
+/**
+ * Setup wizard, release-details step.
+ *
+ * The artist is the **only** tag an exported track needs that the app cannot
+ * work out for itself: title comes from the track, album and track number from
+ * the album list it sits in, the year from its own creation stamp, and the
+ * artwork from its cover. So this step is one field, and grows only if another
+ * such fact turns up.
+ *
+ * Saved on blur and on Enter rather than on every keystroke -- `save` writes
+ * `config.json` -- and read back from config on every render, so what is on
+ * screen is what an export will use.
+ */
+function ReleaseStep() {
+  const configured = useConfigStore((state) => state.config?.export?.artist ?? null)
+  const save = useConfigStore((state) => state.save)
+  const [draft, setDraft] = useState(configured ?? '')
+
+  // Follow config once it loads, and after any save. Keyed on the stored value,
+  // so typing is never interrupted by a re-render.
+  useEffect(() => {
+    setDraft(configured ?? '')
+  }, [configured])
+
+  // Blank means "no artist", which is a real answer -- an empty ARTIST tag is
+  // not written at all (create-core's `export::present`).
+  const commit = () => {
+    const trimmed = draft.trim()
+    if (trimmed === (configured ?? '')) return
+    void save({ export: { artist: trimmed === '' ? null : trimmed } })
+  }
+
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">Release details</h2>
+      </header>
+
+      <p className="setup-next-step">
+        Written into the files you export, along with the title, album, track number, year and
+        cover the app already knows.
+      </p>
+
+      <label className="release-field">
+        <span className="release-field-label">Artist</span>
+        <input
+          type="text"
+          className="release-field-input"
+          value={draft}
+          placeholder="The name your releases go out under"
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commit()
+            }
+          }}
+        />
+      </label>
+    </section>
   )
 }
 

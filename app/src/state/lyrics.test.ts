@@ -119,6 +119,7 @@ function config(over: Partial<Config> = {}): Config {
     default_profile_id: null,
     default_image_profile_id: null,
     default_project_slug: null,
+    export: { artist: null },
     ...over,
   }
 }
@@ -793,6 +794,7 @@ describe('versioned document store', () => {
         default_profile_id: null,
         default_image_profile_id: null,
         default_project_slug: null,
+    export: { artist: null },
       },
     })
     useLyricsStore.setState({ doc: { ...openDoc, versions: [] }, draft: 'generated' })

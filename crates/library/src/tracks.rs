@@ -350,21 +350,150 @@ pub fn set_track_cover(
     Ok(track)
 }
 
-/// Copy a track's audio file to `dest`.
+/// What an export could not do, without having failed.
+///
+/// A missing cover is not a reason to refuse someone their file. The export
+/// succeeds, and the caller says what it could not include -- the same rule the
+/// rest of this crate follows for a track it cannot read (`TrackSet.warnings`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExportReport {
+    /// Sentences to show the user. Empty on a clean export.
+    pub warnings: Vec<String>,
+}
+
+/// Copy a track's audio file to `dest`, tagged with what the app knows about it.
 ///
 /// A **copy**, not a move: the track stays in the library. `dest` is a path the
 /// user chose in the OS save dialog, so it is trusted -- unlike an id or slug
 /// from the frontend, which are whitelisted before they touch a path.
+///
+/// **Only the copy is tagged.** The file under `tracks/` is never touched, so it
+/// stays the byte-for-byte artifact its provenance sidecar describes
+/// (ARCHITECTURE 8). Tagging is additive: the `EncoderSoftware` tag ComfyUI's
+/// ffmpeg writes survives, because the existing comment block is read and added
+/// to rather than replaced.
+///
+/// Tagging never fails an export. A format `lofty` will not tag, a cover whose
+/// file has been deleted, an image it cannot parse -- each becomes a warning
+/// beside a file the user still gets.
 pub fn export_track(
     root: &Path,
     slug: &str,
     id: &TrackId,
     dest: &Path,
-) -> Result<(), LibraryError> {
+    artist: Option<&str>,
+) -> Result<ExportReport, LibraryError> {
     let track = load_track(root, slug, id)?;
     let src = resolve_track_file(root, slug, &track.file)?;
     std::fs::copy(&src, dest)?;
-    Ok(())
+
+    let project = load_project(root, slug)?;
+    let tags = create_core::export::tags_for(&track, &project, artist);
+    Ok(ExportReport {
+        warnings: write_tags(root, slug, dest, &tags),
+    })
+}
+
+/// Write `tags` onto an already-copied file, returning what could not be done.
+///
+/// Split out so the "never fail the export" rule lives in one place: everything
+/// here that can go wrong turns into a sentence rather than an `Err`.
+fn write_tags(
+    root: &Path,
+    slug: &str,
+    dest: &Path,
+    tags: &create_core::export::ExportTags,
+) -> Vec<String> {
+    use lofty::config::WriteOptions;
+    use lofty::file::TaggedFileExt;
+    use lofty::prelude::{ItemKey, TagExt};
+    use lofty::probe::Probe;
+    use lofty::tag::{Tag, TagType};
+
+    let mut warnings = Vec::new();
+
+    // Read the file back rather than assuming its shape: this is the copy on
+    // the user's disk now, and its existing tags (ComfyUI's `EncoderSoftware`
+    // among them) are kept.
+    let tagged = match Probe::open(dest).and_then(|p| p.read()) {
+        Ok(file) => file,
+        Err(e) => {
+            warnings.push(format!(
+                "The file was exported, but its details could not be written into it: {e}."
+            ));
+            return warnings;
+        }
+    };
+    let mut tag = tagged
+        .primary_tag()
+        .cloned()
+        .unwrap_or_else(|| Tag::new(TagType::VorbisComments));
+
+    if let Some(v) = &tags.title {
+        tag.insert_text(ItemKey::TrackTitle, v.clone());
+    }
+    if let Some(v) = &tags.artist {
+        tag.insert_text(ItemKey::TrackArtist, v.clone());
+    }
+    if let Some(v) = &tags.album {
+        tag.insert_text(ItemKey::AlbumTitle, v.clone());
+    }
+    if let Some(n) = tags.track_number {
+        tag.insert_text(ItemKey::TrackNumber, n.to_string());
+    }
+    if let Some(v) = &tags.year {
+        tag.insert_text(ItemKey::Year, v.clone());
+    }
+    if let Some(v) = &tags.comment {
+        tag.insert_text(ItemKey::Comment, v.clone());
+    }
+
+    if let Some(art_id) = &tags.cover {
+        match load_cover(root, slug, art_id) {
+            Ok(picture) => tag.push_picture(picture),
+            Err(reason) => warnings.push(reason),
+        }
+    }
+
+    if let Err(e) = tag.save_to_path(dest, WriteOptions::default()) {
+        warnings.push(format!(
+            "The file was exported, but its details could not be written into it: {e}."
+        ));
+    }
+    warnings
+}
+
+/// Read one artwork into an embeddable picture, or say why not.
+///
+/// The mime type is sniffed from the bytes rather than taken from the file
+/// name: art files are named by id, so the extension is this app's convention
+/// and not evidence about the contents.
+fn load_cover(root: &Path, slug: &str, art_id: &ArtId) -> Result<lofty::picture::Picture, String> {
+    use lofty::picture::{Picture, PictureType};
+
+    let artwork = crate::art::load_art(root, slug, art_id).map_err(|_| {
+        format!(
+            "The cover {} is no longer in this project, so the exported file has no artwork.",
+            art_id.0
+        )
+    })?;
+    let path = crate::art::resolve_art_file(root, slug, &artwork.file).map_err(|_| {
+        format!(
+            "The cover {} names an unusable path, so the exported file has no artwork.",
+            art_id.0
+        )
+    })?;
+    let mut file = fs::File::open(&path).map_err(|_| {
+        format!(
+            "The cover image file is missing, so the exported file has no artwork. Expected it at {}.",
+            path.display()
+        )
+    })?;
+    let mut picture = Picture::from_reader(&mut file).map_err(|e| {
+        format!("The cover image could not be read as a picture ({e}), so the exported file has no artwork.")
+    })?;
+    picture.set_pic_type(PictureType::CoverFront);
+    Ok(picture)
 }
 
 #[cfg(test)]
@@ -1064,14 +1193,184 @@ mod tests {
         let out = tempfile::tempdir().unwrap();
         let dest = out.path().join("Midnight.flac");
 
-        export_track(root.path(), &proj.slug, &id, &dest).unwrap();
+        let report = export_track(root.path(), &proj.slug, &id, &dest, None).unwrap();
 
         assert_eq!(fs::read(&dest).unwrap(), b"FLACDATA");
+        assert_eq!(
+            report.warnings.len(),
+            1,
+            "a file lofty cannot read is a warning beside a delivered copy, not a failure"
+        );
         assert!(
             audio_path(root.path(), &proj.slug, &id, "flac")
                 .unwrap()
                 .exists(),
             "the source must still be in the library after an export"
+        );
+    }
+
+    /// A real, if empty, FLAC: the 42-byte `fLaC` + STREAMINFO header from
+    /// `testdata`. The `b"FLACDATA"` fixture the other tests use is not a FLAC
+    /// at all, which is the right shape for testing paths and the wrong one for
+    /// testing whether a tag reaches a file.
+    const SILENCE: &[u8] = include_bytes!("../../../testdata/audio/silence.flac");
+
+    /// One project holding one track whose audio is a genuine FLAC.
+    fn project_with_real_flac(root: &Path) -> (Project, TrackId) {
+        let mut proj = project(root);
+        let id = mint_track_id(&mut proj);
+        let track = sample_track(id.clone(), format!("tracks/{}.flac", id.0));
+        save_track(root, &proj.slug, &track).unwrap();
+        fs::write(audio_path(root, &proj.slug, &id, "flac").unwrap(), SILENCE).unwrap();
+        proj.tracks.push(id.clone());
+        save_project(root, &proj).unwrap();
+        (proj, id)
+    }
+
+    /// Read one text tag back off a file on disk.
+    fn tag_of(path: &Path, key: lofty::prelude::ItemKey) -> Option<String> {
+        use lofty::file::TaggedFileExt;
+        let file = lofty::probe::Probe::open(path).unwrap().read().unwrap();
+        file.primary_tag()?.get_string(key).map(str::to_string)
+    }
+
+    /// Invariant: the tags a user sees in a player are on the exported file.
+    /// The end of the chain `create-core::export::tags_for` starts -- that
+    /// module proves *which* values, this proves they reach the disk.
+    #[test]
+    fn test_export_writes_title_artist_album_number_and_year_into_the_file() {
+        use lofty::prelude::ItemKey;
+        let root = tempfile::tempdir().unwrap();
+        let (mut proj, id) = project_with_real_flac(root.path());
+        rename_track(root.path(), &proj.slug, &id, "Midnight").unwrap();
+        proj.albums.push(create_core::project::AlbumList {
+            name: "Night Drive".to_string(),
+            tracks: vec![TrackId("tr-0000".to_string()), id.clone()],
+            cover: None,
+        });
+        save_project(root.path(), &proj).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join("Midnight.flac");
+
+        let report = export_track(root.path(), &proj.slug, &id, &dest, Some("Rick")).unwrap();
+
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(
+            tag_of(&dest, ItemKey::TrackTitle).as_deref(),
+            Some("Midnight")
+        );
+        assert_eq!(tag_of(&dest, ItemKey::TrackArtist).as_deref(), Some("Rick"));
+        assert_eq!(
+            tag_of(&dest, ItemKey::AlbumTitle).as_deref(),
+            Some("Night Drive")
+        );
+        assert_eq!(tag_of(&dest, ItemKey::TrackNumber).as_deref(), Some("2"));
+        assert_eq!(tag_of(&dest, ItemKey::Year).as_deref(), Some("2026"));
+    }
+
+    /// Invariant: **the library's own file is never tagged.** It is the artifact
+    /// the provenance sidecar describes (ARCHITECTURE 8); a tag written into it
+    /// would silently change the thing the recipe claims to reproduce.
+    #[test]
+    fn test_export_tags_the_copy_and_never_the_library_original() {
+        let root = tempfile::tempdir().unwrap();
+        let (proj, id) = project_with_real_flac(root.path());
+        rename_track(root.path(), &proj.slug, &id, "Midnight").unwrap();
+        let source = audio_path(root.path(), &proj.slug, &id, "flac").unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join("Midnight.flac");
+
+        export_track(root.path(), &proj.slug, &id, &dest, Some("Rick")).unwrap();
+
+        assert_eq!(
+            fs::read(&source).unwrap(),
+            SILENCE,
+            "the library's copy must be byte-for-byte what it was"
+        );
+        assert_ne!(
+            fs::read(&dest).unwrap(),
+            SILENCE,
+            "the exported copy must have gained its tags"
+        );
+    }
+
+    /// A 1x1 PNG -- a real image file, small enough to commit.
+    const TINY_COVER: &[u8] = include_bytes!("../../../testdata/images/tiny-cover.png");
+
+    /// Give the project an artwork with a sidecar, optionally writing its image
+    /// file. Omitting the file is what a hand-deleted PNG leaves behind.
+    fn art_on_project(root: &Path, proj: &mut Project, with_file: bool) -> ArtId {
+        let art_id = ArtId("ar-0001".to_string());
+        let file = format!("{}/{}.png", crate::art::ART_DIR, art_id.0);
+        let artwork = create_core::provenance::Artwork {
+            id: art_id.clone(),
+            title: Some("Cover".to_string()),
+            file: file.clone(),
+            width: Some(1),
+            height: Some(1),
+            provenance: sample_track(TrackId("x".to_string()), String::new()).provenance,
+        };
+        proj.art.push(art_id.clone());
+        save_project(root, proj).unwrap();
+        crate::art::save_art(root, &proj.slug, &artwork).unwrap();
+        if with_file {
+            let path = crate::art::resolve_art_file(root, &proj.slug, &file).unwrap();
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, TINY_COVER).unwrap();
+        }
+        art_id
+    }
+
+    /// Invariant: the cover a user attached in the app is *in* the file they
+    /// hand to someone else. The whole point of T-516.
+    #[test]
+    fn test_the_cover_is_embedded_in_the_exported_file() {
+        use lofty::file::TaggedFileExt;
+        use lofty::picture::PictureType;
+        let root = tempfile::tempdir().unwrap();
+        let (mut proj, id) = project_with_real_flac(root.path());
+        let art_id = art_on_project(root.path(), &mut proj, true);
+        set_track_cover(root.path(), &proj.slug, &id, Some(&art_id)).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join("Midnight.flac");
+
+        let report = export_track(root.path(), &proj.slug, &id, &dest, None).unwrap();
+
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let file = lofty::probe::Probe::open(&dest).unwrap().read().unwrap();
+        let tag = file.primary_tag().expect("a tag was written");
+        assert_eq!(tag.picture_count(), 1);
+        let picture = tag.pictures().first().unwrap();
+        assert_eq!(picture.pic_type(), PictureType::CoverFront);
+        assert_eq!(picture.data(), TINY_COVER);
+    }
+
+    /// Invariant: a missing cover file does not cost the user their export.
+    /// The file arrives without artwork, the text tags are still written, and
+    /// the warning says which of the two things happened.
+    #[test]
+    fn test_a_missing_cover_file_warns_and_still_exports() {
+        use lofty::prelude::ItemKey;
+        let root = tempfile::tempdir().unwrap();
+        let (mut proj, id) = project_with_real_flac(root.path());
+        rename_track(root.path(), &proj.slug, &id, "Midnight").unwrap();
+        let art_id = art_on_project(root.path(), &mut proj, false);
+        set_track_cover(root.path(), &proj.slug, &id, Some(&art_id)).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join("Midnight.flac");
+
+        let report = export_track(root.path(), &proj.slug, &id, &dest, None).unwrap();
+
+        assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+        assert!(
+            report.warnings[0].contains("artwork"),
+            "the warning must say what is missing from the file: {}",
+            report.warnings[0]
+        );
+        assert_eq!(
+            tag_of(&dest, ItemKey::TrackTitle).as_deref(),
+            Some("Midnight"),
+            "the text tags must still have been written"
         );
     }
 

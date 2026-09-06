@@ -58,6 +58,7 @@ function baseConfig(over: Partial<Config> = {}): Config {
     default_profile_id: null,
     default_image_profile_id: null,
     default_project_slug: null,
+    export: { artist: null },
     ...over,
   }
 }
@@ -233,6 +234,7 @@ describe('projects store', () => {
     expect(mockSaveConfig).toHaveBeenCalledTimes(1)
     expect(mockSaveConfig.mock.calls[0]![0]).toMatchObject({
       default_project_slug: 'new-project',
+    export: { artist: null },
     })
     expect(mockListTracks).toHaveBeenCalledTimes(1)
   })

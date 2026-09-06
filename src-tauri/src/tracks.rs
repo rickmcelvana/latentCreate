@@ -100,21 +100,35 @@ pub fn set_track_cover(
     Ok(())
 }
 
-/// Copy a track's audio file to a destination the user chose in the save dialog.
+/// Copy a track's audio file to a destination the user chose in the save dialog,
+/// tagged with title, artist, album, track number, year, a comment and its cover.
 ///
 /// `dest` comes from the OS save dialog, so it is trusted; the source id is
 /// whitelisted before it touches a path. A copy, so the track stays in the
-/// library.
+/// library -- and **only the copy is tagged**, leaving the library's file the
+/// byte-for-byte artifact its provenance sidecar describes.
+///
+/// The artist is the only tag the app cannot infer, so it is read from config
+/// here rather than passed from the frontend: the value that reaches the file
+/// is then the saved one, never a stale field the user has since edited.
+/// Returns what could not be included; tagging never fails an export.
 #[tauri::command]
 pub fn export_track(
     config_dir: State<'_, ConfigDir>,
     id: String,
     dest: String,
-) -> Result<(), String> {
+) -> Result<library::tracks::ExportReport, String> {
     let root = &config_dir.0;
     let project = crate::projectctx::selected_project(root).map_err(|e| e.to_string())?;
-    library::tracks::export_track(root, &project.slug, &TrackId(id), &PathBuf::from(dest))
-        .map_err(|e| e.to_string())
+    let artist = library::config::load(root).config.export.artist;
+    library::tracks::export_track(
+        root,
+        &project.slug,
+        &TrackId(id),
+        &PathBuf::from(dest),
+        artist.as_deref(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Reveal a track's audio file in the OS file manager.

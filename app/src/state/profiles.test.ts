@@ -23,6 +23,7 @@ function config(default_profile_id: string | null): Config {
     default_profile_id,
     default_image_profile_id: null,
     default_project_slug: null,
+    export: { artist: null },
   }
 }
 
@@ -34,6 +35,7 @@ function configWithImage(default_image_profile_id: string | null): Config {
     default_profile_id: null,
     default_image_profile_id,
     default_project_slug: null,
+    export: { artist: null },
   }
 }
 

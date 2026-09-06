@@ -91,6 +91,11 @@ export function Library() {
         />
       </section>
 
+      {/* Albums sit with the project selector, not below the track list: both
+          answer "what am I working on", and at the foot of a long library the
+          panel was off the bottom of the screen. */}
+      <AlbumPanel />
+
       {error !== null ? (
         <p className="library-error">
           {error}
@@ -116,8 +121,6 @@ export function Library() {
         </ul>
       )}
 
-      <AlbumPanel />
-
       <Player />
     </>
   )
@@ -139,6 +142,7 @@ function TrackCard({ row }: { row: TrackRow }) {
 
   const sendError = failureFor(sendFailure, row.id)
   const actionError = errorFor(actions.error, row.id)
+  const exportWarning = errorFor(actions.exportWarning, row.id)
   const busy = isSending(sending, row.id) || isRow(actions.busy, row.id)
   const confirming = isRow(actions.confirming, row.id)
   const renaming = isRow(actions.renaming, row.id)
@@ -271,6 +275,11 @@ function TrackCard({ row }: { row: TrackRow }) {
       )}
 
       {actionError !== null ? <p className="track-action-error">{actionError}</p> : null}
+      {/* A warning, not an error: the file was written, just not with
+          everything in it. */}
+      {exportWarning !== null ? (
+        <p className="track-action-warning">{exportWarning}</p>
+      ) : null}
       {sendError !== null ? <p className="track-send-error">{sendError}</p> : null}
     </li>
   )

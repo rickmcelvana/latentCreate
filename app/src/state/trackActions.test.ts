@@ -219,9 +219,36 @@ describe('export flow', () => {
 
   it('calls exportTrack with the chosen path', async () => {
     mockPickExportPath.mockResolvedValue('/home/user/track.flac')
+    mockExportTrack.mockResolvedValue({ warnings: [] })
     await useTrackActionsStore.getState().runExport('tr-0001', 'track.flac')
     expect(mockExportTrack).toHaveBeenCalledWith('tr-0001', '/home/user/track.flac')
     expect(useTrackActionsStore.getState().busy).toBeNull()
+    expect(useTrackActionsStore.getState().exportWarning).toBeNull()
+  })
+
+  // Protects: an export that quietly dropped the artwork looks identical to one
+  // that included it until the file is opened somewhere else. It is a warning,
+  // not an error -- the file was written.
+  it('reports what the export could not include, against the row', async () => {
+    mockPickExportPath.mockResolvedValue('/home/user/track.flac')
+    mockExportTrack.mockResolvedValue({ warnings: ['No artwork.', 'Second thing.'] })
+    await useTrackActionsStore.getState().runExport('tr-0001', 'track.flac')
+    expect(useTrackActionsStore.getState().error).toBeNull()
+    expect(useTrackActionsStore.getState().exportWarning).toEqual({
+      trackId: 'tr-0001',
+      message: 'No artwork. Second thing.',
+    })
+  })
+
+  // Protects: the warning belongs to the export that produced it. A stale one
+  // beside a clean export claims the new file is missing its cover.
+  it('clears a previous warning when the next export is clean', async () => {
+    mockPickExportPath.mockResolvedValue('/home/user/track.flac')
+    mockExportTrack.mockResolvedValue({ warnings: ['No artwork.'] })
+    await useTrackActionsStore.getState().runExport('tr-0001', 'track.flac')
+    mockExportTrack.mockResolvedValue({ warnings: [] })
+    await useTrackActionsStore.getState().runExport('tr-0001', 'track.flac')
+    expect(useTrackActionsStore.getState().exportWarning).toBeNull()
   })
 })
 

@@ -592,7 +592,7 @@ already renders shipped profiles with one-click Install.
   The honest scope is that (2) probably reshapes several screens' degraded states, which is why this
   is its own session and not a field on a card.
 
-- **T-516 — embed the cover and the tags in an exported track.** ⏳ **OPEN, scoped 2026-09-06.**
+- **T-516 — embed the cover and the tags in an exported track. ✅ LANDED 2026-09-06** (scoped, then built the same day; awaiting click-through).
   Today a cover is app-only: `Track.cover` points at an `ArtId`, the Library shows it, and
   `export_track` is `std::fs::copy` — so the FLAC a user hands to anyone else has no artwork and no
   title. **The library crate is `lofty` (`lofty-rs`), and it is verified, not assumed**: compiled and
@@ -616,15 +616,29 @@ already renders shipped profiles with one-click Install.
     Well inside FLAC's picture-block limit; whether to downscale is an **owner decision**, not a
     constraint.
 
-  **Shape of the work.** `export_track` stops being a copy: copy, then tag the copy — **never the
-  library original**, which stays the byte-for-byte artifact the provenance sidecar describes. The
-  fields come from what the app already holds (`Track.title`, the album the track belongs to, the
-  profile's display name, `Provenance`), and the picture from `resolve_art_file(track.cover)`. A
-  missing or unreadable cover must **not** fail the export — it degrades to an untagged copy with a
-  warning, the same rule the rest of the library follows. Open questions for the owner before it is
-  briefed: **which fields** to write (and what `TrackArtist` should say for a generated track), and
-  whether tagging is **export-only** or also applies to send-to (`sendto.rs` hands a path to the
-  sibling apps, and those want the tags too).
+  **What landed.** `create_core::export` decides the values (pure -- every rule tested without a FLAC:
+  which album a track is tagged with, blank-versus-absent, the cover fallback, the year read as text
+  so no timezone can move a 1 January release to 31 December). `library::tracks::export_track` copies,
+  then tags **the copy**, and returns an `ExportReport` of what it could not include. Tags written:
+  **title** (`Track.title`), **artist** (`config.export.artist` — the only one the app cannot infer),
+  **album** and **track number** (the first album list containing the track, in project order),
+  **year** (the track's own `created_at`), a **comment** naming the model and its licence, and the
+  **cover** as an embedded `CoverFront` picture, falling back to the album's when the track has none.
+  Setup gained a **Release details** card for the artist. Owner decisions, both taken 2026-09-06:
+  a **full tag set** rather than artist alone, and **export only** — send-to is deliberately left
+  untagged until Latent Mixing / Mastering settle, and is revisited in **the version after this one**.
+
+  **Verified end to end on real data**, not only on fixtures: exporting a real MiniMax track from the
+  developer's own library produced `AlbumTitle="thisIsATestAlbum"`, `TrackNumber=1`, `Year=2026`, the
+  model/licence comment, a **1,975,060-byte PNG embedded as `CoverFront`**, ComfyUI's own
+  `EncoderSoftware="Lavf62.12.102"` **preserved**, and the library original **unchanged at
+  12,902,559 bytes**. Two committed fixtures make the same path testable in CI without shipping
+  megabytes: `testdata/audio/silence.flac` (42 bytes -- `fLaC` + STREAMINFO, no frames) and
+  `testdata/images/tiny-cover.png` (69 bytes, 1x1).
+
+  create-core 198 → 206, library 139 → 143, frontend 547 → 549. `config.json` gained an `export`
+  section **without a schema bump** — `#[serde(default)]`, so an existing file loads and gains an
+  empty one; the cross-language wire fixture caught the change, which is what it is for.
 
 **Build order, as it actually ran:** the three polish items first (T-501/502/503, independent and
 cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506), then T-507

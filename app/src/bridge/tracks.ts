@@ -17,8 +17,19 @@ export async function setTrackCover(id: string, cover: string | null): Promise<v
 }
 
 /** Copy a track's audio file to `dest`. */
-export async function exportTrack(id: string, dest: string): Promise<void> {
-  await invoke('export_track', { id, dest })
+/**
+ * What an export could not include, without having failed. Mirrors Rust
+ * `library::tracks::ExportReport`.
+ *
+ * A missing cover is not a reason to refuse someone their file: the export
+ * succeeds and says what is not in it.
+ */
+export interface ExportReport {
+  warnings: string[]
+}
+
+export async function exportTrack(id: string, dest: string): Promise<ExportReport> {
+  return await invoke<ExportReport>('export_track', { id, dest })
 }
 
 /** Reveal a track's audio file in the OS file manager. */

@@ -60,6 +60,22 @@ pub struct LlmConfig {
     pub accepts_reasoning_effort: Option<bool>,
 }
 
+/// Details about the person releasing the music, written into exported files.
+///
+/// Its own struct rather than a loose field so the release identity has one
+/// home as it grows -- the app already knows title, album, track number, year
+/// and artwork from the project, and `artist` is the one fact it cannot infer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ExportConfig {
+    /// Written to the `ARTIST` tag of an exported track.
+    ///
+    /// `None` or blank leaves the tag off entirely rather than writing an empty
+    /// one: a player shows an empty Artist as a real value (`create-core`'s
+    /// `export::present` enforces that, and is where the rule is tested).
+    #[serde(default)]
+    pub artist: Option<String>,
+}
+
 /// Everything persisted to `config.json`.
 ///
 /// **Secrets are never stored here.** API keys go to the OS keychain
@@ -92,6 +108,14 @@ pub struct Config {
     /// top-level `Option` field written through `save_config`.
     #[serde(default)]
     pub default_project_slug: Option<String>,
+    /// Who the exported files say made them.
+    ///
+    /// Added after `schema_version` 1 shipped and deliberately **without a
+    /// bump**: `#[serde(default)]` on a new optional section means an existing
+    /// `config.json` loads unchanged and gains an empty one, which is exactly
+    /// what a user who has never set an artist should get.
+    #[serde(default)]
+    pub export: ExportConfig,
 }
 
 fn default_schema_version() -> u32 {
@@ -107,6 +131,7 @@ impl Default for Config {
             default_profile_id: None,
             default_image_profile_id: None,
             default_project_slug: None,
+            export: ExportConfig::default(),
         }
     }
 }
@@ -228,6 +253,9 @@ mod tests {
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
             default_image_profile_id: Some("flux-2-klein-9b-text-to-image".to_string()),
             default_project_slug: Some("night-drive".to_string()),
+            export: ExportConfig {
+                artist: Some("Rick".to_string()),
+            },
         };
         save(dir.path(), &config).unwrap();
         let loaded = load(dir.path());
@@ -311,6 +339,7 @@ mod tests {
             default_profile_id: Some("ace-step-1.5-turbo".to_string()),
             default_image_profile_id: None,
             default_project_slug: None,
+            export: ExportConfig::default(),
         };
         save(dir.path(), &config).unwrap();
         let raw = std::fs::read_to_string(dir.path().join(CONFIG_FILE)).unwrap();

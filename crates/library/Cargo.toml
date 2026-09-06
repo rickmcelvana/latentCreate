@@ -15,6 +15,13 @@ serde_json = "1.0"
 thiserror = "2.0"
 # Delete moves to the OS trash, never a hard delete (CONVENTIONS). MIT.
 trash = "5.2"
+# Tags and cover art on an exported track (T-516). MIT OR Apache-2.0.
+# Default features, deliberately: `default-features = false` does not compile in
+# 0.25.1 -- `Id3v2Error` sits behind the same gate as the code that uses it.
+# Verified against a real app-generated FLAC before adopting: the audio frames
+# come out byte-identical and the `EncoderSoftware` tag ComfyUI's ffmpeg writes
+# is preserved rather than replaced.
+lofty = "0.25"
 keyring = { version = "4.1", features = [
     "apple-native-keyring-store",
     "windows-native-keyring-store",

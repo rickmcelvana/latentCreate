@@ -339,6 +339,21 @@ comfy-mcp itself, so such a gate would leave the button dead on every cold start
                              # sidecar; an album's is in project.json (T-506e-a)
 ```
 
+**Export writes tags; the library's own file never carries them (T-516).** `export_track` copies
+the audio and then tags **the copy** with title, artist, album, track number, year, a comment
+naming the model and its licence, and the cover as an embedded `CoverFront` picture. The file under
+`tracks/` is left byte-for-byte as generated, because it is the artifact the provenance sidecar
+claims to describe -- tagging it would silently change the thing the recipe reproduces. The values
+are decided by `create_core::export::tags_for` (pure, so every rule is tested without a FLAC) and
+written by `lofty`; the album and track number come from the **first album list containing the
+track**, in the project's order, since an export names a track and nothing in the request says which
+release is meant. The artist is the only tag the app cannot infer and is the one thing configured,
+in `config.export.artist`. **Tagging never fails an export**: a deleted cover, an unreadable image
+or a format `lofty` will not write becomes a warning beside a file the user still gets.
+
+**Send-to does not tag** (owner decision, 2026-09-06). `sendto.rs` hands a path to Latent Mixing /
+Mastering, which are mid-flight; revisit after that work settles, in the version after this one.
+
   `config.json` sits **beside** `projects/`, not inside it. The `library` crate is the code that
   owns this tree; it is not a directory in it.
 

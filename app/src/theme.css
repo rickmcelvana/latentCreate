@@ -2234,6 +2234,38 @@ body {
   border: 1px solid var(--border);
 }
 
+/* --- Setup: release details (T-516) --- */
+
+.release-field {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.release-field-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.release-field-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+}
+
+.release-field-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .project-create {
   display: flex;
   gap: var(--gap-sm);
@@ -2442,6 +2474,14 @@ body {
 .track-action-error {
   margin: var(--gap-sm) 0 0;
   color: var(--danger);
+  font-size: 13px;
+}
+
+/* An export that could not include the artwork still delivered the file, so it
+   reads as a caution rather than a failure. */
+.track-action-warning {
+  margin: var(--gap-sm) 0 0;
+  color: var(--warning);
   font-size: 13px;
 }
 

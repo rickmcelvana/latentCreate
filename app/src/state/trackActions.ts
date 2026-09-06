@@ -55,6 +55,9 @@ interface TrackActionsState {
   /** A track id with an action in flight, or `null`. */
   busy: string | null
   error: ActionError | null
+  /** What the last export could not include, or `null`. Not an error: the file
+   *  was written. */
+  exportWarning: ActionError | null
   /** A track id awaiting delete confirmation, or `null`. */
   confirming: string | null
   /** A track id whose title is being edited, or `null`. */
@@ -79,6 +82,7 @@ function message(err: unknown): string {
 export const useTrackActionsStore = create<TrackActionsState>((set) => ({
   busy: null,
   error: null,
+  exportWarning: null,
   confirming: null,
   renaming: null,
 
@@ -136,10 +140,19 @@ export const useTrackActionsStore = create<TrackActionsState>((set) => ({
     }
     // Cancelling the dialog is the user's decision, not a failure.
     if (dest === null) return
-    set({ busy: id, error: null })
+    set({ busy: id, error: null, exportWarning: null })
     try {
-      await exportTrack(id, dest)
-      set({ busy: null })
+      const report = await exportTrack(id, dest)
+      // Reported on the row, not swallowed: an export that quietly dropped the
+      // artwork looks identical to one that included it until someone opens the
+      // file somewhere else.
+      set({
+        busy: null,
+        exportWarning:
+          report.warnings.length === 0
+            ? null
+            : { trackId: id, message: report.warnings.join(' ') },
+      })
     } catch (err: unknown) {
       set({ busy: null, error: { trackId: id, message: message(err) } })
     }
