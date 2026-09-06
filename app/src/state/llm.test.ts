@@ -66,6 +66,11 @@ function row(over: Partial<LlmModelRow>): LlmModelRow {
 /** Capabilities all null, as any non-Ollama endpoint reports them. */
 const UNCHECKED = row({ can_chat: null, thinks: null, is_remote: null })
 
+/** A ready endpoint offering exactly these models, with or without a stored key. */
+function readyWith(models: LlmModelRow[], has_key = false): LlmStatus {
+  return { state: 'ready', models, enriched: true, preselect: null, has_key }
+}
+
 function result(over: Partial<LlmTestResult>): LlmTestResult {
   return {
     ok: true,
@@ -364,15 +369,8 @@ describe('keyField', () => {
    * so what a test can reach is the branch, and this is it.
    */
   it('shows the stored affordance only when the endpoint reports a key', () => {
-    const ready = (has_key: boolean): LlmStatus => ({
-      state: 'ready',
-      models: [],
-      enriched: true,
-      preselect: null,
-      has_key,
-    })
-    expect(keyField(ready(true))).toBe('stored')
-    expect(keyField(ready(false))).toBe('entry')
+    expect(keyField(readyWith([], true))).toBe('stored')
+    expect(keyField(readyWith([], false))).toBe('entry')
   })
 
   /**
@@ -385,11 +383,6 @@ describe('keyField', () => {
     expect(keyField({ state: 'unreachable', detail: 'refused', hint: null })).toBe('entry')
   })
 })
-
-/** A ready endpoint offering exactly these models. */
-function readyWith(models: LlmModelRow[]): LlmStatus {
-  return { state: 'ready', models, enriched: true, preselect: null, has_key: false }
-}
 
 describe('lyricsOptions', () => {
   it('offers nothing before the endpoint has answered', () => {
