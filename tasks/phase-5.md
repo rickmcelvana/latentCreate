@@ -592,6 +592,40 @@ already renders shipped profiles with one-click Install.
   The honest scope is that (2) probably reshapes several screens' degraded states, which is why this
   is its own session and not a field on a card.
 
+- **T-516 — embed the cover and the tags in an exported track.** ⏳ **OPEN, scoped 2026-09-06.**
+  Today a cover is app-only: `Track.cover` points at an `ArtId`, the Library shows it, and
+  `export_track` is `std::fs::copy` — so the FLAC a user hands to anyone else has no artwork and no
+  title. **The library crate is `lofty` (`lofty-rs`), and it is verified, not assumed**: compiled and
+  run against a **real app-generated FLAC and a real app-generated cover** in a throwaway crate
+  outside the repo (AGENTS.md method). What the probe established, live:
+  - **It works on our files.** A 13.4 MB / 120 s / 48 kHz / 2 ch ACE-Step FLAC took
+    `TrackTitle`/`TrackArtist`/`AlbumTitle`/`Comment` plus a `CoverFront` PNG, and every field read
+    back **from disk** afterwards.
+  - **The audio is untouched.** The last 4 MiB of the file — pure frame data, since FLAC metadata
+    blocks all sit at the head — are **byte-identical** before and after the write. Properties parse
+    the same (48000 Hz, 2 ch, 120 s).
+  - **Our files already carry one tag**, `EncoderSoftware = "Lavf62.12.102"` (ComfyUI's ffmpeg), and
+    lofty **preserves** it rather than replacing the comment block. Do not "clear then write".
+  - **Licence and weight are fine**: `MIT OR Apache-2.0` (compatible with this repo), MSRV 1.89
+    (workspace is 1.97), and a tree of eight small pure-Rust crates — no C dependency, nothing to
+    vendor. It **must be taken with default features**: `default-features = false` **does not
+    compile** in 0.25.1 (an upstream slip — `Id3v2Error` is used behind a feature gate that also
+    hides it), so the `flate2` that rides along with `id3v2_compression_support` is not trimmable.
+    Adds one entry to **T-509**'s THIRD-PARTY-LICENSES.
+  - **Size:** the cover embeds verbatim. Our art is PNG at ~2.1 MB, so a tagged export is ~16 % larger.
+    Well inside FLAC's picture-block limit; whether to downscale is an **owner decision**, not a
+    constraint.
+
+  **Shape of the work.** `export_track` stops being a copy: copy, then tag the copy — **never the
+  library original**, which stays the byte-for-byte artifact the provenance sidecar describes. The
+  fields come from what the app already holds (`Track.title`, the album the track belongs to, the
+  profile's display name, `Provenance`), and the picture from `resolve_art_file(track.cover)`. A
+  missing or unreadable cover must **not** fail the export — it degrades to an untagged copy with a
+  warning, the same rule the rest of the library follows. Open questions for the owner before it is
+  briefed: **which fields** to write (and what `TrackArtist` should say for a generated track), and
+  whether tagging is **export-only** or also applies to send-to (`sendto.rs` hands a path to the
+  sibling apps, and those want the tags too).
+
 **Build order, as it actually ran:** the three polish items first (T-501/502/503, independent and
 cheap), then the catalog (T-504/505, which gated cover art), then cover art (T-506), then T-507
 (first-run + empty-state polish). **All landed by 2026-09-05.** The 2026-09-05 catalog pivot adds

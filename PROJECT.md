@@ -6991,3 +6991,27 @@ the owner reported all four against the **Lyrics** page and the last one lives o
 Lyrics view's own approval line is the separate "vN is approved and ready for audio"; what they
 were describing (a Generate button at the foot, a box labelled Lyrics above it) is the Audio view.
 Frontend stays 543 tests -- the moved offer is the same `approvedOffer` selector, already covered.
+
+**Then three more owner items (2026-09-06, later).** Two shipped: Cover Art's Queue card and gallery
+ran together because **`.art-gallery` had no rule at all** -- a className in TSX with nothing in
+`theme.css`, which CONVENTIONS forbids and which no check catches (worth a lint one day); and each
+gallery tile gained a **magnifier opening a full-size overlay**, because the grid crops every
+thumbnail square and a non-square cover was only ever partly visible. `viewerRow` holds the two
+rules a view would get wrong -- it refuses to open an artwork whose URL did not resolve (an overlay
+over a broken `<img>` is a black rectangle, while the tile's own "Image file not found" says which
+thing broke), and closes when the id is no longer in the gallery, so deleting what you are looking
+at does not strand the viewer. Frontend 543 -> 547.
+
+The third was research: **can an exported FLAC carry its cover?** Today it cannot -- `Track.cover`
+is an `ArtId` the app renders and `export_track` is `std::fs::copy`, so the file a user hands to
+anyone else has no artwork and no title. **`lofty` is the answer, and it is verified rather than
+recalled** (the "verify third-party surfaces by compiling and running them" rule, in a throwaway
+crate outside the repo): run against a **real 13.4 MB ACE-Step FLAC and a real generated cover**, it
+wrote title/artist/album/comment plus a `CoverFront` PNG and read all of them back **from disk**;
+**the last 4 MiB of frame data are byte-identical** before and after, so the audio is genuinely
+untouched; it **preserved** the `EncoderSoftware = "Lavf62.12.102"` tag ComfyUI's ffmpeg already
+writes into our files, which means the implementation must add to the comment block rather than
+clear it; and it is `MIT OR Apache-2.0`, MSRV 1.89, eight small pure-Rust crates with no C
+dependency. One trap found and recorded: **`default-features = false` does not compile** in 0.25.1,
+so the feature set is not trimmable. Scoped as **T-516** (tasks/phase-5.md) with the two owner
+decisions it still needs -- which fields to write, and whether send-to gets the tags too.
