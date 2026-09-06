@@ -7071,3 +7071,19 @@ of the screen.
 
 create-core 198 -> 206, library 139 -> 143, frontend 547 -> 549. `npm run gate` green. **T-509 must
 now carry `lofty`'s licence** (MIT OR Apache-2.0).
+
+**Three spacing bugs of one shape, and the check that would have caught them.** In a single day:
+`.art-gallery` had **no rule at all** in `theme.css`; `.job-panel` had no bottom gap because until
+Cover Art existed it was always the last thing on its page; and `.album-panel` carried a
+`margin-top` from the position it held before T-514 moved it up, so above it doubled the gap
+`.quick-swap-panel` already has and below it left nothing between the Albums card and the first
+track. All three are the same fault -- **a panel's spacing depending on where it happened to sit**
+-- and none is the kind of thing `tsc`, oxlint or vitest can see.
+
+Auditing every className used in TSX against `theme.css` (CONVENTIONS requires a rule for each) found
+only two more, `.import-role` and `.track-details`, and **neither is a visible defect**: both are
+wrappers whose parent flex container owns the spacing, unlike `.art-gallery`, which was genuinely
+laying out nothing. Left as they are rather than padded with empty rules. **The finding worth
+keeping is the audit itself** -- roughly twenty lines of regex over the `.tsx` files and the
+stylesheet -- which would have caught `.art-gallery` the day it shipped. Worth adding to
+`npm run gate` when someone next touches the gate (T-510's neighbourhood).
