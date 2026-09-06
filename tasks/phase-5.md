@@ -120,7 +120,10 @@ Headlines:
     `ModelCatalog.tsx`, `Setup.tsx` (one line after `ModelsStep`), `theme.css`. Gate green (view
     component, not unit-tested per WORKFLOW §5; frontend 448 unchanged). ARCHITECTURE §10/§10a updated
     to the toggle-step layout in the same commit.
-  - **T-505c — curated one-click install. ✅ LANDED 2026-09-02 (awaiting click-through)** ([t-505c-brief.md](t-505c-brief.md)).
+  - **T-505c — curated one-click install. ✅ LANDED 2026-09-02; discharged 2026-09-06.** Its own
+    click-through was never run against the gallery UI T-512 later deleted, but the **install path it
+    added survives and is owner-verified end to end** (Flux.1 Schnell installed from the app and
+    generated), which is the thing that mattered. ([t-505c-brief.md](t-505c-brief.md)).
     A gallery row whose `name` matches a shipped profile's `comfy.template` (verified live: the
     profiles' `audio_ace_step1_5_xl_turbo` / `audio_minimax_music_3` are the exact gallery `name`s)
     gets the profile's readiness pill + an **Install** button, reusing the Models step's singleton
@@ -524,7 +527,7 @@ already renders shipped profiles with one-click Install.
   commands), plus the T-505d gallery-adopt path (`adopt`/`adopting`/`catalogAdoptBegin` cut from the
   shared `state/import.ts`). **Kept** `RoleMapping` and `ImportWorkflow` (T-313, the bring-your-own
   valve). The Models step gained an `Audio | Image` split and is the whole catalog. **Landed
-  2026-09-05, awaiting click-through.**
+  2026-09-05; producer click-through PASSED 2026-09-06, on all counts.**
 - **T-513 — Curate the audio model profiles.** The audio complement to T-511 — the catalog shipped
   five image models but only two audio (ACE Turbo, MiniMax). **Landed 2026-09-05:** **ACE-Step 1.5 XL
   Base** and **SFT** (Apache-2.0), each a clone of the Turbo profile with a swapped unet + 50-step
@@ -535,7 +538,7 @@ already renders shipped profiles with one-click Install.
 
 ### Setup/studio rework (owner design pass 2026-09-06)
 
-- **T-514 — Setup owns choosing; the studios only swap. ✅ LANDED 2026-09-06** (architect-direct,
+- **T-514 — Setup owns choosing; the studios only swap. ✅ COMPLETE 2026-09-06** (architect-direct,
   no Aider — owner's call for a design session). Two things were true before it: the Setup Models
   step had a *different* row layout from the studios' pickers and no scroll, and each studio carried
   a full model list — licence, VRAM claim, readiness pill, origin — on a screen whose job is to
@@ -566,6 +569,10 @@ already renders shipped profiles with one-click Install.
   field's own label row** (`ApprovedLyricOffer`, passed to `ParamPanel` as `lyricAccessory`) -- it
   offers to fill one specific box and was sitting several controls below it.
 
+  **Producer click-through PASSED 2026-09-06**, including the three follow-up rounds it went through
+  (the separate model cards, the Lyrics column width, the relocated approved-lyric offer, the gallery
+  spacing, the full-size art viewer and the Albums panel's gap).
+
   Frontend 522 → 543 tests. Dead rules removed (`.profile-*`, `.project-list/row`, `.model-row*`);
   `.profile-picker-setup` renamed `.setup-link`, the last survivor of a family that no longer exists.
 
@@ -592,7 +599,9 @@ already renders shipped profiles with one-click Install.
   The honest scope is that (2) probably reshapes several screens' degraded states, which is why this
   is its own session and not a field on a card.
 
-- **T-516 — embed the cover and the tags in an exported track. ✅ LANDED 2026-09-06** (scoped, then built the same day; awaiting click-through).
+- **T-516 — embed the cover and the tags in an exported track. ✅ COMPLETE 2026-09-06** (scoped,
+  built and click-through-**PASSED** the same day — the owner exported files and confirmed every tag
+  arrived).
   Today a cover is app-only: `Track.cover` points at an `ArtId`, the Library shows it, and
   `export_track` is `std::fs::copy` — so the FLAC a user hands to anyone else has no artwork and no
   title. **The library crate is `lofty` (`lofty-rs`), and it is verified, not assumed**: compiled and
