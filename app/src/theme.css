@@ -304,6 +304,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);
+  /* Cover Art stacks the gallery under this card. Every other panel in the app
+     carries its own bottom gap; this one had none because it was always last. */
+  margin-bottom: var(--gap-lg);
 }
 
 .job-panel-title {
@@ -2791,6 +2794,13 @@ body {
 
 /* --- Cover Art (T-506d) --- */
 
+.art-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-lg);
+}
+
 .art-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -2812,6 +2822,115 @@ body {
   object-fit: cover;
   border-radius: var(--radius);
   background: var(--panel);
+}
+
+/* Positions the zoom button over the thumbnail's top-right corner. */
+.art-thumb-wrap {
+  position: relative;
+  display: flex;
+}
+
+.art-zoom {
+  position: absolute;
+  top: var(--gap-sm);
+  right: var(--gap-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  /* Its own ground, not the panel's: it sits on whatever the artwork happens
+     to be, and a translucent dark chip reads over both a bright and a dark
+     image. */
+  background: rgba(10, 14, 26, 0.72);
+  border: 1px solid var(--border-bright);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--transition),
+    border-color var(--transition);
+}
+
+/* Revealed on hover, and always present for the keyboard -- an affordance that
+   only exists on hover is one a keyboard user cannot find. */
+.art-thumb-wrap:hover .art-zoom,
+.art-zoom:focus-visible {
+  opacity: 1;
+}
+
+.art-zoom:hover {
+  border-color: var(--accent);
+}
+
+/* --- The full-size viewer --- */
+
+.art-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap-xl);
+  background: rgba(10, 14, 26, 0.88);
+}
+
+.art-viewer-frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* `min-height: 0` so the flex child may shrink: without it a tall image
+   overflows the frame instead of fitting inside the padded viewport. */
+.art-viewer-image {
+  min-height: 0;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.art-viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.art-viewer-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.art-viewer-size {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.art-viewer-close {
+  margin-left: auto;
+  padding: var(--gap-xs) var(--gap-md);
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.art-viewer-close:hover {
+  border-color: var(--accent);
 }
 
 .art-missing {

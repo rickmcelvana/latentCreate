@@ -3,7 +3,7 @@ import type { ArtSet, ArtWarning, Artwork } from '../bridge/art'
 import type { InputValue } from './params'
 import { useAlbumsStore } from './albums'
 import { useLibraryStore } from './library'
-import { EMPTY_ART, artRows, artWarningLine, useArtStore } from './art'
+import { EMPTY_ART, artRows, artWarningLine, useArtStore, viewerRow } from './art'
 
 const mockListArt = vi.fn()
 const mockArtImageUrl = vi.fn()
@@ -311,5 +311,31 @@ describe('delete flow', () => {
     expect(useAlbumsStore.getState().load).not.toHaveBeenCalled()
     expect(useArtStore.getState().confirmingDelete).toBe('ar-1')
     expect(useArtStore.getState().error).toBe('trash failed')
+  })
+})
+
+describe('viewerRow', () => {
+  const rows = () =>
+    artRows(makeSet([makeArtwork({ id: 'ar-1' }), makeArtwork({ id: 'ar-2' })]), {
+      'ar-1': 'url-1',
+    })
+
+  it('shows nothing when nothing is selected', () => {
+    expect(viewerRow(rows(), null)).toBeNull()
+  })
+
+  it('shows the selected artwork', () => {
+    expect(viewerRow(rows(), 'ar-1')?.id).toBe('ar-1')
+  })
+
+  // An overlay over a broken <img> is a black rectangle that says nothing; the
+  // tile's own "Image file not found" is the message worth reading.
+  it('refuses to open an artwork whose file could not be resolved', () => {
+    expect(viewerRow(rows(), 'ar-2')).toBeNull()
+  })
+
+  // Deleting the artwork you are looking at must close the viewer.
+  it('closes when the selected artwork is gone from the gallery', () => {
+    expect(viewerRow(rows(), 'ar-gone')).toBeNull()
   })
 })

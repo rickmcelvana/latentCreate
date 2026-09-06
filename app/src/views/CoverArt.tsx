@@ -4,7 +4,7 @@ import { JobQueue } from '../components/JobQueue'
 import { ParamPanel } from '../components/ParamPanel'
 import { QuickSwap } from '../components/QuickSwap'
 import { useConfigStore } from '../state/config'
-import { useArtStore, EMPTY_ART, type ArtRow } from '../state/art'
+import { useArtStore, EMPTY_ART, viewerRow, type ArtRow } from '../state/art'
 import { useJobsStore } from '../state/jobs'
 import { useModelsStore } from '../state/models'
 import { useNavStore } from '../state/nav'
@@ -141,7 +141,60 @@ function ArtGallery() {
           ))}
         </ul>
       )}
+
+      <ArtViewer />
     </section>
+  )
+}
+
+/**
+ * The full-size overlay.
+ *
+ * The gallery crops every thumbnail to a square (`object-fit: cover`), so a
+ * 16:9 cover is only ever *partly* visible in the grid -- there was no way to
+ * see what was generated without leaving the app. Escape closes it, so does
+ * the backdrop; the image itself does not, because clicking the thing you came
+ * to look at should not dismiss it.
+ */
+function ArtViewer() {
+  const art = useArtStore((state) => state.art)
+  const viewing = useArtStore((state) => state.viewing)
+  const close = useArtStore((state) => state.closeViewer)
+
+  const row = viewerRow(art, viewing)
+
+  // Registered only while the viewer is open, so nothing else in the app has
+  // to reason about a global Escape handler.
+  useEffect(() => {
+    if (row === null) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [row, close])
+
+  if (row === null) return null
+
+  return (
+    <div
+      className="art-viewer"
+      role="dialog"
+      aria-modal="true"
+      aria-label={row.name}
+      onClick={close}
+    >
+      <div className="art-viewer-frame" onClick={(event) => event.stopPropagation()}>
+        <img className="art-viewer-image" src={row.url ?? ''} alt={row.name} />
+        <div className="art-viewer-bar">
+          <span className="art-viewer-name">{row.name}</span>
+          <span className="art-viewer-size">{row.size}</span>
+          <button type="button" className="art-viewer-close" onClick={close}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -153,6 +206,7 @@ function ArtTile({ row }: { row: ArtRow }) {
   const askDelete = useArtStore((state) => state.askDelete)
   const cancelDelete = useArtStore((state) => state.cancelDelete)
   const remove = useArtStore((state) => state.remove)
+  const open = useArtStore((state) => state.openViewer)
 
   // Clear the failure when the store reloads. `artRows` builds fresh row
   // objects on every load, so `row` changes identity exactly when the gallery
@@ -166,12 +220,26 @@ function ArtTile({ row }: { row: ArtRow }) {
   return (
     <li className="art-tile">
       {row.url !== null && !broken ? (
-        <img
-          className="art-thumb"
-          src={row.url}
-          alt={row.name}
-          onError={() => setBroken(true)}
-        />
+        <div className="art-thumb-wrap">
+          <img
+            className="art-thumb"
+            src={row.url}
+            alt={row.name}
+            onError={() => setBroken(true)}
+          />
+          {/* The grid crops to a square, so "see the whole thing" needs its own
+              affordance. On the thumbnail rather than in the fact list: it acts
+              on the image, and a corner button is where one is looked for. */}
+          <button
+            type="button"
+            className="art-zoom"
+            onClick={() => open(row.id)}
+            aria-label={`View ${row.name} full size`}
+            title="View full size"
+          >
+            🔍
+          </button>
+        </div>
       ) : (
         <div className="art-missing">Image file not found.</div>
       )}

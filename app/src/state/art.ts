@@ -17,6 +17,25 @@ import { useLibraryStore } from './library'
 export const EMPTY_ART =
   'Cover art you generate will appear here, with the recipe that made it.'
 
+/**
+ * The row the full-size viewer should show, or `null` when it should not open.
+ *
+ * `null` for a tile with no resolvable URL as well as for "nothing selected":
+ * an overlay over a broken `<img>` is a black rectangle with no way to tell
+ * whether the file is missing or the app is broken. The tile's own "Image file
+ * not found" already says which, so the viewer stays shut and the message
+ * stays where it can be read.
+ *
+ * Also `null` when the id names a tile the gallery no longer has -- deleting
+ * the artwork you are looking at must close the viewer, not leave it holding a
+ * row that is gone.
+ */
+export function viewerRow(rows: ArtRow[], viewing: string | null): ArtRow | null {
+  if (viewing === null) return null
+  const row = rows.find((r) => r.id === viewing) ?? null
+  return row === null || row.url === null ? null : row
+}
+
 /** One tile of the gallery, with every decision already made. */
 export interface ArtRow {
   id: string
@@ -81,12 +100,18 @@ interface ArtState {
   listening: boolean
   /** The artwork id awaiting a delete confirm, or `null`. */
   confirmingDelete: string | null
+  /** The artwork open in the full-size viewer, or `null`. */
+  viewing: string | null
   load: () => Promise<void>
   startListening: () => Promise<void>
   /** Arm the delete confirm for one artwork tile. */
   askDelete: (id: string) => void
   /** Cancel a pending delete confirm. */
   cancelDelete: () => void
+  /** Open one artwork full size. */
+  openViewer: (id: string) => void
+  /** Close the viewer. */
+  closeViewer: () => void
   /** Delete an artwork and refresh everything it could have touched. */
   remove: (id: string) => Promise<boolean>
 }
@@ -99,6 +124,7 @@ export const useArtStore = create<ArtState>((set, get) => ({
   error: null,
   listening: false,
   confirmingDelete: null,
+  viewing: null,
 
   load: async () => {
     set({ loading: true, error: null })
@@ -139,6 +165,9 @@ export const useArtStore = create<ArtState>((set, get) => ({
 
   askDelete: (id) => set({ confirmingDelete: id, error: null }),
   cancelDelete: () => set({ confirmingDelete: null }),
+
+  openViewer: (id) => set({ viewing: id }),
+  closeViewer: () => set({ viewing: null }),
 
   remove: async (id) => {
     set({ error: null })

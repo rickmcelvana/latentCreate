@@ -385,15 +385,12 @@ describe('keyField', () => {
   })
 })
 
-describe('lyricsOptions', () => {
-  const ready = (models: LlmModelRow[]): LlmStatus => ({
-    state: 'ready',
-    models,
-    enriched: true,
-    preselect: null,
-    has_key: false,
-  })
+/** A ready endpoint offering exactly these models. */
+function readyWith(models: LlmModelRow[]): LlmStatus {
+  return { state: 'ready', models, enriched: true, preselect: null, has_key: false }
+}
 
+describe('lyricsOptions', () => {
   it('offers nothing before the endpoint has answered', () => {
     expect(lyricsOptions(null, null)).toEqual([])
   })
@@ -406,19 +403,19 @@ describe('lyricsOptions', () => {
   })
 
   it('drops models the endpoint says cannot chat', () => {
-    const status = ready([row({ id: 'chatty' }), row({ id: 'embedder', can_chat: false })])
+    const status = readyWith([row({ id: 'chatty' }), row({ id: 'embedder', can_chat: false })])
     expect(lyricsOptions(status, null)).toEqual(['chatty'])
   })
 
   it('keeps models whose capabilities are unknown', () => {
-    expect(lyricsOptions(ready([{ ...UNCHECKED, id: 'mystery' }]), null)).toEqual(['mystery'])
+    expect(lyricsOptions(readyWith([{ ...UNCHECKED, id: 'mystery' }]), null)).toEqual(['mystery'])
   })
 
   it('includes the configured model the endpoint no longer offers', () => {
-    expect(lyricsOptions(ready([row({ id: 'here' })]), 'gone')).toEqual(['gone', 'here'])
+    expect(lyricsOptions(readyWith([row({ id: 'here' })]), 'gone')).toEqual(['gone', 'here'])
   })
 
   it('does not duplicate the configured model', () => {
-    expect(lyricsOptions(ready([row({ id: 'here' })]), 'here')).toEqual(['here'])
+    expect(lyricsOptions(readyWith([row({ id: 'here' })]), 'here')).toEqual(['here'])
   })
 })
