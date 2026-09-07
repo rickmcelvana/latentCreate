@@ -505,7 +505,7 @@ Headlines:
   signing, so an Apple Silicon build is not reported "damaged"). The milestone gate for the phase;
   its in-app half was already discharged, and the build half now awaits the owner's one `v*` tag
   push to produce the four installers.
-- **T-517 — The packaged app could not display an image. FIXED 2026-09-07, awaiting the owner's click-through on a build.** Found by the owner
+- **T-517 — The packaged app could not display an image. ✅ LANDED 2026-09-07, click-through passed.** Found by the owner
   on the **v0.1.0** installer: generate a cover and every tile reads "Image file not found", in the
   installed app and in `target/release/app.exe` alike, with a fresh `AppData\Roaming` directory and
   the PNGs plainly on disk. The cause was `app.security.csp`: it declared `media-src` for T-402's

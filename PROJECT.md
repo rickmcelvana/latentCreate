@@ -10,13 +10,16 @@
   Phase 5 is done and every click-through has passed; the tree is clean and `npm run gate` is green.**
   What is left is the **release arc**, and it is the whole of the next phase of work. **The `v0.1.0`
   tag has already been pushed and every artifact it produced is DEFECTIVE** -- see T-517 below.
-  - **T-517 -- the packaged app could not display an image. FIXED 2026-09-07, awaiting the owner's
-    click-through on a build.** The CSP declared `media-src` and never gained an `img-src`, so every
-    cover was blocked in a packaged build and read "Image file not found"; a dev run applies no CSP
-    at all, which is why nothing caught it. Fixed, mutation-checked, and the rule written into
-    ARCHITECTURE section 11. **The owner still has to decide what happens to `v0.1.0`** -- delete
-    and re-push the tag, or move to `v0.1.1` -- and the draft release's nine assets must not be
-    published as they stand.
+  - **T-517 -- the packaged app could not display an image. ✅ LANDED 2026-09-07, click-through
+    passed.** The CSP declared `media-src` and never gained an `img-src`, so every cover was blocked
+    in a packaged build and read "Image file not found"; a dev run applies no CSP at all, which is
+    why nothing caught it. Fixed, mutation-checked, and the rule written into ARCHITECTURE section
+    11. **The owner confirmed the art renders in a rebuilt `target/release/app.exe` on 2026-09-07**
+    -- the first time anything in this project has been click-through-verified in a *packaged*
+    build rather than a dev run, which is the only way this class of defect is visible at all.
+    **`v0.1.0` was withdrawn and re-cut** (owner decision 2026-09-07): the tag was deleted from
+    origin, the draft release and its nine undownloaded assets were deleted by the owner, and the
+    tag was re-pushed at the fix.
   - **T-508 -- installer builds. ✅ LANDED 2026-09-06** ([brief](tasks/t-508-brief.md)). A
     `.github/workflows/release.yml` builds Windows NSIS `.exe`, macOS `.dmg` (Apple Silicon + Intel)
     and Linux AppImage via `tauri-action`, on a `v*` tag push or manual run, and attaches them to a
@@ -36,8 +39,9 @@
     Cloud, and `download_model` **refuses with a remote target configured** -- so curated install is
     local-only and the Models step will have to say so. Full scope in tasks/phase-5.md.
 
-  **Order:** T-508 is done and T-517 is fixed; **re-cutting the release is the first thing**, once the
-  owner has clicked through a build and chosen a version. Then T-509 and T-510 alongside each other,
+  **Order:** T-508 is done, T-517 is fixed and its click-through passed, and `v0.1.0` has been
+  re-cut at the fix -- **check that release's assets before publishing the draft**. Then T-509 and
+  T-510 alongside each other,
   and T-515 in its own session whenever the owner wants it; it blocks the version, not the phase
   milestone.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
@@ -7226,12 +7230,20 @@ no `fetch`/WebSocket/`createObjectURL`/`data:` URIs anywhere in `app/src`, no if
 two `convertFileSrc` callers are `bridge/art.ts` and `bridge/player.ts`. `src-tauri` 129 -> **130**;
 frontend unchanged at 552.
 
-**v0.1.0 must be replaced.** The draft release carried **nine** assets, not the four the T-508 entry
+**Click-through passed 2026-09-07, and it is the first one this project has ever run against a
+packaged build.** The owner confirmed the art renders in a rebuilt `target/release/app.exe`. That is
+the standing lesson, not the CSP line: **every click-through before this one ran under `npm run
+dev`**, which is precisely the configuration in which this defect is invisible. A release-shaped
+change now needs a look at a *built* app, not a dev run.
+
+**v0.1.0 was withdrawn and re-cut** (owner decision 2026-09-07). The tag was deleted from origin, the
+owner deleted the draft release, and the tag was re-pushed at the fix. Deleting the draft outright
+mattered: its `targetCommitish` was pinned to `f1f8915`, so publishing it would have anchored the
+release to the broken commit no matter what the tag pointed at.
+
+**Why the replacement was cheap.** The draft carried **nine** assets, not the four the T-508 entry
 implies -- the four platform builds emit nine files (`.exe`, `.msi`, two `.dmg`, two `.app.tar.gz`,
-`.AppImage`, `.deb`, `.rpm`) -- and every one of them carries the defect. Read off the live release
-before it was removed, along with two facts worth keeping: **no asset had been downloaded even once**
-(`downloadCount` 0 across all nine, so nothing defective reached anyone), and the draft's
-`targetCommitish` was pinned to `f1f8915`, the pre-fix commit -- which is why the draft had to be
-deleted outright rather than rebuilt into. The tag
-points at `f1f8915`; the owner's call is whether to delete and re-push `v0.1.0` or move to `v0.1.1`.
-A rebuilt local NSIS/MSI pair with the fix is at `target/release/bundle/`.
+`.AppImage`, `.deb`, `.rpm`), and every one of them carried the defect. Read off the live release
+before it was removed, which is also where the reassuring number came from: **no asset had been
+downloaded even once** (`downloadCount` 0 across all nine), so nothing defective reached anyone and
+the withdrawal cost nothing but a rebuild.
