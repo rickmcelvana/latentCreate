@@ -516,7 +516,9 @@ Headlines:
   all**. The fix is one directive plus the regression test that is the only possible guard
   (`test_csp_covers_every_asset_protocol_directive`, which asserts both `img-src` and `media-src`
   name `asset:` **and** `http://asset.localhost`), and the rule is now written down in
-  ARCHITECTURE §11. **v0.1.0's four installers all carry the defect and must be replaced.**
+  ARCHITECTURE §11. **All nine of v0.1.0's release assets carry the defect and must be replaced** (the
+  four platform builds emit nine files); none had been downloaded, and the draft's `targetCommitish`
+  was pinned to the pre-fix commit, so the draft was deleted rather than rebuilt into.
 - **T-509 — THIRD-PARTY-LICENSES generation** (Rust + npm dependency licenses; the ported-viz
   bookkeeping ARCHITECTURE §9 notes).
 - **T-510 — Public-repo readiness** — CONTRIBUTING, issue/PR templates, a README pass for a

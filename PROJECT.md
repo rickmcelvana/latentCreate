@@ -9,13 +9,13 @@
 - **Next up (2026-09-07) -- read this first if you are the next session.** **All feature work in
   Phase 5 is done and every click-through has passed; the tree is clean and `npm run gate` is green.**
   What is left is the **release arc**, and it is the whole of the next phase of work. **The `v0.1.0`
-  tag has already been pushed and its four installers are DEFECTIVE** -- see T-517 below.
+  tag has already been pushed and every artifact it produced is DEFECTIVE** -- see T-517 below.
   - **T-517 -- the packaged app could not display an image. FIXED 2026-09-07, awaiting the owner's
     click-through on a build.** The CSP declared `media-src` and never gained an `img-src`, so every
     cover was blocked in a packaged build and read "Image file not found"; a dev run applies no CSP
     at all, which is why nothing caught it. Fixed, mutation-checked, and the rule written into
     ARCHITECTURE section 11. **The owner still has to decide what happens to `v0.1.0`** -- delete
-    and re-push the tag, or move to `v0.1.1` -- and the draft release's four installers must not be
+    and re-push the tag, or move to `v0.1.1` -- and the draft release's nine assets must not be
     published as they stand.
   - **T-508 -- installer builds. ✅ LANDED 2026-09-06** ([brief](tasks/t-508-brief.md)). A
     `.github/workflows/release.yml` builds Windows NSIS `.exe`, macOS `.dmg` (Apple Silicon + Intel)
@@ -7188,7 +7188,7 @@ then T-515 (remote ComfyUI) in its own session.
 
 ### 2026-09-07 -- T-517: the packaged app could not display an image (v0.1.0 is defective)
 
-**The owner's first `v0.1.0` tag push produced four installers that cannot show a cover.** Install,
+**The owner's first `v0.1.0` tag push produced installers that cannot show a cover.** Install,
 generate an image, and every tile reads **"Image file not found"** -- the same in
 `target/release/app.exe`, the same after deleting `AppData\Roaming\com.latentbeats.create` and
 letting it rebuild, and with the PNGs and their sidecars plainly on disk. Under `npm run dev` the
@@ -7226,6 +7226,12 @@ no `fetch`/WebSocket/`createObjectURL`/`data:` URIs anywhere in `app/src`, no if
 two `convertFileSrc` callers are `bridge/art.ts` and `bridge/player.ts`. `src-tauri` 129 -> **130**;
 frontend unchanged at 552.
 
-**v0.1.0 must be replaced.** All four installers on the draft release carry the defect. The tag
+**v0.1.0 must be replaced.** The draft release carried **nine** assets, not the four the T-508 entry
+implies -- the four platform builds emit nine files (`.exe`, `.msi`, two `.dmg`, two `.app.tar.gz`,
+`.AppImage`, `.deb`, `.rpm`) -- and every one of them carries the defect. Read off the live release
+before it was removed, along with two facts worth keeping: **no asset had been downloaded even once**
+(`downloadCount` 0 across all nine, so nothing defective reached anyone), and the draft's
+`targetCommitish` was pinned to `f1f8915`, the pre-fix commit -- which is why the draft had to be
+deleted outright rather than rebuilt into. The tag
 points at `f1f8915`; the owner's call is whether to delete and re-push `v0.1.0` or move to `v0.1.1`.
 A rebuilt local NSIS/MSI pair with the fix is at `target/release/bundle/`.
