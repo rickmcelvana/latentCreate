@@ -7241,6 +7241,16 @@ owner deleted the draft release, and the tag was re-pushed at the fix. Deleting 
 mattered: its `targetCommitish` was pinned to `f1f8915`, so publishing it would have anchored the
 release to the broken commit no matter what the tag pointed at.
 
+**The re-cut release was verified as an artifact, not as a config.** Run `34121672295` went green on
+all four platforms, the new draft is anchored to `1de5cc5`, and the published
+`latentCreate_0.1.0_x64_en-US.msi` was **downloaded and unpacked** (`msiexec /a`, which extracts
+without installing) so the `app.exe` inside it could be read: it carries
+`img-src 'self' asset: http://asset.localhost`. The NSIS `.exe` cannot be checked this way -- its
+payload is compressed, so `strings` finds nothing -- which is why the MSI is the one to open. Worth
+keeping as the method: a config file saying the right thing and a *shipped binary* saying the right
+thing are two different claims, and this whole task exists because the first was never checked
+against the second.
+
 **Why the replacement was cheap.** The draft carried **nine** assets, not the four the T-508 entry
 implies -- the four platform builds emit nine files (`.exe`, `.msi`, two `.dmg`, two `.app.tar.gz`,
 `.AppImage`, `.deb`, `.rpm`), and every one of them carried the defect. Read off the live release
