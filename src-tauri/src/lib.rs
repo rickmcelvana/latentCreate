@@ -187,4 +187,43 @@ mod tests {
     fn test_app_version_matches_crate_version() {
         assert_eq!(app_version(), env!("CARGO_PKG_VERSION"));
     }
+
+    /// The CSP must name the asset protocol in every directive the app loads
+    /// through it.
+    ///
+    /// A test is the only guard there can be. `app.security.csp` is injected
+    /// only into responses the app's own protocol serves, and a dev run loads
+    /// the frontend from Vite's dev server instead -- so **no CSP is applied
+    /// in development at all**, and a directive the app needs but does not
+    /// declare fails for the first time in a packaged build. That is exactly
+    /// how the missing `img-src` shipped: `media-src` was written for T-402's
+    /// audio, T-506's cover art arrived four months later, and every gate,
+    /// click-through and dev run passed with the gap open.
+    ///
+    /// Both directives are checked together because both are reached the same
+    /// way -- `convertFileSrc` in `bridge/player.ts` for audio and
+    /// `bridge/art.ts` for images -- and both spellings are required:
+    /// `asset:` on macOS and Linux, `http://asset.localhost` on Windows.
+    #[test]
+    fn test_csp_covers_every_asset_protocol_directive() {
+        let raw = include_str!("../tauri.conf.json");
+        let conf: serde_json::Value = serde_json::from_str(raw).expect("tauri.conf.json parses");
+        let csp = conf["app"]["security"]["csp"]
+            .as_str()
+            .expect("a CSP is configured");
+
+        for directive in ["img-src", "media-src"] {
+            let sources: Vec<&str> = csp
+                .split(';')
+                .map(|d| d.split_whitespace().collect::<Vec<_>>())
+                .find(|tokens| tokens.first() == Some(&directive))
+                .unwrap_or_else(|| panic!("CSP has no {directive}: {csp}"));
+            for scheme in ["asset:", "http://asset.localhost"] {
+                assert!(
+                    sources.contains(&scheme),
+                    "CSP {directive} does not name {scheme}: {csp}"
+                );
+            }
+        }
+    }
 }

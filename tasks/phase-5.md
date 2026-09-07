@@ -505,6 +505,18 @@ Headlines:
   signing, so an Apple Silicon build is not reported "damaged"). The milestone gate for the phase;
   its in-app half was already discharged, and the build half now awaits the owner's one `v*` tag
   push to produce the four installers.
+- **T-517 — The packaged app could not display an image. FIXED 2026-09-07, awaiting the owner's click-through on a build.** Found by the owner
+  on the **v0.1.0** installer: generate a cover and every tile reads "Image file not found", in the
+  installed app and in `target/release/app.exe` alike, with a fresh `AppData\Roaming` directory and
+  the PNGs plainly on disk. The cause was `app.security.csp`: it declared `media-src` for T-402's
+  audio and never gained an `img-src` when T-506 added cover art four months later, so `img-src`
+  fell back to `default-src 'self'` and every `http://asset.localhost` image was blocked. It could
+  not have been caught in development — Tauri injects the CSP only into responses its own protocol
+  serves, and a dev run loads the frontend from Vite, so **no CSP is applied by `npm run dev` at
+  all**. The fix is one directive plus the regression test that is the only possible guard
+  (`test_csp_covers_every_asset_protocol_directive`, which asserts both `img-src` and `media-src`
+  name `asset:` **and** `http://asset.localhost`), and the rule is now written down in
+  ARCHITECTURE §11. **v0.1.0's four installers all carry the defect and must be replaced.**
 - **T-509 — THIRD-PARTY-LICENSES generation** (Rust + npm dependency licenses; the ported-viz
   bookkeeping ARCHITECTURE §9 notes).
 - **T-510 — Public-repo readiness** — CONTRIBUTING, issue/PR templates, a README pass for a

@@ -414,6 +414,16 @@ This introduces **no raw HTTP** (OQ-3 stays NO) and ships **no models** — only
 - Single `theme.css`; every className styled there; dark professional theme; **no UI framework**. Spacious layout — one primary action per view, progressive disclosure for advanced params.
 - Views: `Setup`, `LyricsStudio`, `AudioStudio`, `Library`, `CoverArt` behind a left nav rail. Lyric→Audio handoff is a store action, not navigation state.
 - **Choosing vs swapping (T-514).** Setup is where a model or project is **chosen, installed and read about**; every other screen only **swaps** between what already exists. Setup renders the one shared `.picker-list` / `.picker-row` (radio, readiness pill, licence, and — via `ProfilePickerRow`'s `children` — the file list, download progress and Install). Audio, Cover Art, Lyrics and Library render `QuickSwap`, a **name-only** `<select>` over what is **installed**; licence, VRAM claim and readiness are deliberately not repeated there. Both write the **same** config field, so no two screens can disagree about the selection. Rules live in `state/` (`installedOptions`/`optionsNote`, `lyricsOptions`, `nowPlayingLabel`) because vitest runs in `node` with no DOM — a view that derives its own is untestable by the whole gate.
+- **Anything the webview loads must be named in `app.security.csp`** (`src-tauri/tauri.conf.json`).
+  A generated file reaches the webview as a `convertFileSrc` asset URL -- `asset:` on macOS and
+  Linux, `http://asset.localhost` on Windows -- and every element type needs its own directive:
+  `media-src` for the `<audio>` element, `img-src` for `<img>`. **A dev run never applies the CSP at
+  all**: Tauri injects it only into responses its own protocol serves, and `npm run dev` loads the
+  frontend from Vite's dev server instead. A missing directive therefore passes the gate, the tests
+  and every click-through, and fails for the first time in a packaged build -- which is exactly how
+  T-517's missing `img-src` shipped in v0.1.0. `src-tauri`'s
+  `test_csp_covers_every_asset_protocol_directive` is the only guard there can be; extend it the
+  next time a new kind of element starts loading through the asset protocol.
 
 ## 12. Non-goals (v1)
 
