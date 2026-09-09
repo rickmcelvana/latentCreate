@@ -773,15 +773,6 @@ body {
   gap: var(--gap-sm);
 }
 
-/* Lyrics lays its cards out in a 720px column (`.lyrics-form`, `.doc-picker`,
-   `.lyrics-output`); a full-bleed swap panel above them read as a different
-   page. The studios and Library have no such column, so this is a modifier
-   rather than the default. */
-.quick-swap-panel-narrow {
-  max-width: 720px;
-}
-
-
 .quick-swap-row {
   display: flex;
   align-items: center;
@@ -841,7 +832,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);
-  max-width: 720px;
 }
 
 .lyrics-field {
@@ -912,7 +902,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);
-  max-width: 720px;
   margin-top: var(--gap-lg);
 }
 
@@ -1114,7 +1103,6 @@ body {
 /* --- Document picker (T-408b) --- */
 
 .doc-picker {
-  max-width: 720px;
   margin-bottom: var(--gap-md);
 }
 
@@ -1160,7 +1148,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);
-  max-width: 960px;
   margin-top: var(--gap-lg);
 }
 
@@ -1263,7 +1250,6 @@ body {
 }
 
 .lyrics-optimized {
-  max-width: 720px;
   margin: var(--gap-md) 0 0;
   padding: var(--gap-sm) var(--gap-md);
   border: 1px solid var(--accent-dim);

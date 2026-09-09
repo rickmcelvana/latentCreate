@@ -119,7 +119,7 @@ export function LyricsStudio() {
       {/* The swap menu, on the same rule as the studios': names only, and the
           endpoint, key, capability chips and remote-privacy disclosure stay on
           Setup where the model is configured. */}
-      <section className="panel quick-swap-panel quick-swap-panel-narrow">
+      <section className="panel quick-swap-panel">
         <QuickSwap
           label="Lyrics model"
           value={lyricsModelName}
