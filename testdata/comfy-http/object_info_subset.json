@@ -1,0 +1,706 @@
+{
+  "KSampler": {
+    "input": {
+      "required": {
+        "model": [
+          "MODEL",
+          {
+            "tooltip": "The model used for denoising the input latent."
+          }
+        ],
+        "seed": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 18446744073709551615,
+            "control_after_generate": true,
+            "tooltip": "The random seed used for creating the noise."
+          }
+        ],
+        "steps": [
+          "INT",
+          {
+            "default": 20,
+            "min": 1,
+            "max": 10000,
+            "tooltip": "The number of steps used in the denoising process."
+          }
+        ],
+        "cfg": [
+          "FLOAT",
+          {
+            "default": 8.0,
+            "min": 0.0,
+            "max": 100.0,
+            "step": 0.1,
+            "round": 0.01,
+            "tooltip": "The Classifier-Free Guidance scale balances creativity and adherence to the prompt. Higher values result in images more closely matching the prompt however too high values will negatively impact quality."
+          }
+        ],
+        "sampler_name": [
+          [
+            "euler",
+            "euler_cfg_pp",
+            "euler_ancestral",
+            "euler_ancestral_cfg_pp",
+            "heun",
+            "heunpp2",
+            "exp_heun_2_x0",
+            "exp_heun_2_x0_sde",
+            "dpm_2",
+            "dpm_2_ancestral",
+            "lms",
+            "dpm_fast",
+            "dpm_adaptive",
+            "dpmpp_2s_ancestral",
+            "dpmpp_2s_ancestral_cfg_pp",
+            "dpmpp_sde",
+            "dpmpp_sde_gpu",
+            "dpmpp_2m",
+            "dpmpp_2m_cfg_pp",
+            "dpmpp_2m_sde",
+            "dpmpp_2m_sde_gpu",
+            "dpmpp_2m_sde_heun",
+            "dpmpp_2m_sde_heun_gpu",
+            "dpmpp_3m_sde",
+            "dpmpp_3m_sde_gpu",
+            "ddpm",
+            "lcm",
+            "ipndm",
+            "ipndm_v",
+            "deis",
+            "cfgpp_ud10_ab",
+            "res_multistep",
+            "res_multistep_cfg_pp",
+            "res_multistep_ancestral",
+            "res_multistep_ancestral_cfg_pp",
+            "gradient_estimation",
+            "gradient_estimation_cfg_pp",
+            "er_sde",
+            "seeds_2",
+            "seeds_3",
+            "sa_solver",
+            "sa_solver_pece",
+            "ddim",
+            "uni_pc",
+            "uni_pc_bh2"
+          ],
+          {
+            "tooltip": "The algorithm used when sampling, this can affect the quality, speed, and style of the generated output."
+          }
+        ],
+        "scheduler": [
+          [
+            "simple",
+            "sgm_uniform",
+            "karras",
+            "exponential",
+            "ddim_uniform",
+            "beta",
+            "normal",
+            "linear_quadratic",
+            "kl_optimal"
+          ],
+          {
+            "tooltip": "The scheduler controls how noise is gradually removed to form the image."
+          }
+        ],
+        "positive": [
+          "CONDITIONING",
+          {
+            "tooltip": "The conditioning describing the attributes you want to include in the image."
+          }
+        ],
+        "negative": [
+          "CONDITIONING",
+          {
+            "tooltip": "The conditioning describing the attributes you want to exclude from the image."
+          }
+        ],
+        "latent_image": [
+          "LATENT",
+          {
+            "tooltip": "The latent image to denoise."
+          }
+        ],
+        "denoise": [
+          "FLOAT",
+          {
+            "default": 1.0,
+            "min": 0.0,
+            "max": 1.0,
+            "step": 0.01,
+            "tooltip": "The amount of denoising applied, lower values will maintain the structure of the initial image allowing for image to image sampling."
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": [
+        "model",
+        "seed",
+        "steps",
+        "cfg",
+        "sampler_name",
+        "scheduler",
+        "positive",
+        "negative",
+        "latent_image",
+        "denoise"
+      ]
+    },
+    "is_input_list": false,
+    "output": [
+      "LATENT"
+    ],
+    "output_is_list": [
+      false
+    ],
+    "output_name": [
+      "LATENT"
+    ],
+    "name": "KSampler",
+    "display_name": "KSampler",
+    "description": "Uses the provided model, positive and negative conditioning to denoise the latent image.",
+    "python_module": "nodes",
+    "category": "model/sampling",
+    "output_node": false,
+    "has_intermediate_output": false,
+    "output_tooltips": [
+      "The denoised latent."
+    ],
+    "search_aliases": [
+      "sampler",
+      "sample",
+      "generate",
+      "denoise",
+      "diffuse",
+      "txt2img",
+      "img2img"
+    ]
+  },
+  "SaveAudioAdvanced": {
+    "input": {
+      "required": {
+        "audio": [
+          "AUDIO",
+          {
+            "tooltip": "The audio to save."
+          }
+        ],
+        "filename_prefix": [
+          "STRING",
+          {
+            "tooltip": "The prefix for the file to save. May include formatting tokens such as %date:yyyy-MM-dd%.",
+            "default": "audio/ComfyUI",
+            "multiline": false
+          }
+        ],
+        "format": [
+          "COMFY_DYNAMICCOMBO_V3",
+          {
+            "tooltip": "The file format in which to save the audio.",
+            "options": [
+              {
+                "key": "flac",
+                "inputs": {
+                  "required": {}
+                }
+              },
+              {
+                "key": "mp3",
+                "inputs": {
+                  "required": {
+                    "quality": [
+                      "COMBO",
+                      {
+                        "default": "V0",
+                        "multiselect": false,
+                        "options": [
+                          "V0",
+                          "128k",
+                          "320k"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "opus",
+                "inputs": {
+                  "required": {
+                    "quality": [
+                      "COMBO",
+                      {
+                        "default": "128k",
+                        "multiselect": false,
+                        "options": [
+                          "64k",
+                          "96k",
+                          "128k",
+                          "192k",
+                          "320k"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "hidden": {
+        "prompt": [
+          "PROMPT"
+        ],
+        "extra_pnginfo": [
+          "EXTRA_PNGINFO"
+        ]
+      }
+    },
+    "input_order": {
+      "required": [
+        "audio",
+        "filename_prefix",
+        "format"
+      ],
+      "hidden": [
+        "prompt",
+        "extra_pnginfo"
+      ]
+    },
+    "is_input_list": false,
+    "output": [
+      "AUDIO"
+    ],
+    "output_is_list": [
+      false
+    ],
+    "output_name": [
+      "audio"
+    ],
+    "output_tooltips": [
+      null
+    ],
+    "output_matchtypes": null,
+    "name": "SaveAudioAdvanced",
+    "display_name": "Save Audio (Advanced)",
+    "description": "Saves the input audio to your ComfyUI output directory.",
+    "python_module": "comfy_extras.nodes_audio",
+    "category": "audio",
+    "output_node": true,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": [
+      "save audio",
+      "export audio",
+      "output audio",
+      "write audio",
+      "flac",
+      "mp3",
+      "opus"
+    ],
+    "essentials_category": null,
+    "has_intermediate_output": false
+  },
+  "LoraLoaderModelOnly": {
+    "input": {
+      "required": {
+        "model": [
+          "MODEL"
+        ],
+        "lora_name": [
+          [
+            "Flux_2-Turbo-LoRA_comfyui.safetensors"
+          ]
+        ],
+        "strength_model": [
+          "FLOAT",
+          {
+            "default": 1.0,
+            "min": -100.0,
+            "max": 100.0,
+            "step": 0.01
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": [
+        "model",
+        "lora_name",
+        "strength_model"
+      ]
+    },
+    "is_input_list": false,
+    "output": [
+      "MODEL"
+    ],
+    "output_is_list": [
+      false
+    ],
+    "output_name": [
+      "MODEL"
+    ],
+    "name": "LoraLoaderModelOnly",
+    "display_name": "Load LoRA",
+    "description": "This LoRAs loader is used to modify the diffusion model, altering the way in which latents are denoised such as applying styles. Multiple LoRA nodes can be linked together.",
+    "python_module": "nodes",
+    "category": "model/loaders",
+    "output_node": false,
+    "has_intermediate_output": false,
+    "output_tooltips": [
+      "The modified diffusion model.",
+      "The modified CLIP model."
+    ],
+    "search_aliases": [
+      "lora",
+      "load lora",
+      "apply lora",
+      "lora loader",
+      "lora model"
+    ],
+    "essentials_category": "Image Generation"
+  },
+  "TextEncodeAceStepAudio1.5": {
+    "input": {
+      "required": {
+        "clip": [
+          "CLIP",
+          {}
+        ],
+        "tags": [
+          "STRING",
+          {
+            "multiline": true,
+            "dynamicPrompts": true
+          }
+        ],
+        "lyrics": [
+          "STRING",
+          {
+            "multiline": true,
+            "dynamicPrompts": true
+          }
+        ],
+        "seed": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 18446744073709551615,
+            "control_after_generate": true
+          }
+        ],
+        "bpm": [
+          "INT",
+          {
+            "default": 120,
+            "min": 10,
+            "max": 300
+          }
+        ],
+        "duration": [
+          "FLOAT",
+          {
+            "default": 120.0,
+            "min": 0.0,
+            "max": 2000.0,
+            "step": 0.1
+          }
+        ],
+        "timesignature": [
+          "COMBO",
+          {
+            "multiselect": false,
+            "options": [
+              "2",
+              "3",
+              "4",
+              "6"
+            ]
+          }
+        ],
+        "language": [
+          "COMBO",
+          {
+            "default": "en",
+            "multiselect": false,
+            "options": [
+              "ar",
+              "az",
+              "bg",
+              "bn",
+              "ca",
+              "cs",
+              "da",
+              "de",
+              "el",
+              "en",
+              "es",
+              "fa",
+              "fi",
+              "fr",
+              "he",
+              "hi",
+              "hr",
+              "ht",
+              "hu",
+              "id",
+              "is",
+              "it",
+              "ja",
+              "ko",
+              "la",
+              "lt",
+              "ms",
+              "ne",
+              "nl",
+              "no",
+              "pa",
+              "pl",
+              "pt",
+              "ro",
+              "ru",
+              "sa",
+              "sk",
+              "sr",
+              "sv",
+              "sw",
+              "ta",
+              "te",
+              "th",
+              "tl",
+              "tr",
+              "uk",
+              "ur",
+              "vi",
+              "yue",
+              "zh",
+              "unknown"
+            ]
+          }
+        ],
+        "keyscale": [
+          "COMBO",
+          {
+            "multiselect": false,
+            "options": [
+              "C major",
+              "C# major",
+              "Db major",
+              "D major",
+              "D# major",
+              "Eb major",
+              "E major",
+              "F major",
+              "F# major",
+              "Gb major",
+              "G major",
+              "G# major",
+              "Ab major",
+              "A major",
+              "A# major",
+              "Bb major",
+              "B major",
+              "C minor",
+              "C# minor",
+              "Db minor",
+              "D minor",
+              "D# minor",
+              "Eb minor",
+              "E minor",
+              "F minor",
+              "F# minor",
+              "Gb minor",
+              "G minor",
+              "G# minor",
+              "Ab minor",
+              "A minor",
+              "A# minor",
+              "Bb minor",
+              "B minor"
+            ]
+          }
+        ],
+        "generate_audio_codes": [
+          "BOOLEAN",
+          {
+            "tooltip": "Enable the LLM that generates audio codes. This can be slow but will increase the quality of the generated audio. Turn this off if you are giving the model an audio reference.",
+            "advanced": true,
+            "default": true
+          }
+        ],
+        "cfg_scale": [
+          "FLOAT",
+          {
+            "advanced": true,
+            "default": 2.0,
+            "min": 0.0,
+            "max": 100.0,
+            "step": 0.1
+          }
+        ],
+        "temperature": [
+          "FLOAT",
+          {
+            "advanced": true,
+            "default": 0.85,
+            "min": 0.0,
+            "max": 2.0,
+            "step": 0.01
+          }
+        ],
+        "top_p": [
+          "FLOAT",
+          {
+            "advanced": true,
+            "default": 0.9,
+            "min": 0.0,
+            "max": 2000.0,
+            "step": 0.01
+          }
+        ],
+        "top_k": [
+          "INT",
+          {
+            "advanced": true,
+            "default": 0,
+            "min": 0,
+            "max": 100
+          }
+        ],
+        "min_p": [
+          "FLOAT",
+          {
+            "advanced": true,
+            "default": 0.0,
+            "min": 0.0,
+            "max": 1.0,
+            "step": 0.001
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": [
+        "clip",
+        "tags",
+        "lyrics",
+        "seed",
+        "bpm",
+        "duration",
+        "timesignature",
+        "language",
+        "keyscale",
+        "generate_audio_codes",
+        "cfg_scale",
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p"
+      ]
+    },
+    "is_input_list": false,
+    "output": [
+      "CONDITIONING"
+    ],
+    "output_is_list": [
+      false
+    ],
+    "output_name": [
+      "CONDITIONING"
+    ],
+    "output_tooltips": [
+      null
+    ],
+    "output_matchtypes": null,
+    "name": "TextEncodeAceStepAudio1.5",
+    "display_name": null,
+    "description": "",
+    "python_module": "comfy_extras.nodes_ace",
+    "category": "model/conditioning/ace",
+    "output_node": false,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": null,
+    "essentials_category": null,
+    "has_intermediate_output": false
+  },
+  "EmptySD3LatentImage": {
+    "input": {
+      "required": {
+        "width": [
+          "INT",
+          {
+            "default": 1024,
+            "min": 16,
+            "max": 16384,
+            "step": 16
+          }
+        ],
+        "height": [
+          "INT",
+          {
+            "default": 1024,
+            "min": 16,
+            "max": 16384,
+            "step": 16
+          }
+        ],
+        "batch_size": [
+          "INT",
+          {
+            "default": 1,
+            "min": 1,
+            "max": 4096
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": [
+        "width",
+        "height",
+        "batch_size"
+      ]
+    },
+    "is_input_list": false,
+    "output": [
+      "LATENT"
+    ],
+    "output_is_list": [
+      false
+    ],
+    "output_name": [
+      "LATENT"
+    ],
+    "output_tooltips": [
+      null
+    ],
+    "output_matchtypes": null,
+    "name": "EmptySD3LatentImage",
+    "display_name": null,
+    "description": "",
+    "python_module": "comfy_extras.nodes_sd3",
+    "category": "model/latent/stable diffusion",
+    "output_node": false,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": null,
+    "essentials_category": null,
+    "has_intermediate_output": false
+  }
+}

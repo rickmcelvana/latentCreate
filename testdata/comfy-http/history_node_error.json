@@ -1,0 +1,72 @@
+{
+  "3a8fb722-565a-4e5e-9d66-aedc7ed7891c": {
+    "prompt": [
+      "... elided ..."
+    ],
+    "outputs": {},
+    "status": {
+      "status_str": "error",
+      "completed": false,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "3a8fb722-565a-4e5e-9d66-aedc7ed7891c",
+            "timestamp": 1794430120896
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "6",
+              "30",
+              "33"
+            ],
+            "prompt_id": "3a8fb722-565a-4e5e-9d66-aedc7ed7891c",
+            "timestamp": 1794430120897
+          }
+        ],
+        [
+          "execution_error",
+          {
+            "prompt_id": "3a8fb722-565a-4e5e-9d66-aedc7ed7891c",
+            "node_id": "900",
+            "node_type": "LoraLoaderModelOnly",
+            "executed": [
+              "27"
+            ],
+            "exception_message": "The safetensors header is incomplete.\n\nFile path: G:\\Comfy-Desktop\\ComfyUI-Shared\\models\\loras\\zz_latentcreate_empty.safetensors\n\nThe safetensors file is corrupt/incomplete. Check the file size and make sure you have copied/downloaded it correctly.\n",
+            "exception_type": "ValueError",
+            "traceback": [
+              "... elided ..."
+            ],
+            "current_inputs": {
+              "model": [
+                "<comfy.model_patcher.ModelPatcherDynamic object at 0x000001B76FF84830>"
+              ],
+              "lora_name": [
+                "zz_latentcreate_empty.safetensors"
+              ],
+              "strength_model": [
+                1.0
+              ]
+            },
+            "current_outputs": [
+              "30",
+              "6",
+              "27",
+              "9",
+              "33",
+              "900",
+              "31",
+              "8"
+            ],
+            "timestamp": 1794430120910
+          }
+        ]
+      ]
+    },
+    "meta": {}
+  }
+}

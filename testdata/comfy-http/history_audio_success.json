@@ -1,0 +1,55 @@
+{
+  "c0e3866b-66a3-4ce8-a453-1b2bd0c10fca": {
+    "prompt": [
+      "... elided ..."
+    ],
+    "outputs": {
+      "111": {
+        "audio": [
+          {
+            "filename": "ace_00001.flac",
+            "subfolder": "latentcreate_probe",
+            "type": "output",
+            "id": "b94d40e2-c17f-42a5-bc11-cb8f21f00104"
+          }
+        ]
+      }
+    },
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "c0e3866b-66a3-4ce8-a453-1b2bd0c10fca",
+            "timestamp": 1794430189131
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [],
+            "prompt_id": "c0e3866b-66a3-4ce8-a453-1b2bd0c10fca",
+            "timestamp": 1794430189134
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "c0e3866b-66a3-4ce8-a453-1b2bd0c10fca",
+            "timestamp": 1794430203165
+          }
+        ]
+      ]
+    },
+    "meta": {
+      "111": {
+        "node_id": "111",
+        "display_node": "111",
+        "parent_node": null,
+        "real_node_id": "111"
+      }
+    }
+  }
+}

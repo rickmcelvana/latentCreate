@@ -1,0 +1,64 @@
+{
+  "67bee7f9-9ac5-4ada-b074-d368b4675fec": {
+    "prompt": [
+      "... elided ..."
+    ],
+    "outputs": {
+      "9": {
+        "images": [
+          {
+            "filename": "fixture_00001_.png",
+            "subfolder": "latentcreate_probe",
+            "type": "output",
+            "metadata": {
+              "kind": "image",
+              "width": 256,
+              "height": 256
+            },
+            "id": "e637edfc-53d7-493f-bc20-e9623ce9fe77"
+          }
+        ]
+      }
+    },
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "67bee7f9-9ac5-4ada-b074-d368b4675fec",
+            "timestamp": 1794430103415
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "6",
+              "30",
+              "33"
+            ],
+            "prompt_id": "67bee7f9-9ac5-4ada-b074-d368b4675fec",
+            "timestamp": 1794430103416
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "67bee7f9-9ac5-4ada-b074-d368b4675fec",
+            "timestamp": 1794430105143
+          }
+        ]
+      ]
+    },
+    "meta": {
+      "9": {
+        "node_id": "9",
+        "display_node": "9",
+        "parent_node": null,
+        "real_node_id": "9"
+      }
+    }
+  }
+}

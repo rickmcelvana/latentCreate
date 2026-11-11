@@ -1,0 +1,19 @@
+{
+  "queue_running": [
+    [
+      7,
+      "67bee7f9-9ac5-4ada-b074-d368b4675fec",
+      {
+        "...": "graph elided"
+      },
+      {
+        "client_id": "fixture",
+        "create_time": 1794430103415
+      },
+      [
+        "9"
+      ]
+    ]
+  ],
+  "queue_pending": []
+}

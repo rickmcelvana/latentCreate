@@ -22,7 +22,7 @@ Summarised here because a mistake in any of them is unrecoverable, and because a
 only its auto-loaded file should still not make one. [AGENTS.md](AGENTS.md) and
 [CONVENTIONS.md](CONVENTIONS.md) are authoritative.
 
-- **Ship no models.** All generation goes through the user's own ComfyUI (via Comfy MCP) or their
+- **Ship no models.** All generation goes through the user's own ComfyUI (its HTTP API) or their
   own API keys. Nothing is bundled, and nothing is downloaded except at the user's request.
 - **Never rewrite a user's words silently.** Prompt and lyric text changes need an explicit accept
   step with the diff shown first.

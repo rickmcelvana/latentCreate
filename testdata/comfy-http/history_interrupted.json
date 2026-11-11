@@ -1,0 +1,45 @@
+{
+  "4c48d48e-3bae-4888-8e8a-5e570daffaa4": {
+    "prompt": [
+      "... elided ..."
+    ],
+    "outputs": {},
+    "status": {
+      "status_str": "error",
+      "completed": false,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "4c48d48e-3bae-4888-8e8a-5e570daffaa4",
+            "timestamp": 1794430121427
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "6",
+              "27",
+              "30",
+              "33"
+            ],
+            "prompt_id": "4c48d48e-3bae-4888-8e8a-5e570daffaa4",
+            "timestamp": 1794430121427
+          }
+        ],
+        [
+          "execution_interrupted",
+          {
+            "prompt_id": "4c48d48e-3bae-4888-8e8a-5e570daffaa4",
+            "node_id": "31",
+            "node_type": "KSampler",
+            "executed": [],
+            "timestamp": 1794430125515
+          }
+        ]
+      ]
+    },
+    "meta": {}
+  }
+}

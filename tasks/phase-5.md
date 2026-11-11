@@ -596,7 +596,7 @@ already renders shipped profiles with one-click Install.
   Frontend 522 → 543 tests. Dead rules removed (`.profile-*`, `.project-list/row`, `.model-row*`);
   `.profile-picker-setup` renamed `.setup-link`, the last survivor of a family that no longer exists.
 
-- **T-515 — Reach a ComfyUI that is not on this machine.** ⏳ **OPEN — must land before v1**
+- **T-515 — Reach a ComfyUI that is not on this machine.** ⏳ **OPEN — must land before v1.** **Mostly absorbed by T-519 (2026-11-11):** on the HTTP client a remote ComfyUI is an address, outputs already come over `/view`, and install is local-only by construction. What remains after T-519 is a click-through against a real second machine. The original scope below is the comfy-mcp-era analysis, kept for the record.
   (owner, 2026-09-06). The Setup ComfyUI card silently assumes the local install: `comfy.rs` builds
   a `LocalComfy` unconditionally, and nothing in the app ever reads `ComfyConfig.mode` or
   `ComfyConfig.url`. **The schema is already there and unused** — `ComfyMode::{Local, Cloud}`,
@@ -618,6 +618,39 @@ already renders shipped profiles with one-click Install.
      through the existing keychain path — never `config.json` (T-004).
   The honest scope is that (2) probably reshapes several screens' degraded states, which is why this
   is its own session and not a field on a card.
+
+- **T-519 — ComfyUI over its own HTTP API; comfy-mcp retired.** ⏳ **IN PROGRESS — v1 blocker**
+  (owner decision 2026-11-11; decisions log). Diagnosis and the verified surface are in PROJECT.md's
+  2026-11-11 session log and [docs/COMFY-HTTP-SURFACE.md](../docs/COMFY-HTTP-SURFACE.md); the
+  contract is ARCHITECTURE sections 1, 3, 3a, 5, 5b, 7 and 10. Run **architect-direct** (no Aider):
+  the lanes replace one integration with another across every layer, which is the shape a
+  brief-per-run loop handles worst, and each lane is verified live as it lands. Lanes, in order,
+  each a commit after a green gate:
+  - **a — `comfy-bridge` crate.** reqwest client behind a transport seam; typed routes for
+    system_stats, object_info, models, folder_paths, prompt, queue, history, interrupt, queue
+    delete and view; `ComfyError` with `Unreachable` / `Rejected` / other; the session log moves
+    here. Tests: fake transport over the fixtures in `testdata/comfy-http/`.
+  - **b — API-format pipeline core** (`create-core`). Address parsing (first `.`), `audit_slots` as
+    exists-and-literal, slot writes as JSON assignment, the lossless edit (`format=flac`, drop
+    `format.*`), the LoRA splice re-written for API links. The nine curated workflows land in
+    `profiles/workflows/` (converted live through the ComfyUI frontend), profiles gain
+    `comfy.workflow`, Qwen-Image's four addresses remap to `76:6`/`76:3`/`76:58`, and a test checks
+    **every shipped profile address is a literal in its workflow**.
+  - **c — the shell on the new client** (`src-tauri`). Address resolution (config URL, else 8188,
+    else 8000) and the new `ComfyStatus`; generation submits API graphs and records the exact graph
+    under `jobs/<id>/workflow.json`; the pump over `/queue` + `/history` with cancel-remembering and
+    the three-miss "lost" rule; outputs over `/view`; enum options, LoRA list and readiness from
+    `/object_info` and `/models`.
+  - **d — install.** The app's own download into the `folder_paths` directory, `.partial` + size
+    check + rename, progress events, refused for a non-local ComfyUI with a sentence saying why.
+  - **e — import from Export (API).** Candidates are literal inputs; polarity by following the
+    sampler's `positive`/`negative` links; bounds and enums from `/object_info`; a frontend-format
+    file is refused with the menu path.
+  - **f — frontend.** The ComfyUI card (address field, found address/version/VRAM, no Install or
+    Launch step), Install wiring and the remote-ComfyUI sentence, import copy pointing at
+    Export (API).
+  - **g — remove `mcp-bridge`, update README/docs, live end-to-end** on this machine: find, install,
+    generate audio and an image, cancel, import an Export (API) file.
 
 - **T-516 — embed the cover and the tags in an exported track. ✅ COMPLETE 2026-09-06** (scoped,
   built and click-through-**PASSED** the same day — the owner exported files and confirmed every tag

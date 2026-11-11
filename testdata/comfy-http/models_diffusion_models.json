@@ -1,0 +1,8 @@
+[
+  "acestep_v1.5_xl_turbo_bf16.safetensors",
+  "flux2_dev_fp8mixed.safetensors",
+  "flux3-image-klein-base-int8-convrot.safetensors",
+  "qwen_image_2.1_int8_convrot.safetensors",
+  "z_image_turbo_bf16.safetensors",
+  "z_image_turbo_int8_convrot.safetensors"
+]

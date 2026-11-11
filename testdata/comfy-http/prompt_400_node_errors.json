@@ -1,0 +1,57 @@
+{
+  "status": 400,
+  "body": {
+    "error": {
+      "type": "prompt_outputs_failed_validation",
+      "message": "Prompt outputs failed validation",
+      "details": "",
+      "extra_info": {}
+    },
+    "node_errors": {
+      "27": {
+        "errors": [
+          {
+            "type": "value_smaller_than_min",
+            "message": "Value -5 smaller than min of 16",
+            "details": "width",
+            "extra_info": {
+              "input_name": "width",
+              "input_config": [
+                "INT",
+                {
+                  "default": 1024,
+                  "min": 16,
+                  "max": 16384,
+                  "step": 16
+                }
+              ],
+              "received_value": -5
+            }
+          }
+        ],
+        "dependent_outputs": [
+          "9"
+        ],
+        "class_type": "EmptySD3LatentImage"
+      },
+      "31": {
+        "errors": [
+          {
+            "type": "value_not_in_list",
+            "message": "Value not in list",
+            "details": "sampler_name: 'nope' not in (list of length 45)",
+            "extra_info": {
+              "input_name": "sampler_name",
+              "input_config": null,
+              "received_value": "nope"
+            }
+          }
+        ],
+        "dependent_outputs": [
+          "9"
+        ],
+        "class_type": "KSampler"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "status": 400,
+  "body": {
+    "error": {
+      "type": "missing_node_type",
+      "message": "Node 'KSampler' not found. The custom node may not be installed.",
+      "details": "Node ID '#31'",
+      "extra_info": {
+        "node_id": "31",
+        "class_type": "NoSuchNode",
+        "node_title": "KSampler"
+      }
+    },
+    "node_errors": {}
+  }
+}
