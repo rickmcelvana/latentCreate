@@ -1,3 +1,7 @@
+// The only frontend file that touches the disk. Node's types are scoped to it
+// here rather than added to tsconfig, so app code cannot reach for `fs`; vitest
+// 3 pulled them in implicitly and vitest 5 does not.
+/// <reference types="node" />
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
