@@ -5,8 +5,8 @@
   "license": "Apache-2.0",
   "license_notes": "Model, text encoder, VAE and the 8-step Lightning LoRA are all Apache-2.0; usable for commercial cover art with no attribution requirement.",
   "comfy": {
+    "workflow": "workflows/qwen-image.json",
     "template": "image_qwen_image",
-    "workflow": null,
     "vram_gb_min": 24,
     "models": [
       {
@@ -44,7 +44,7 @@
     "tags": {
       "type": "text",
       "slots": [
-        "76.text"
+        "76:6.text"
       ],
       "default": "A vibrant, warm neon-lit street scene at night, a mix of colorful signs glowing brightly, lively cinematic atmosphere, rain-washed reflections on the pavement, vivid pink, blue, red and green hues, 1980s style.",
       "label": "Prompt"
@@ -52,13 +52,13 @@
     "seed": {
       "type": "seed",
       "slots": [
-        "76.seed"
+        "76:3.seed"
       ]
     },
     "width": {
       "type": "int",
       "slots": [
-        "76.width"
+        "76:58.width"
       ],
       "min": 256,
       "max": 2048,
@@ -69,7 +69,7 @@
     "height": {
       "type": "int",
       "slots": [
-        "76.height"
+        "76:58.height"
       ],
       "min": 256,
       "max": 2048,

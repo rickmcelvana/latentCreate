@@ -5,22 +5,18 @@
 //! service problem returns `Err` -- a stopped ComfyUI, an unreadable profile
 //! directory and a half-installed model are all states with a next step.
 //!
-//! **This step never reads `local_check`.** That answers "can this template run
-//! here", which is not the same question: MiniMax Music 3 is fully installed
-//! and still reports `runnable: false`, because the gallery template pins the
-//! fp16 DiT and the int8 is what is on disk -- a mismatch the profile's own
-//! `slot_overrides` corrects (MCP-SURFACE 6, 14). Worse, `local_check.summary`
-//! renders every such problem as node-class advice ("Update ComfyUI and its
-//! custom nodes, or pick another template"), which for a missing model sends
-//! the user somewhere that cannot help. Readiness is decided by comparing the
-//! profile's declared files against `search_models(folder=)`, and nothing else.
+//! Readiness is exact filename membership in ComfyUI's own `/models/<folder>`
+//! lists -- what the loader nodes will accept -- and nothing else. Those lists
+//! refresh live (COMFY-HTTP-SURFACE 3), so a file the app (or the user) puts in
+//! ComfyUI's folder reads Installed on the next check, with no restart. That
+//! is the T-519 fix for installs that finished and never read as installed.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use comfy_bridge::ComfyHttp;
 use create_core::profile::{ModelKind, ModelProfile};
 use create_core::readiness::{ModelInventory, ProfileReadiness};
 use library::profiles::{ProfileSource, ProfileWarning};
-use mcp_bridge::{ComfyError, LocalComfy};
 use serde::Serialize;
 use tauri::State;
 
@@ -98,11 +94,12 @@ pub struct ModelsView {
     /// every row `Unknown`. The view shows one banner pointing back at the
     /// ComfyUI step rather than repeating the same message on every row.
     pub inventory_available: bool,
-    /// Why the list could not be taken, when it could not. Carried because
-    /// "ComfyUI is stopped" and "comfy-mcp is not installed" send the user to
-    /// different places, and a banner that cannot tell them apart says nothing
-    /// useful.
+    /// Why the list could not be taken, when it could not -- already a
+    /// sentence with a next step.
     pub inventory_detail: Option<String>,
+    /// One-click Install can work: ComfyUI is on this machine. False for a
+    /// ComfyUI at another address, where the files must be placed there.
+    pub install_available: bool,
 }
 
 /// Report every known profile and whether its models are installed.
@@ -115,7 +112,6 @@ pub async fn models_status(
     state: State<'_, ComfyState>,
     config_dir: State<'_, ConfigDir>,
     profiles_dir: State<'_, ProfilesDir>,
-    bin: Option<String>,
 ) -> Result<ModelsView, String> {
     let set = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"));
 
@@ -126,10 +122,10 @@ pub async fn models_status(
         .map(|spec| spec.folder.clone())
         .collect();
 
-    let (inventory, inventory_detail) =
-        match take_inventory(&state, &config_dir, bin, &wanted).await {
-            Ok(inventory) => (Some(inventory), None),
-            Err(TakeError::Comfy(e)) => (None, inventory_detail(&e)),
+    let (inventory, inventory_detail, install_available) =
+        match take_inventory(&state, &config_dir, &wanted).await {
+            Ok((inventory, comfy)) => (Some(inventory), None, comfy.is_loopback()),
+            Err(TakeError::Comfy(detail)) => (None, Some(detail), false),
             Err(TakeError::Log(detail)) => return Err(detail),
         };
 
@@ -144,6 +140,7 @@ pub async fn models_status(
         warnings: set.warnings,
         inventory_available: inventory.is_some(),
         inventory_detail,
+        install_available,
     })
 }
 
@@ -190,84 +187,59 @@ fn row(
 
 /// Why the inventory could not be taken.
 pub(crate) enum TakeError {
-    /// A service problem, which becomes `Unknown` rather than an error.
-    Comfy(ComfyError),
+    /// No usable ComfyUI -- the sentence to show. Becomes `Unknown` rows.
+    Comfy(String),
     /// This app could not open its own session log.
     Log(String),
 }
 
-/// List every folder the profiles name, and nothing else.
+/// List every folder the profiles name, and nothing else, and hand back the
+/// client that answered (install needs it).
 ///
-/// One call per folder, because `search_models` is per-folder. Only the folders
-/// the profiles actually declare are listed -- this install reports 27, and
-/// walking all of them would be 27 round trips to answer a question about three.
-///
-/// A folder that fails individually is left out rather than failing the whole
-/// inventory, and [`ModelInventory::has`] then reads its files as absent. That
-/// is the safe direction: it can say "missing" for something present, which the
-/// user can see and correct, where the reverse would call a broken install ready.
+/// A folder ComfyUI does not know answers `404` and is left out, so its files
+/// read as absent. That is the safe direction: it can say "missing" for
+/// something present, which the user can see and correct, where the reverse
+/// would call a broken install ready. Nothing listing at all is "could not
+/// check", never an empty install.
 pub(crate) async fn take_inventory(
     state: &State<'_, ComfyState>,
     config_dir: &State<'_, ConfigDir>,
-    bin: Option<String>,
     folders: &BTreeSet<String>,
-) -> Result<ModelInventory, TakeError> {
-    let comfy: std::sync::Arc<LocalComfy> = ensure_connected(state, config_dir, bin)
+) -> Result<(ModelInventory, std::sync::Arc<ComfyHttp>), TakeError> {
+    let comfy = ensure_connected(state, config_dir)
         .await
         .map_err(|e| match e {
-            EnsureError::Comfy(e) => TakeError::Comfy(e),
+            EnsureError::Comfy(detail) => TakeError::Comfy(detail),
             EnsureError::Log(detail) => TakeError::Log(detail),
         })?;
+    let inventory = inventory_of(&comfy, folders)
+        .await
+        .map_err(TakeError::Comfy)?;
+    Ok((inventory, comfy))
+}
 
+/// The folder listings, through one client.
+pub(crate) async fn inventory_of(
+    comfy: &ComfyHttp,
+    folders: &BTreeSet<String>,
+) -> Result<ModelInventory, String> {
     let mut listed: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let mut any = false;
     for folder in folders {
-        match comfy.list_models_in(folder).await {
-            Ok(contents) => {
-                any = true;
-                listed.insert(
-                    folder.clone(),
-                    contents.files.into_iter().map(|f| f.name).collect(),
-                );
+        match comfy.models_in(folder).await {
+            Ok(files) => {
+                listed.insert(folder.clone(), files.into_iter().collect());
             }
-            Err(e) if is_server_not_running(&e) => return Err(TakeError::Comfy(e)),
+            Err(e) if e.is_unreachable() => return Err(e.to_string()),
             Err(_) => {}
         }
     }
-    if !any && !folders.is_empty() {
-        return Err(TakeError::Comfy(ComfyError::Payload {
-            tool: "search_models".to_string(),
-            detail: "no model folder could be listed".to_string(),
-        }));
+    if listed.is_empty() && !folders.is_empty() {
+        return Err(
+            "ComfyUI answered but listed none of the model folders. Update ComfyUI, then Retry."
+                .to_string(),
+        );
     }
     Ok(ModelInventory::new(listed))
-}
-
-/// Whether the failure was "ComfyUI is not running".
-///
-/// Verified live: `search_models` does **not** read the disk, it fetches
-/// `http://127.0.0.1:8188/models`, so with ComfyUI stopped every call fails
-/// with this code. That is the whole reason the models step has an `Unknown`
-/// state rather than reporting an empty install.
-fn is_server_not_running(error: &ComfyError) -> bool {
-    matches!(error, ComfyError::Tool { code, .. } if code.as_deref() == Some("server_not_running"))
-}
-
-/// The banner detail for an inventory that could not be taken.
-///
-/// A stopped ComfyUI is the **expected** failure here, and its raw tool
-/// diagnostic is ~300 characters of `urlopen`/`WinError` prose ending in
-/// "check `--where` and network connectivity" -- useless to a user who just
-/// needs to start ComfyUI. That case returns `None`, so the step falls back to
-/// its own clean "Start ComfyUI above." line (the same shape T-315 gave the job
-/// path). Any *other* failure is genuinely unexpected and keeps its detail,
-/// where the diagnostic is the only clue to what went wrong.
-fn inventory_detail(error: &ComfyError) -> Option<String> {
-    if is_server_not_running(error) {
-        None
-    } else {
-        Some(error.to_string())
-    }
 }
 
 #[cfg(test)]
@@ -418,108 +390,49 @@ mod tests {
         }
     }
 
-    /// Protects: the verified stopped-server code, which is what separates
-    /// `Unknown` from `Missing` at the transport edge.
-    #[test]
-    fn test_server_not_running_is_recognised() {
-        let stopped = ComfyError::Tool {
-            tool: "search_models".to_string(),
-            code: Some("server_not_running".to_string()),
-            message: "comfy models list-folders failed: failed to fetch \
-                      http://127.0.0.1:8188/models"
-                .to_string(),
-        };
-        assert!(is_server_not_running(&stopped));
-
-        let other = ComfyError::Tool {
-            tool: "search_models".to_string(),
-            code: Some("missing_argument".to_string()),
-            message: "nope".to_string(),
-        };
-        assert!(!is_server_not_running(&other));
-    }
-
-    /// Protects: a stopped ComfyUI shows no raw tool diagnostic. The real
-    /// failure is ~300 characters of `urlopen`/`WinError` prose; the step must
-    /// fall back to its own "Start ComfyUI above." line, so the detail is
-    /// `None`. An unexpected failure keeps its detail -- that string is the only
-    /// clue to a problem the step has no clean copy for.
-    #[test]
-    fn test_a_stopped_server_carries_no_raw_diagnostic() {
-        let stopped = ComfyError::Tool {
-            tool: "search_models".to_string(),
-            code: Some("server_not_running".to_string()),
-            message: "comfy models list-folder diffusion_models failed: failed to fetch \
-                      http://127.0.0.1:8188/models/diffusion_models: <urlopen error \
-                      [WinError 10061] ...> hint: check `--where` and network connectivity"
-                .to_string(),
-        };
-        assert_eq!(inventory_detail(&stopped), None);
-
-        let unexpected = ComfyError::Tool {
-            tool: "search_models".to_string(),
-            code: Some("some_other_code".to_string()),
-            message: "boom".to_string(),
-        };
-        assert!(inventory_detail(&unexpected).is_some());
-    }
-
-    /// The whole readiness path against a **real** comfy-mcp and a **running**
-    /// ComfyUI: connect, list the folders the shipped profiles name, and decide.
-    ///
-    /// Excluded from CI, which has neither. Run it at the T-113 milestone with
-    /// `cargo test -p app -- --ignored`. It asserts the shape of the answer, not
-    /// which models happen to be on the machine -- the point is that every
-    /// declared folder lists and every profile reaches a decided state, because
-    /// a silent `Unknown` here is exactly the bug this step exists to avoid.
+    /// Protects: the inventory comes from ComfyUI's own folder lists -- the
+    /// live `/models/diffusion_models` answer -- and a folder ComfyUI does not
+    /// know is left out rather than failing the whole check.
     #[tokio::test]
-    #[ignore = "needs comfy-mcp and a running ComfyUI"]
-    async fn test_readiness_against_a_live_comfyui() {
-        let log = mcp_bridge::SessionLog::open(std::env::temp_dir().join("latentcreate-live.log"))
-            .expect("session log opens");
-        let comfy = LocalComfy::connect("comfy-mcp", log)
-            .await
-            .expect("comfy-mcp connects");
-
-        let profiles = [profile(ACE_STEP), profile(MINIMAX)];
-        let folders: BTreeSet<String> = profiles
-            .iter()
-            .flat_map(|p| p.comfy.models.iter())
-            .map(|spec| spec.folder.clone())
-            .collect();
-        assert!(
-            folders.contains("diffusion_models") && folders.contains("vae"),
-            "the shipped profiles name the folders this asserts against"
+    async fn test_inventory_reads_comfyuis_own_folder_lists() {
+        use comfy_bridge::transport::{FakeTransport, Method};
+        let fake = std::sync::Arc::new(FakeTransport::new());
+        let path = format!(
+            "{}/../testdata/comfy-http/models_diffusion_models.json",
+            env!("CARGO_MANIFEST_DIR")
         );
+        fake.on(
+            Method::Get,
+            "/models/diffusion_models",
+            200,
+            std::fs::read_to_string(path).expect("f"),
+        );
+        fake.on(Method::Get, "/models/unet", 404, "");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake, None);
+        let folders: BTreeSet<String> = ["diffusion_models", "unet"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let inventory = inventory_of(&comfy, &folders).await.expect("listed");
+        assert!(inventory.has("diffusion_models", "acestep_v1.5_xl_turbo_bf16.safetensors"));
+        assert!(!inventory.has("unet", "anything"));
+    }
 
-        let mut listed = BTreeMap::new();
-        for folder in &folders {
-            let contents = comfy
-                .list_models_in(folder)
-                .await
-                .unwrap_or_else(|e| panic!("listing {folder} failed: {e}"));
-            listed.insert(
-                folder.clone(),
-                contents
-                    .files
-                    .into_iter()
-                    .map(|f| f.name)
-                    .collect::<BTreeSet<String>>(),
-            );
-        }
-        let inventory = ModelInventory::new(listed);
-
-        for profile in profiles {
-            let id = profile.id.clone();
-            let readiness = profile.readiness(Some(&inventory));
-            assert!(
-                !matches!(
-                    readiness,
-                    ProfileReadiness::Unknown | ProfileReadiness::Undeclared
-                ),
-                "{id} reached no decision against a live install: {readiness:?}"
-            );
-        }
+    /// Protects: a stopped ComfyUI is "could not check" with a next step --
+    /// never an empty install that tells the user to download 18 GiB again.
+    #[tokio::test]
+    async fn test_a_stopped_comfyui_cannot_be_inventoried() {
+        use comfy_bridge::transport::{FakeTransport, Method, TransportError};
+        let fake = std::sync::Arc::new(FakeTransport::new());
+        fake.fail(
+            Method::Get,
+            "/models/vae",
+            TransportError::Connect("refused".into()),
+        );
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake, None);
+        let folders: BTreeSet<String> = ["vae".to_string()].into();
+        let err = inventory_of(&comfy, &folders).await.expect_err("down");
+        assert!(err.contains("Start ComfyUI"), "{err}");
     }
 
     /// Protects: the view crosses the Tauri boundary as a tagged union with

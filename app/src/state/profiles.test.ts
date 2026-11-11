@@ -59,6 +59,7 @@ function view(profiles: ProfileStatus[]): ModelsView {
     profiles,
     warnings: [],
     inventory_available: true,
+    install_available: true,
     inventory_detail: null,
   }
 }
@@ -255,6 +256,7 @@ function blindView(profiles: ProfileStatus[]): ModelsView {
     profiles,
     warnings: [],
     inventory_available: false,
+    install_available: false,
     inventory_detail: 'Start ComfyUI.',
   }
 }

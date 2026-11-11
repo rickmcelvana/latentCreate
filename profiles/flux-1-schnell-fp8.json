@@ -5,8 +5,8 @@
   "license": "Apache-2.0",
   "license_notes": "Weights are Apache-2.0; usable for commercial cover art with no attribution requirement.",
   "comfy": {
+    "workflow": "workflows/flux-1-schnell-fp8.json",
     "template": "flux_schnell",
-    "workflow": null,
     "vram_gb_min": 12,
     "models": [
       {

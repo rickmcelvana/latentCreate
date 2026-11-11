@@ -238,6 +238,7 @@ describe('useModelsStore', () => {
       profiles: [],
       warnings: [],
       inventory_available: true,
+      install_available: true,
       inventory_detail: null,
     })
     const first = useModelsStore.getState().refresh()

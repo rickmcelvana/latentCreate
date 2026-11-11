@@ -39,12 +39,15 @@
     Cloud, and `download_model` **refuses with a remote target configured** -- so curated install is
     local-only and the Models step will have to say so. Full scope in tasks/phase-5.md.
 
-  - **T-519 -- ComfyUI over its own HTTP API. ⛔ v1 BLOCKER, IN PROGRESS (2026-11-11).** The
-    app could not reach ComfyUI off the developer's PC (comfy-mcp needs an undeclared comfy-cli),
-    and its model installs landed where ComfyUI never looks (comfy-cli's own workspace). Owner
-    decision: drop comfy-mcp, talk to ComfyUI directly, import Export (API) files. Surface verified
-    live ([docs/COMFY-HTTP-SURFACE.md](docs/COMFY-HTTP-SURFACE.md)), ARCHITECTURE re-written, lanes
-    in [tasks/phase-5.md](tasks/phase-5.md) T-519. Absorbs most of **T-515**.
+  - **T-519 -- ComfyUI over its own HTTP API. ✅ CODE COMPLETE 2026-11-11, awaiting owner
+    click-through.** The app could not reach ComfyUI off the developer's PC (comfy-mcp needs an
+    undeclared comfy-cli), and its model installs landed where ComfyUI never looks (comfy-cli's own
+    workspace). Owner decision: drop comfy-mcp, talk to ComfyUI directly, import Export (API) files.
+    All seven lanes landed and were driven live in the real app (session log 2026-11-11, second
+    entry). **Click-through for the owner:** on a second PC with only ComfyUI installed, open Setup
+    and check it is found; Install a model and see it turn Installed; generate; import a
+    Workflow > Export (API) file. Also check an **installer** build bundles `profiles/` (the third
+    bug: CI installers shipped none). Absorbs most of **T-515**.
   - **T-518 -- Lyrics fills the pane (landed 2026-09-09, awaiting click-through).** Back-filled
     2026-11-11: the commit landed without a session-log entry.
 
@@ -7352,3 +7355,47 @@ and download becomes the app's own HTTP fetch into a `folder_paths` directory (l
 The upside is large: **no Python, pip, comfy-mcp or comfy-cli on the user's machine at all**, and a
 remote ComfyUI becomes a URL field, which is most of T-515. Recorded as **T-519** in Next up;
 direction is the owner's call before any brief.
+
+### 2026-11-11 (2) -- T-519 lanes b–g: the app talks to ComfyUI directly
+
+**What landed.** The whole app moved off comfy-mcp onto `comfy-bridge`, and `mcp-bridge` is gone.
+- **create-core:** addresses split at the first `.`; a write lands iff the input exists and holds a
+  literal (a link is refused, so the old "accepted and ignored" seed trap cannot recur); the
+  lossless edit and LoRA splice work on API links. The nine curated profiles ship their API
+  workflows in `profiles/workflows/`, and `tests/shipped_profiles.rs` checks every address is a
+  literal, every audio profile can go lossless, and every LoRA stack stays on the MODEL path.
+- **src-tauri:** ComfyUI is found at the configured address, else `127.0.0.1:8188`, else `:8000`.
+  `ComfyStatus` is now `not_found` / `unreachable` / `ready`. Generation records the exact graph it
+  submits, the pump follows `/queue` + `/history` (cancel remembered, three misses means lost), and
+  outputs come over `/view`. Install is the app's own download into the folder
+  `/internal/folder_paths` names, local ComfyUI only. Import accepts Export (API) only and turns a
+  saved workflow away with the menu path. **Profiles are bundled at `<resources>/profiles`**, with
+  a test: CI installers had shipped none.
+- **Frontend:** the ComfyUI card has an address field (blank means find it), shows version, VRAM
+  and whether ComfyUI is on this computer, and has no Install or Launch step. Model Install hides
+  for a remote ComfyUI, with a sentence saying why. Import copy points at Workflow > Export (API).
+- **README** no longer asks for comfy-mcp.
+
+**Verified live in the real app** (`tauri dev`, commands driven over WebView2 remote debugging,
+ComfyUI Desktop 0.45.2):
+- ComfyUI was found with no configuration.
+- Readiness matched the files present.
+- Flux generated a 768² PNG, filed as `ar-0001` with provenance.
+- ACE-Step Turbo generated a 10 s FLAC (the lossless edit applied), filed as `tr-0001`.
+- Cancelling a running 120 s job interrupted it, emptied the queue and filed nothing.
+- An Export (API) file imported with the right role suggestions; a saved workflow was refused with
+  the instruction.
+- **The owner's download bug:** Install of a 3 MB file (served locally, temporary profile) landed in
+  `G:\Comfy-Desktop\ComfyUI-Shared\models\loras`, and the row went Missing to Ready with no
+  restart. The probe file and profile then went to the Recycle Bin.
+
+**Not verified:** a second machine, a remote ComfyUI, a multi-GB real install, and an installer
+build's bundled `profiles/`. These are the owner's click-through (Snapshot).
+
+**Leftovers on this PC:**
+- The probe outputs in ComfyUI's `output/` folder (`latentcreate_probe/`, `ComfyUI_00001_.png`,
+  `audio/ACE_Step1.5_xl_turbo_00001.flac`).
+- The two test items in the app's Library (`ar-0001`, `tr-0001` "Probe Track").
+- The global `pip install comfy-mcp`, which nothing uses now.
+
+All can be removed by hand.

@@ -16,7 +16,7 @@ export function ImportWorkflow() {
   async function pick() {
     const chosen = await open({
       multiple: false,
-      filters: [{ name: 'ComfyUI workflow', extensions: ['json'] }],
+      filters: [{ name: 'ComfyUI workflow (Export (API))', extensions: ['json'] }],
     })
     // **Cancelling is not an error.** `open` returns null, and reporting that
     // as a failure is the same mistake as rendering a cancelled job as failed
@@ -35,8 +35,9 @@ export function ImportWorkflow() {
         {/* The cost of the copy-not-reference decision, stated where someone
             can learn it before it surprises them. */}
         <p className="import-note">
-          Use ComfyUI&rsquo;s <strong>File &gt; Save (As)</strong> export. latentCreate keeps its own
-          copy, so later edits in ComfyUI will not follow — re-import to pick them up.
+          In ComfyUI, open the workflow and use <strong>Workflow &gt; Export (API)</strong>, then pick
+          the downloaded file here. latentCreate keeps its own copy, so later edits in ComfyUI will
+          not follow — export and import again to pick them up.
         </p>
       </div>
     )

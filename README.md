@@ -6,8 +6,8 @@
 **Open-source desktop app for AI music creation. Bring your own models.**
 
 latentCreate is a Tauri 2 desktop app that orchestrates the tools people already use to make
-AI music — a ComfyUI install (driven through [Comfy MCP](https://docs.comfy.org/agent-tools/mcp))
-for audio/image generation, and an LLM of your choice for lyric writing — behind one clean,
+AI music — your ComfyUI install (driven through its own local HTTP API) for audio/image
+generation, and an LLM of your choice for lyric writing — behind one clean,
 professional UI.
 
 **latentCreate ships no AI models and performs no inference.** Everything runs on *your* local
@@ -16,11 +16,12 @@ through the app carry their own licenses, which you are responsible for reviewin
 
 ## What it does
 
-- **Guided setup** — detect or configure your local ComfyUI + Comfy MCP, pick an LLM provider,
-  and install the model files a profile needs straight into ComfyUI, one click per model.
+- **Guided setup** — finds your running ComfyUI (or takes its address), picks an LLM provider,
+  and installs the model files a profile needs straight into ComfyUI's own model folders, one
+  click per model.
 - **Model catalog** — a curated list of audio *and* image models (all commercial-use-safe) that
   install into your ComfyUI in one click, then generate from them. Bring your own ComfyUI workflow
-  for anything off the list. Local models only in v1.
+  for anything off the list — export it with **Workflow > Export (API)** and import the file. Local models only in v1.
 - **Lyrics Studio** — a structured brief (genre, mood, theme, structure, language) is sent to your
   LLM, which writes lyrics in the exact format your music model expects (`[verse]` / `[chorus]`
   tags and so on). Edit, version, approve, send to audio.
@@ -49,15 +50,16 @@ dropping in your own — adding a new model is a data change, not a code change.
 ### To run the app
 
 - **Desktop OS** — Windows 10/11, macOS, or Linux. Desktop only; no mobile/web build.
-- **Music generation** — your own ComfyUI with `comfy-mcp` installed, or Comfy Cloud MCP with an
-  API key.
+- **Music generation** — your own [ComfyUI](https://www.comfy.org/) (Desktop, portable or a
+  manual install), running. Nothing else to install: the app talks to ComfyUI's built-in HTTP API
+  and finds it on `127.0.0.1:8188` or `:8000`, or at the address you enter in Setup.
 - **Lyric writing (optional)** — Ollama, or any OpenAI-compatible endpoint (LM Studio,
   llama.cpp's server, OpenRouter, vLLM, …). Skippable — you can also write lyrics by hand.
 
 ### To build from source
 
 - **Rust** stable (MSRV 1.88), via [rustup](https://rustup.rs/)
-- **Node.js** 20 or newer (CI uses 22) and npm
+- **Node.js** 22.12+ or 24+ (CI uses the current LTS) and npm
 - **Platform build dependencies** (Tauri 2 prerequisites):
 
 | Platform | Required |
@@ -155,7 +157,7 @@ in the OS keychain.
 - [PROJECT.md](PROJECT.md) — living project state, decisions log, and open questions
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design and interface contracts
 - [docs/MODELS.md](docs/MODELS.md) — the model-profile registry
-- [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — the verified Comfy MCP surface
+- [docs/COMFY-HTTP-SURFACE.md](docs/COMFY-HTTP-SURFACE.md) — the verified ComfyUI HTTP API surface
 - [tasks/ROADMAP.md](tasks/ROADMAP.md) — build order and phase status
 
 ## Status

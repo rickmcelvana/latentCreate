@@ -60,6 +60,9 @@ export interface ModelsView {
   warnings: unknown[]
   inventory_available: boolean
   inventory_detail: string | null
+  /** One-click Install can work: ComfyUI is on this machine. False for a
+   *  ComfyUI at another address, where the files must be placed there. */
+  install_available: boolean
 }
 
 /**
@@ -68,8 +71,8 @@ export interface ModelsView {
  * Rejects only when the app itself fails. A stopped ComfyUI comes back as
  * `inventory_available: false` with every row `unknown`.
  */
-export async function modelsStatus(bin?: string): Promise<ModelsView> {
-  return await invoke<ModelsView>('models_status', { bin })
+export async function modelsStatus(): Promise<ModelsView> {
+  return await invoke<ModelsView>('models_status')
 }
 
 /** One file's download, once submitted. Mirrors Rust `StartedFile`. */
@@ -95,12 +98,14 @@ export interface FileProgress {
  *
  * **Only from an explicit user action.** ACE-Step 1.5 is 18.5 GiB across four
  * files. Each file is reported separately, so a partial start is visible.
+ * Written straight into the folder ComfyUI reads, so the row turns Installed
+ * on the next check with no restart.
  */
-export async function modelsInstall(id: string, bin?: string): Promise<StartedFile[]> {
-  return await invoke<StartedFile[]>('models_install', { id, bin })
+export async function modelsInstall(id: string): Promise<StartedFile[]> {
+  return await invoke<StartedFile[]>('models_install', { id })
 }
 
 /** Poll every in-flight download in one round trip. */
-export async function modelsProgress(ids: string[], bin?: string): Promise<FileProgress[]> {
-  return await invoke<FileProgress[]>('models_progress', { ids, bin })
+export async function modelsProgress(ids: string[]): Promise<FileProgress[]> {
+  return await invoke<FileProgress[]>('models_progress', { ids })
 }

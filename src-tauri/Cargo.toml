@@ -28,7 +28,7 @@ tokio = { version = "1.53", features = ["time", "sync"] }
 create-core = { path = "../crates/create-core" }
 futures-util = { version = "0.3", default-features = false }
 library = { path = "../crates/library" }
-mcp-bridge = { path = "../crates/mcp-bridge" }
+comfy-bridge = { path = "../crates/comfy-bridge" }
 llm-bridge = { path = "../crates/llm-bridge" }
 
 [dev-dependencies]
@@ -42,4 +42,4 @@ tokio = { version = "1.53", features = ["macros", "rt"] }
 # The fake MCP peer. Dev-only: the same path dependency as above, with the test
 # transport switched on, so the pipeline's call sequence can be asserted with
 # no ComfyUI running.
-mcp-bridge = { path = "../crates/mcp-bridge", features = ["test-support"] }
+comfy-bridge = { path = "../crates/comfy-bridge", features = ["test-support"] }

@@ -2,8 +2,8 @@
 //!
 //! Pure set membership: a profile declares the files it needs, ComfyUI lists
 //! the files it has, and the comparison is exact string matching per folder.
-//! Nothing here does I/O -- `mcp-bridge` builds the [`ModelInventory`], and
-//! this decides what it means.
+//! Nothing here does I/O -- the shell builds the [`ModelInventory`] from
+//! ComfyUI's `/models/<folder>` lists, and this decides what it means.
 //!
 //! **Why not ask ComfyUI whether the workflow can run?** Because
 //! `local_check.runnable` answers a different question. MiniMax Music 3 has all
@@ -18,8 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// The model files ComfyUI currently has, by folder.
 ///
-/// Built from `search_models(folder=)`, which needs a **running** ComfyUI: it
-/// fetches `http://127.0.0.1:8188/models`, it does not read the disk. An
+/// Built from ComfyUI's `/models/<folder>` lists, which need a **running**
+/// ComfyUI -- nothing reads the disk directly. An
 /// inventory that could not be taken is absent, not empty -- see
 /// [`ProfileReadiness::Unknown`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -259,7 +259,7 @@ mod tests {
     }
 
     /// Protects: a folder the inventory never listed is not silently "present".
-    /// `search_models` is per-folder, so a caller that forgets a folder must
+    /// `/models/{folder}` is per-folder, so a caller that forgets a folder must
     /// see missing files, not a false Ready.
     #[test]
     fn test_an_unlisted_folder_is_not_treated_as_present() {

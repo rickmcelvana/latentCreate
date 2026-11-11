@@ -8,7 +8,8 @@ pub struct ComfyServerInfo {
     /// ComfyUI server version, if reported.
     #[serde(default)]
     pub comfyui_version: Option<String>,
-    /// comfy-cli or comfy-mcp version, if reported.
+    /// comfy-cli version, if reported. Not filled since the move to ComfyUI's
+    /// HTTP API; kept so older records still parse.
     #[serde(default)]
     pub comfy_cli_version: Option<String>,
     /// Endpoint the job was submitted to, e.g. `"http://127.0.0.1:8188"`.

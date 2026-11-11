@@ -57,16 +57,8 @@ pub enum CatalogState {
         excluded: Vec<Excluded>,
         /// Whether comfy-cli answered from its cache rather than ComfyUI.
         ///
-        /// Classified here rather than passed up raw, because a live read
-        /// carries neither the `stale` flag nor the warning and reading that
-        /// absence correctly took observing both shapes (MCP-SURFACE 19.1).
-        ///
-        /// What it costs the user is narrower than it first looks: a cached
-        /// list is a **short** list, missing whatever was installed since
-        /// ComfyUI last ran. A path the live server does not know is rejected
-        /// by `validate_workflow` as `unknown_enum_value` before any GPU time,
-        /// so a LoRA deleted out from under this picker is a failed job rather
-        /// than a silent no-op (19.3).
+        /// Always false since T-519 (`/object_info` is read live). Kept on
+        /// the wire until the picker's cached-list note is removed with it.
         cached: bool,
     },
     /// The loader node could not be read at all.
@@ -94,10 +86,10 @@ pub async fn lora_panel(
         return Ok(None);
     };
 
-    let read = match state.connected().await {
-        None => Err("ComfyUI is not connected.".to_string()),
-        Some(comfy) => comfy
-            .node_schema(&loras.loader_node)
+    let read = match crate::comfy::ensure_connected(&state, &config_dir).await {
+        Err(e) => Err(e.into_message()),
+        Ok(comfy) => comfy
+            .object_info(&loras.loader_node)
             .await
             .map_err(|e| e.to_string()),
     };
@@ -128,7 +120,7 @@ fn panel_for(profile: &ModelProfile, catalog: CatalogState) -> Option<LoraPanel>
 ///
 /// Pure, and separate from the call, so every branch is testable without a
 /// backend -- the same split `profile::options_for` uses.
-fn catalog_for(read: &Result<mcp_bridge::NodeSchema, String>, class: &str) -> CatalogState {
+fn catalog_for(read: &Result<comfy_bridge::NodeSchema, String>, class: &str) -> CatalogState {
     let schema = match read {
         Err(detail) => {
             return CatalogState::Unavailable {
@@ -147,7 +139,7 @@ fn catalog_for(read: &Result<mcp_bridge::NodeSchema, String>, class: &str) -> Ca
     CatalogState::Loaded {
         groups: catalog.groups,
         excluded: catalog.excluded,
-        cached: schema.is_cached(),
+        cached: false,
     }
 }
 
@@ -159,13 +151,36 @@ mod tests {
     const ACE: &str = include_str!("../../profiles/ace-step-1.5-turbo.json");
     const MINIMAX: &str = include_str!("../../profiles/minimax-music-3.json");
 
-    /// The captured `LoraLoaderModelOnly` read, which is a **cached** response:
-    /// it was taken with ComfyUI down and carries both staleness signals.
-    fn captured() -> mcp_bridge::NodeSchema {
-        serde_json::from_str(include_str!(
+    /// The captured 53-entry LoRA list (taken in the comfy-mcp era, still the
+    /// real install's list), re-shaped as the `/object_info` entry ComfyUI
+    /// serves for `LoraLoaderModelOnly` (COMFY-HTTP-SURFACE 4: a legacy combo).
+    fn captured_schema() -> comfy_bridge::NodeSchema {
+        let raw: serde_json::Value = serde_json::from_str(include_str!(
             "../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
         ))
-        .expect("the captured schema decodes")
+        .expect("captured list decodes");
+        let choices = raw["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .find(|i| i["name"] == "lora_name")
+            .expect("lora_name")["choices"]
+            .clone();
+        let entry = serde_json::json!({
+            "input": {"required": {
+                "model": ["MODEL"],
+                "lora_name": [choices],
+                "strength_model": ["FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}]
+            }},
+            "input_order": {"required": ["model", "lora_name", "strength_model"]},
+            "output": ["MODEL"],
+            "name": "LoraLoaderModelOnly"
+        });
+        comfy_bridge::NodeSchema::from_object_info("LoraLoaderModelOnly", &entry).expect("parses")
+    }
+
+    fn captured() -> comfy_bridge::NodeSchema {
+        captured_schema()
     }
 
     fn profile(json: &str) -> ModelProfile {
@@ -185,42 +200,6 @@ mod tests {
                 assert!(excluded
                     .iter()
                     .all(|e| e.reason == ExclusionReason::NotAnAdapter));
-            }
-            other => panic!("expected a loaded catalog, got {other:?}"),
-        }
-    }
-
-    /// Protects: a cached list reaches the panel flagged as cached.
-    ///
-    /// `nodes(action="get")` succeeds with ComfyUI down and the response is
-    /// indistinguishable from a live one but for two fields (MCP-SURFACE 19.1).
-    /// If the flag stops here, a picker missing the LoRA the user finished
-    /// training an hour ago looks exactly like a complete one.
-    #[test]
-    fn test_a_cached_read_is_flagged_as_cached() {
-        match catalog_for(&Ok(captured()), "LoraLoaderModelOnly") {
-            CatalogState::Loaded { cached, .. } => assert!(cached),
-            other => panic!("expected a loaded catalog, got {other:?}"),
-        }
-    }
-
-    /// Protects: a live read is **not** warned about.
-    ///
-    /// The other half of the same rule, and the half that was got wrong once
-    /// already: a live response carries no `stale` key and no warning, so
-    /// reading absence as "did not say, therefore suspect" warns on every
-    /// healthy install. The fixture is the cached one with both signals
-    /// stripped, which is exactly the shape observed live on 2026-08-28.
-    #[test]
-    fn test_a_live_read_is_not_flagged() {
-        let mut live = captured();
-        live.stale = None;
-        live.warnings.clear();
-
-        match catalog_for(&Ok(live), "LoraLoaderModelOnly") {
-            CatalogState::Loaded { cached, groups, .. } => {
-                assert!(!cached);
-                assert_eq!(groups.len(), 6, "the same list, minus the warning");
             }
             other => panic!("expected a loaded catalog, got {other:?}"),
         }

@@ -5,8 +5,8 @@
   "license": "CreativeML Open RAIL++-M",
   "license_notes": "Commercial cover art is permitted; the CreativeML Open RAIL++-M licence forbids certain harmful uses -- see the licence text.",
   "comfy": {
+    "workflow": "workflows/sdxl-base-1.0.json",
     "template": "image_sdxl_simple",
-    "workflow": null,
     "vram_gb_min": 8,
     "models": [
       {
@@ -60,9 +60,9 @@
       "slots": [
         "12.cfg"
       ],
-      "min": 0.0,
-      "max": 20.0,
-      "default": 7.0,
+      "min": 0,
+      "max": 20,
+      "default": 7,
       "step": 0.1,
       "label": "CFG",
       "advanced": true

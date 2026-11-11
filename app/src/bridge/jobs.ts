@@ -50,9 +50,9 @@ export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
-/** Connect the backend to `comfy-mcp`. Defaults to `comfy-mcp` on PATH. */
-export async function connectComfy(bin?: string): Promise<void> {
-  await invoke('connect_comfy', { bin })
+/** Find ComfyUI (the configured address, else the usual local ports) and keep the connection. */
+export async function connectComfy(): Promise<void> {
+  await invoke('connect_comfy')
 }
 
 /** Submit a workflow and return its prompt id. */

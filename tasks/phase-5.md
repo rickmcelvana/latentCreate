@@ -619,7 +619,9 @@ already renders shipped profiles with one-click Install.
   The honest scope is that (2) probably reshapes several screens' degraded states, which is why this
   is its own session and not a field on a card.
 
-- **T-519 — ComfyUI over its own HTTP API; comfy-mcp retired.** ⏳ **IN PROGRESS — v1 blocker**
+- **T-519 — ComfyUI over its own HTTP API; comfy-mcp retired.** ✅ **CODE COMPLETE 2026-11-11 — all
+  lanes landed and driven live in the real app; awaiting the owner's click-through on a second PC and
+  an installer build (PROJECT.md Snapshot).**
   (owner decision 2026-11-11; decisions log). Diagnosis and the verified surface are in PROJECT.md's
   2026-11-11 session log and [docs/COMFY-HTTP-SURFACE.md](../docs/COMFY-HTTP-SURFACE.md); the
   contract is ARCHITECTURE sections 1, 3, 3a, 5, 5b, 7 and 10. Run **architect-direct** (no Aider):

@@ -1,8 +1,10 @@
 //! Which of ComfyUI's two export shapes a file is.
 //!
-//! ComfyUI writes two different JSONs and comfy-mcp's tools do not accept the
-//! same one (MCP-SURFACE 29). Everything this app does to a graph -- slots, the
-//! audit, the T-305 edits -- needs the **frontend** shape.
+//! ComfyUI writes two different JSONs: **Save** writes the frontend (editing)
+//! shape, **Export (API)** writes the API shape. Since T-519 everything this app
+//! does to a graph -- slot writes, the audit, the graph edits -- needs the
+//! **API** shape, which is also what ComfyUI executes; a frontend file is
+//! refused with the menu path to the export that works.
 
 use serde_json::Value;
 

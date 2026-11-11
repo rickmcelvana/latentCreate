@@ -2,6 +2,8 @@
 
 This file seeds the JSON profiles that will live in `profiles/` (schema: ARCHITECTURE.md §5). Each row becomes one profile file in Phase 1, authored **only** against a template that reports `runnable: true` on a real install.
 
+**Since 2026-11-11 (T-519)** the app drives ComfyUI over its own HTTP API, and each shipped profile carries its API-format workflow in `profiles/workflows/` ([COMFY-HTTP-SURFACE.md](COMFY-HTTP-SURFACE.md)). The comfy-mcp notes below are history.
+
 **Status 2026-08-23:** ACE-Step 1.5 XL Turbo and MiniMax Music 3 were checked against a live local comfy-mcp — see **[MCP-SURFACE.md](MCP-SURFACE.md)** for the verified slot lists, LoRA reality, and which assumptions in this file turned out wrong. Rows below that are not marked verified are still intent, not data.
 
 | id | Role | Lyrics | Negative | VRAM | License | Notes |

@@ -34,7 +34,7 @@
 //! [`crate::audit`] already encodes that distinction and is the only correct
 //! source for it. Nothing here re-derives it.
 
-use crate::audit::{audit_slots, link_origin, output_targets};
+use crate::audit::{as_link, audit_slots, link_origin, node_ids, output_targets};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -151,9 +151,8 @@ pub struct Candidate {
     pub reason: String,
 }
 
-/// What one slot needs to look like to be ranked. Mirrors `mcp_bridge::Slot`,
-/// restated here so `create-core` does not depend on the bridge for a pure
-/// ranking pass.
+/// What one slot needs to look like to be ranked. Built from an API-format
+/// graph by [`slots_of`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotInfo {
     pub address: String,
@@ -161,6 +160,52 @@ pub struct SlotInfo {
     pub widget_type: String,
     pub instance_id: String,
     pub node_type: String,
+}
+
+/// Every input of every node in an API-format graph, as rankable slots --
+/// literal **and** link-fed, because the inert hop needs the link-fed ones to
+/// find their driver (`3.seed` -> `109.value`).
+///
+/// `input_type(class, input)` is the node registry's declared type
+/// (`/object_info`); when it has no answer a literal's JSON shape decides
+/// (`STRING`, `INT`, `FLOAT`, `BOOLEAN`) and a link is `LINK`, which no role
+/// accepts. The registry is preferred because `"cfg": 1` is a `FLOAT` that
+/// JSON spells as an integer.
+pub fn slots_of(
+    workflow: &Value,
+    input_type: &dyn Fn(&str, &str) -> Option<String>,
+) -> Vec<SlotInfo> {
+    let mut out = Vec::new();
+    for id in node_ids(workflow) {
+        let node = &workflow[&id];
+        let class = node.get("class_type").and_then(Value::as_str).unwrap_or("");
+        let Some(inputs) = node.get("inputs").and_then(Value::as_object) else {
+            continue;
+        };
+        for (name, value) in inputs {
+            let widget_type = input_type(class, name).unwrap_or_else(|| {
+                if as_link(value).is_some() {
+                    "LINK".into()
+                } else {
+                    match value {
+                        Value::String(_) => "STRING".into(),
+                        Value::Bool(_) => "BOOLEAN".into(),
+                        Value::Number(n) if n.is_f64() => "FLOAT".into(),
+                        Value::Number(_) => "INT".into(),
+                        _ => "OTHER".into(),
+                    }
+                }
+            });
+            out.push(SlotInfo {
+                address: format!("{id}.{name}"),
+                name: name.clone(),
+                widget_type,
+                instance_id: id.clone(),
+                node_type: class.to_string(),
+            });
+        }
+    }
+    out
 }
 
 /// One role and everything offered for it.
@@ -287,55 +332,38 @@ pub fn suggest_roles(workflow: &Value, slots: &[SlotInfo]) -> Vec<RoleSuggestion
 mod tests {
     use super::*;
 
-    fn workflow(name: &str) -> Value {
-        read_json(&format!("testdata/workflows/{name}"))
-    }
-
-    fn slots(name: &str) -> Vec<SlotInfo> {
-        let payload = read_json(&format!("testdata/mcp/{name}"));
-        payload
-            .get("slots")
-            .and_then(Value::as_array)
-            .expect("slots")
-            .iter()
-            .map(|s| SlotInfo {
-                address: field(s, "address"),
-                name: field(s, "name"),
-                widget_type: field(s, "type"),
-                instance_id: field(s, "instance_id"),
-                node_type: field(s, "node_type"),
-            })
-            .collect()
-    }
-
-    fn field(slot: &Value, key: &str) -> String {
-        slot.get(key)
-            .and_then(Value::as_str)
-            .unwrap_or_else(|| panic!("slot has no {key}"))
-            .to_string()
-    }
-
-    fn read_json(rel: &str) -> Value {
+    fn shipped(id: &str) -> Value {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(rel);
+            .join("../../profiles/workflows")
+            .join(format!("{id}.json"));
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-        serde_json::from_str(&text).expect("fixture decodes")
+        serde_json::from_str(&text).expect("workflow decodes")
+    }
+
+    /// The registry types the tests need for link-fed inputs -- the ones a
+    /// literal cannot answer. What `/object_info` reports for these classes.
+    fn registry(class: &str, input: &str) -> Option<String> {
+        match (class, input) {
+            ("KSampler", "seed" | "steps") => Some("INT".into()),
+            ("KSampler", "cfg") => Some("FLOAT".into()),
+            ("TextEncodeAceStepAudio1.5", "seed") => Some("INT".into()),
+            _ => None,
+        }
+    }
+
+    fn graph(id: &str) -> (Value, Vec<SlotInfo>) {
+        let g = shipped(id);
+        let slots = slots_of(&g, &registry);
+        (g, slots)
     }
 
     fn ace() -> (Value, Vec<SlotInfo>) {
-        (
-            workflow("ace_step_1_5_xl_turbo.json"),
-            slots("list_workflow_slots.ace-step.json"),
-        )
+        graph("ace-step-1.5-turbo")
     }
 
-    fn klein() -> (Value, Vec<SlotInfo>) {
-        (
-            workflow("flux2_klein_9b.json"),
-            slots("list_workflow_slots.flux2-klein-9b.json"),
-        )
+    fn flux() -> (Value, Vec<SlotInfo>) {
+        graph("flux-1-schnell-fp8")
     }
 
     fn for_role(suggestions: &[RoleSuggestion], role: Role) -> Vec<Candidate> {
@@ -422,30 +450,28 @@ mod tests {
 
     /// Protects: a graph whose slots are all subgraph interiors still maps.
     ///
-    /// MiniMax addresses every input through `37/13.*`, and a subgraph interior
-    /// resolves to `Boundary` -- not inert -- so none of them may be dropped.
-    /// The address parser has broken on this shape before (MCP-SURFACE 18.5).
+    /// MiniMax addresses every input through flattened `37:13.*` ids, and the
+    /// address parser has broken on subgraph shapes before (MCP-SURFACE 18.5).
     #[test]
     fn test_minimax_maps_its_roles_through_subgraph_addresses() {
-        let graph = workflow("minimax_music3_int8.json");
-        let slots = slots("list_workflow_slots.minimax.json");
+        let (graph, slots) = graph("minimax-music-3");
         let suggestions = suggest_roles(&graph, &slots);
 
         let caption = for_role(&suggestions, Role::Tags);
         assert!(
-            caption.iter().any(|c| c.address == "37/13.caption"),
+            caption.iter().any(|c| c.address == "37:13.caption"),
             "{caption:?}"
         );
 
         let lyrics = for_role(&suggestions, Role::Lyrics);
         assert!(
-            lyrics.iter().any(|c| c.address == "37/13.lyrics"),
+            lyrics.iter().any(|c| c.address == "37:13.lyrics"),
             "{lyrics:?}"
         );
 
         let duration = for_role(&suggestions, Role::DurationSeconds);
         assert!(
-            duration.iter().any(|c| c.address == "37/13.max_duration"),
+            duration.iter().any(|c| c.address == "37:13.max_duration"),
             "{duration:?}"
         );
 
@@ -521,30 +547,30 @@ mod tests {
 
     /// Protects: the positive prompt encoder is mapped, the negative one is not.
     #[test]
-    fn test_klein_maps_the_positive_encoder_to_tags_and_not_the_negative() {
-        let (graph, slots) = klein();
+    fn test_image_graph_maps_the_positive_encoder_to_tags_and_not_the_negative() {
+        let (graph, slots) = flux();
         let suggestions = suggest_roles(&graph, &slots);
         let tags = for_role(&suggestions, Role::Tags);
         let addresses: Vec<&str> = tags.iter().map(|c| c.address.as_str()).collect();
 
-        assert!(addresses.contains(&"75/74.text"), "{addresses:?}");
-        assert!(!addresses.contains(&"75/67.text"), "{addresses:?}");
+        assert!(addresses.contains(&"6.text"), "{addresses:?}");
+        assert!(!addresses.contains(&"33.text"), "{addresses:?}");
     }
 
     /// Protects: the negative prompt is found even when no slot names it.
     #[test]
-    fn test_klein_finds_the_negative_prompt_no_name_would_have_matched() {
-        let (graph, slots) = klein();
+    fn test_image_graph_finds_the_negative_prompt_no_name_would_have_matched() {
+        let (graph, slots) = flux();
         let suggestions = suggest_roles(&graph, &slots);
         let negatives = for_role(&suggestions, Role::Negative);
 
         assert!(
-            negatives.iter().any(|c| c.address == "75/67.text"),
+            negatives.iter().any(|c| c.address == "33.text"),
             "{negatives:?}"
         );
         let found = negatives
             .iter()
-            .find(|c| c.address == "75/67.text")
+            .find(|c| c.address == "33.text")
             .expect("negative encoder offered");
         assert_eq!(found.confidence, Confidence::Strong);
         assert!(
@@ -554,26 +580,25 @@ mod tests {
         );
     }
 
-    /// Protects: subgraph-interior controls survive the whole suggestion pass.
+    /// Protects: flattened subgraph controls (`76:3`, `76:6`, `76:7`) survive
+    /// the whole suggestion pass, polarity included.
     #[test]
-    fn test_klein_suggests_the_subgraph_controls() {
-        let (graph, slots) = klein();
+    fn test_subgraph_controls_are_suggested_with_their_flattened_ids() {
+        let (graph, slots) = graph("qwen-image");
         let suggestions = suggest_roles(&graph, &slots);
 
         let seeds = for_role(&suggestions, Role::Seed);
-        assert!(
-            seeds.iter().any(|c| c.address == "75/73.noise_seed"),
-            "{seeds:?}"
-        );
+        assert!(seeds.iter().any(|c| c.address == "76:3.seed"), "{seeds:?}");
 
-        let steps = for_role(&suggestions, Role::Steps);
-        assert!(
-            steps.iter().any(|c| c.address == "75/62.steps"),
-            "{steps:?}"
-        );
+        let tags = for_role(&suggestions, Role::Tags);
+        assert!(tags.iter().any(|c| c.address == "76:6.text"), "{tags:?}");
+        assert!(!tags.iter().any(|c| c.address == "76:7.text"), "{tags:?}");
 
-        let cfg = for_role(&suggestions, Role::Cfg);
-        assert!(cfg.iter().any(|c| c.address == "75/63.cfg"), "{cfg:?}");
+        let negatives = for_role(&suggestions, Role::Negative);
+        assert!(
+            negatives.iter().any(|c| c.address == "76:7.text"),
+            "{negatives:?}"
+        );
     }
 
     /// Protects: polarity logic is inert for audio graphs that name their slots.
@@ -594,13 +619,12 @@ mod tests {
     /// Protects: the same for MiniMax -- no STRING slot can resolve to Negative.
     #[test]
     fn test_minimax_still_maps_its_tags_encoder() {
-        let graph = workflow("minimax_music3_int8.json");
-        let slots = slots("list_workflow_slots.minimax.json");
+        let (graph, slots) = graph("minimax-music-3");
         let suggestions = suggest_roles(&graph, &slots);
 
         let caption = for_role(&suggestions, Role::Tags);
         assert!(
-            caption.iter().any(|c| c.address == "37/13.caption"),
+            caption.iter().any(|c| c.address == "37:13.caption"),
             "{caption:?}"
         );
 

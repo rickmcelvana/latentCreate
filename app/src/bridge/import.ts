@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 /**
- * Mirrors Rust `mcp_bridge::Slot`.
+ * Mirrors Rust `app::import::Slot`: one input that holds a literal value.
  *
  * Carried on the report but not read by the store: the suggestions are what a
  * mapping screen works from. It is here so a later "show me every slot" escape

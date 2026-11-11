@@ -56,6 +56,7 @@ pub fn run() {
             app.manage(ConfigDir(dir));
             app.manage(ProfilesDir(shipped_dir(app.handle(), "profiles")));
             app.manage(ComfyState::default());
+            app.manage(install::InstallState::default());
             app.manage(LyricsState::default());
             Ok(())
         })
@@ -67,7 +68,6 @@ pub fn run() {
             has_secret,
             delete_secret,
             comfy::comfy_status,
-            comfy::comfy_launch,
             models::models_status,
             generate::generate_audio,
             generate::generate_image,
@@ -163,20 +163,34 @@ fn delete_secret(name: String) -> Result<(), String> {
 
 /// Locate one of the app's shipped resource directories.
 ///
-/// The bundled resource wins. A dev build has no bundle, so it falls back to
-/// the repo checkout next to this crate -- which is also why this returns a
-/// path rather than failing: neither location existing is a normal state for a
-/// build with no profiles, not a startup error.
+/// The bundled resource wins: `tauri.conf.json` maps `../profiles/` to
+/// `profiles/` explicitly, so it lands at `<resource_dir>/profiles`. (Listed as
+/// a `../profiles/*.json` glob it landed at `<resource_dir>/_up_/profiles`, this
+/// lookup missed it, and every build fell back to the source checkout path
+/// compiled in below -- which exists only on the machine that built it. A
+/// CI-built installer therefore shipped with no models at all on anyone else's
+/// PC; T-519.)
+///
+/// The checkout fallback is **debug builds only**: in a release build a
+/// missing bundle must show as "no profiles", never be masked by the
+/// developer's own files.
 fn shipped_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>, name: &str) -> PathBuf {
-    if let Ok(resources) = app.path().resource_dir() {
-        let bundled = resources.join(name);
-        if bundled.is_dir() {
-            return bundled;
+    let bundled = app.path().resource_dir().map(|r| r.join(name));
+    if let Ok(dir) = &bundled {
+        if dir.is_dir() {
+            return dir.clone();
         }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join(name)
+    #[cfg(debug_assertions)]
+    {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(name)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        bundled.unwrap_or_else(|_| PathBuf::from(name))
+    }
 }
 
 #[cfg(test)]
@@ -204,6 +218,23 @@ mod tests {
     /// way -- `convertFileSrc` in `bridge/player.ts` for audio and
     /// `bridge/art.ts` for images -- and both spellings are required:
     /// `asset:` on macOS and Linux, `http://asset.localhost` on Windows.
+    /// Protects: profiles and their workflows are bundled where `shipped_dir`
+    /// looks. A `../` glob bundles under `_up_/` instead, which the lookup
+    /// misses -- and `npm run gate` cannot see that, because it never runs
+    /// `tauri build` (T-519).
+    #[test]
+    fn test_profiles_are_bundled_at_resources_profiles() {
+        let raw = include_str!("../tauri.conf.json");
+        let conf: serde_json::Value = serde_json::from_str(raw).expect("tauri.conf.json parses");
+        let resources = conf["bundle"]["resources"]
+            .as_object()
+            .expect("resources is a source -> target map");
+        assert_eq!(
+            resources.get("../profiles/").and_then(|v| v.as_str()),
+            Some("profiles/")
+        );
+    }
+
     #[test]
     fn test_csp_covers_every_asset_protocol_directive() {
         let raw = include_str!("../tauri.conf.json");

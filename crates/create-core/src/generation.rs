@@ -68,8 +68,8 @@ impl InputValue {
     ///
     /// **Not `serde_json::to_value(self)`.** `InputValue` is adjacently tagged, so
     /// that yields `{"type":"seed","value":42}` -- an object where the slot wants a
-    /// number. comfy-mcp rejects it with `[workflow_slot_invalid]` (`expected INT,
-    /// got dict`), for STRING slots too, so the mistake fails closed rather than
+    /// number. ComfyUI's `/prompt` validation rejects it (`expected INT, got
+    /// dict`), for STRING inputs too, so the mistake fails closed rather than
     /// corrupting a run; it still fails every generation.
     ///
     /// The tag exists so a value survives the round trip through provenance
@@ -200,7 +200,7 @@ impl ModelProfile {
     /// Turn the semantic choices into the slot values actually submitted.
     ///
     /// **Only what the spec sets is written.** An input the spec omits is left
-    /// alone, because `fetch_template` already carries the template's own
+    /// alone, because the shipped API workflow already carries its own
     /// defaults and the profile's `default` fields exist to seed the *form*,
     /// not to restate the template. Writing every declared slot on every run
     /// would have the app silently asserting values it has no opinion about.
@@ -259,8 +259,8 @@ fn slots_of(spec: &InputSpec) -> &[SlotAddress] {
 
 /// Whether `value` is acceptable for `spec`.
 ///
-/// Types are matched exactly rather than widened. `set_workflow_slot`'s
-/// structured form preserves the type it is given (MCP-SURFACE 9.1), so an
+/// Types are matched exactly rather than widened. The value is written into
+/// the API workflow as the JSON it is, so an
 /// `Int` accepted for a `Float` control is an integer landing in a FLOAT slot,
 /// and a seed demoted to an `Int` is a track that cannot be reproduced.
 fn check(
@@ -559,7 +559,7 @@ mod tests {
         // The graph fans the seed out to both sampler and planner; the profile
         // no longer lists both addresses. u64::MAX still survives resolution
         // unchanged, but the live PrimitiveInt slot tops out at i64::MAX and
-        // validate_workflow rejects anything above it (MCP-SURFACE 18.3/18.4).
+        // ComfyUI's /prompt validation rejects anything above it.
     }
 
     #[test]
@@ -638,7 +638,7 @@ mod tests {
 
         let resolved = profile.resolve_slots(&spec).unwrap();
         assert_eq!(
-            resolved.get(&SlotAddress("37/6.unet_name".to_string())),
+            resolved.get(&SlotAddress("37:6.unet_name".to_string())),
             Some(&InputValue::Enum(
                 "minimax_music3_dit_int8_convrot.safetensors".to_string()
             ))
@@ -663,13 +663,13 @@ mod tests {
 
         let resolved = profile.resolve_slots(&spec).unwrap();
         assert_eq!(
-            resolved.get(&SlotAddress("37/6.unet_name".to_string())),
+            resolved.get(&SlotAddress("37:6.unet_name".to_string())),
             Some(&InputValue::Enum(
                 "minimax_music3_dit_int8_convrot.safetensors".to_string()
             ))
         );
         assert_eq!(
-            resolved.get(&SlotAddress("37/13.caption".to_string())),
+            resolved.get(&SlotAddress("37:13.caption".to_string())),
             Some(&InputValue::Text("test caption".to_string()))
         );
     }

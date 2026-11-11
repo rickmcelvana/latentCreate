@@ -5,29 +5,60 @@
   "license": "MiniMax-Music3 Community License",
   "license_notes": "Open weights, not OSI-open. Commercial use requires prominent 'MiniMax-Music3' attribution in the product UI; aggregate yearly revenue above US$20M needs prior written authorization from MiniMax.",
   "comfy": {
+    "workflow": "workflows/minimax-music-3.json",
     "template": "audio_minimax_music_3",
-    "workflow": null,
     "vram_gb_min": 16,
     "models": [
-      { "file": "minimax_music3_dit_int8_convrot.safetensors", "folder": "diffusion_models", "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_int8_convrot.safetensors", "size_bytes": 2502161682 },
-      { "file": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors", "folder": "text_encoders", "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors", "size_bytes": 9196611886 },
-      { "file": "minimax_music3_dav.safetensors", "folder": "vae", "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors", "size_bytes": 216696128 }
+      {
+        "file": "minimax_music3_dit_int8_convrot.safetensors",
+        "folder": "diffusion_models",
+        "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_int8_convrot.safetensors",
+        "size_bytes": 2502161682
+      },
+      {
+        "file": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+        "folder": "text_encoders",
+        "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+        "size_bytes": 9196611886
+      },
+      {
+        "file": "minimax_music3_dav.safetensors",
+        "folder": "vae",
+        "source_url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors",
+        "size_bytes": 216696128
+      }
     ],
-    "output": { "save_node": "SaveAudioAdvanced", "prefer_lossless": true },
+    "output": {
+      "save_node": "SaveAudioAdvanced",
+      "prefer_lossless": true
+    },
     "slot_overrides": {
-      "37/6.unet_name": { "type": "enum", "value": "minimax_music3_dit_int8_convrot.safetensors" }
+      "37:6.unet_name": {
+        "type": "enum",
+        "value": "minimax_music3_dit_int8_convrot.safetensors"
+      }
     }
   },
   "inputs": {
     "caption": {
       "type": "text",
-      "slots": ["37/13.caption"],
+      "slots": [
+        "37:13.caption"
+      ],
       "label": "Caption"
     },
     "lyrics": {
       "type": "lyrics",
-      "slots": ["37/13.lyrics"],
-      "structure_tags": ["[intro]", "[verse]", "[chorus]", "[bridge]", "[outro]"],
+      "slots": [
+        "37:13.lyrics"
+      ],
+      "structure_tags": [
+        "[intro]",
+        "[verse]",
+        "[chorus]",
+        "[bridge]",
+        "[outro]"
+      ],
       "label": "Lyrics"
     },
     "negative": {
@@ -36,14 +67,21 @@
     },
     "duration_s": {
       "type": "float",
-      "slots": ["37/13.max_duration"],
-      "min": 10.0,
-      "max": 300.0,
-      "default": 120.0,
-      "step": 1.0,
+      "slots": [
+        "37:13.max_duration"
+      ],
+      "min": 10,
+      "max": 300,
+      "default": 120,
+      "step": 1,
       "label": "Duration (s)"
     },
-    "seed": { "type": "seed", "slots": ["37/38.seed"] }
+    "seed": {
+      "type": "seed",
+      "slots": [
+        "37:38.seed"
+      ]
+    }
   },
   "lyrics_contract": {
     "format": "structure-tagged",

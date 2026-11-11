@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ComfyStatus } from '../bridge/comfy'
 import { useComfyStore, formatVram, pillFor } from '../state/comfy'
 import type { ProfileStatus } from '../bridge/models'
-import { curatedFirst, formatBytes, installView, useModelsStore } from '../state/models'
+import { curatedFirst, formatBytes, installView, rowFor, useModelsStore } from '../state/models'
 import { ImportWorkflow } from '../components/ImportWorkflow'
 import { ProfilePickerRow } from '../components/ProfilePickerRow'
 import { ProjectPickerRow } from '../components/ProjectPickerRow'
@@ -26,22 +26,13 @@ import { useConfigStore } from '../state/config'
 /**
  * Setup wizard, ComfyUI step.
  *
- * Checks once on mount and otherwise only when the user asks. Nothing here
- * polls: a wizard that re-probes on a timer spawns `comfy-mcp` processes
- * behind the user's back.
+ * Checks once on mount and otherwise only when the user asks: a probe is a few
+ * HTTP requests, but a wizard that re-probes on a timer is one that changes
+ * under the user's hands. The address field is blank for "find it" -- the usual
+ * local ports -- and holds an address only when the user's ComfyUI is
+ * elsewhere (another port, another machine).
  */
 export function Setup() {
-  const status = useComfyStore((state) => state.status)
-  const busy = useComfyStore((state) => state.busy)
-  const refresh = useComfyStore((state) => state.refresh)
-  const launch = useComfyStore((state) => state.launch)
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  const pill = pillFor(status)
-
   return (
     <>
       <h1 className="view-title">Setup</h1>
@@ -49,39 +40,7 @@ export function Setup() {
         Connect ComfyUI and, optionally, a model for writing lyrics.
       </p>
 
-      <section className="panel setup-step">
-        <header className="setup-step-head">
-          <h2 className="setup-step-title">ComfyUI</h2>
-          <span className={`status-pill status-pill-${pill.tone}`}>{pill.label}</span>
-        </header>
-
-        {pill.nextStep !== null ? <p className="setup-next-step">{pill.nextStep}</p> : null}
-
-        {status !== null && status.state === 'not_installed' ? (
-          <code className="setup-command">{status.install_command}</code>
-        ) : null}
-
-        {status !== null && status.state === 'ready' ? (
-          <ComfyFacts status={status} />
-        ) : null}
-
-        <div className="setup-actions">
-          <button type="button" className="setup-button" onClick={() => void refresh()} disabled={busy}>
-            {busy ? 'Checking...' : 'Retry'}
-          </button>
-          {status !== null && status.state === 'server_down' ? (
-            <button
-              type="button"
-              className="setup-button setup-button-primary"
-              onClick={() => void launch()}
-              disabled={busy}
-            >
-              Start ComfyUI
-            </button>
-          ) : null}
-        </div>
-      </section>
-
+      <ComfyStep />
       <ModelsStep kind="music" />
       <ModelsStep kind="image" />
       <ImportStep />
@@ -89,6 +48,83 @@ export function Setup() {
       <ProjectsStep />
       <ReleaseStep />
     </>
+  )
+}
+
+function ComfyStep() {
+  const status = useComfyStore((state) => state.status)
+  const busy = useComfyStore((state) => state.busy)
+  const refresh = useComfyStore((state) => state.refresh)
+  const refreshModels = useModelsStore((state) => state.refresh)
+  const config = useConfigStore((state) => state.config)
+  const save = useConfigStore((state) => state.save)
+  const configured = config?.comfy.url ?? ''
+  const [draft, setDraft] = useState(configured)
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    setDraft(configured)
+  }, [configured])
+
+  // Saved before probing, so the probe, Generate and the models step all read
+  // the same address. Blank stores null: "find it", not "nowhere".
+  const connect = async () => {
+    if (config === null) return
+    const trimmed = draft.trim()
+    await save({ comfy: { ...config.comfy, url: trimmed === '' ? null : trimmed } })
+    await refresh()
+    void refreshModels()
+  }
+
+  const retry = async () => {
+    await refresh()
+    void refreshModels()
+  }
+
+  const pill = pillFor(status)
+
+  return (
+    <section className="panel setup-step">
+      <header className="setup-step-head">
+        <h2 className="setup-step-title">ComfyUI</h2>
+        <span className={`status-pill status-pill-${pill.tone}`}>{pill.label}</span>
+      </header>
+
+      {pill.nextStep !== null ? <p className="setup-next-step">{pill.nextStep}</p> : null}
+
+      {status !== null && status.state === 'ready' ? <ComfyFacts status={status} /> : null}
+
+      <div className="llm-endpoint-row">
+        <input
+          type="text"
+          className="lyrics-input llm-endpoint"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void connect()
+            }
+          }}
+          placeholder="Find it (127.0.0.1:8188 or :8000)"
+          aria-label="ComfyUI address"
+        />
+        <button
+          type="button"
+          className="setup-button setup-button-primary"
+          onClick={() => void connect()}
+          disabled={busy || config === null}
+        >
+          Connect
+        </button>
+        <button type="button" className="setup-button" onClick={() => void retry()} disabled={busy}>
+          {busy ? 'Checking...' : 'Retry'}
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -336,9 +372,9 @@ const MODEL_STEPS = {
  * Setup wizard, models step -- one card per kind.
  *
  * Readiness is decided by comparing each profile's declared files against what
- * ComfyUI reports it has -- never by `local_check.runnable`, which answers a
- * different question and calls a working MiniMax install unrunnable over a
- * filename the profile already corrects.
+ * ComfyUI reports it has in its model folders. One-click Install only when
+ * ComfyUI is on this machine: the files are written into its own folders, which
+ * a ComfyUI at another address does not share.
  *
  * The step also owns the **default** for its studio: the quick-swap menus on
  * Audio and Cover Art offer installed models only, so what is picked here is
@@ -379,6 +415,13 @@ function ModelsStep({ kind }: { kind: ProfileStatus['kind'] }) {
         </p>
       ) : null}
 
+      {view !== null && view.inventory_available && !view.install_available ? (
+        <p className="setup-next-step">
+          ComfyUI is on another machine, so Install is off here. Place missing files in its model
+          folders, then Retry.
+        </p>
+      ) : null}
+
       {profiles.length > 0 ? (
         <ul className="picker-list">
           {profiles.map((p) => (
@@ -387,6 +430,7 @@ function ModelsStep({ kind }: { kind: ProfileStatus['kind'] }) {
               profile={p}
               group={step.group}
               selected={p.id === chosen}
+              canInstall={view?.install_available ?? false}
               onSelect={() =>
                 void save(
                   kind === 'music'
@@ -431,11 +475,13 @@ function ModelRow({
   profile,
   group,
   selected,
+  canInstall,
   onSelect,
 }: {
   profile: ProfileStatus
   group: string
   selected: boolean
+  canInstall: boolean
   onSelect: () => void
 }) {
   const install = useModelsStore((state) => state.install)
@@ -445,11 +491,16 @@ function ModelRow({
   const row = profileRow(profile)
   const active = installing === profile.id
   const live = active ? installView(progress) : null
+  // Without one-click Install the sentence must not say "Install to download".
+  const nextStep =
+    !canInstall && profile.readiness.state === 'missing'
+      ? rowFor({ ...profile.readiness, installable: false }).nextStep
+      : row.readiness.nextStep
 
   return (
     <ProfilePickerRow row={row} selected={selected} group={group} onSelect={onSelect}>
-      {row.readiness.nextStep !== null && !active ? (
-        <p className="setup-next-step">{row.readiness.nextStep}</p>
+      {nextStep !== null && !active ? (
+        <p className="setup-next-step">{nextStep}</p>
       ) : null}
 
       {live !== null ? (
@@ -474,7 +525,7 @@ function ModelRow({
         </ul>
       ) : null}
 
-      {profile.readiness.state === 'missing' && profile.readiness.installable ? (
+      {profile.readiness.state === 'missing' && profile.readiness.installable && canInstall ? (
         <div className="setup-actions">
           <button
             type="button"
@@ -636,29 +687,22 @@ function ComfyFacts({ status }: { status: Extract<ComfyStatus, { state: 'ready' 
   const vram = formatVram(status.vram_bytes)
   return (
     <dl className="setup-facts">
+      {status.comfyui_version !== null ? (
+        <div className="setup-fact">
+          <dt>Version</dt>
+          <dd>{status.comfyui_version}</dd>
+        </div>
+      ) : null}
       {vram !== null ? (
         <div className="setup-fact">
           <dt>Hardware</dt>
           <dd>{vram}</dd>
         </div>
       ) : null}
-      {status.workspace !== null ? (
-        <div className="setup-fact">
-          <dt>Workspace</dt>
-          <dd>{status.workspace}</dd>
-        </div>
-      ) : null}
-      {status.comfy_cli_version !== null ? (
-        <div className="setup-fact">
-          <dt>comfy-cli</dt>
-          <dd>
-            {status.comfy_cli_version}
-            {status.update_available ? (
-              <span className="setup-update">update available</span>
-            ) : null}
-          </dd>
-        </div>
-      ) : null}
+      <div className="setup-fact">
+        <dt>Where</dt>
+        <dd>{status.local ? 'This computer' : 'Another computer'}</dd>
+      </div>
     </dl>
   )
 }

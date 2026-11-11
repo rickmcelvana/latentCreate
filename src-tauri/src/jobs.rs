@@ -1,27 +1,36 @@
-//! Job pump: poll a running job and re-emit its lifecycle as Tauri events.
+//! Job pump: follow a submitted job through ComfyUI's `/queue` and `/history`
+//! and re-emit its lifecycle as Tauri events (ARCHITECTURE 3).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use comfy_bridge::{ComfyError, ComfyHttp, Outcome, OutputRef, QueuePosition, SessionLog};
 use create_core::profile::ModelKind;
-use mcp_bridge::{ComfyError, JobCancel, JobStatus, LocalComfy, SessionLog};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{async_runtime, AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 
-use crate::ingest::{ingest_outputs, PendingOutput, Saved};
+use crate::comfy::{ensure_connected, EnsureError};
+use crate::ingest::{ingest_outputs, OutputBatch, OutputFile, PendingOutput, Saved};
 use crate::ConfigDir;
 
 /// Poll interval for the job pump.
 const POLL_INTERVAL: Duration = Duration::from_millis(1000);
 
+/// How many consecutive polls may find a job in neither the queue nor history
+/// before it is reported lost. ComfyUI moved a finished job from the queue to
+/// history within one poll in every observed run (COMFY-HTTP-SURFACE 6); three
+/// misses tolerates a gap nobody has seen without hanging on one that is real.
+const LOST_AFTER_MISSES: u8 = 3;
+
 /// Emitted on every poll while a job is not yet terminal.
 #[derive(Debug, Clone, Serialize)]
 pub struct JobProgress {
     pub id: String,
+    /// `pending` or `running` -- the words the queue panel renders.
     pub status: String,
     pub outputs: Vec<String>,
 }
@@ -30,14 +39,21 @@ pub struct JobProgress {
 #[derive(Debug, Clone, Serialize)]
 pub struct JobDone {
     pub id: String,
+    /// The output filenames ComfyUI reported.
     pub outputs: Vec<String>,
 }
 
-/// Emitted once when a job fails or polling it errors.
+/// Emitted once when a job fails or following it fails.
 #[derive(Debug, Clone, Serialize)]
 pub struct JobFailed {
     pub id: String,
     pub error: String,
+}
+
+/// `job://cancelled` payload: the job stopped because somebody stopped it.
+#[derive(Debug, Clone, Serialize)]
+pub struct JobCancelled {
+    pub id: String,
 }
 
 /// Emitted once per track saved after a successful generation.
@@ -56,121 +72,103 @@ pub struct ArtSaved {
     pub file: String,
 }
 
-/// The backend and the active job pumps, held as Tauri managed state.
+/// What a cancel request did. Field names are the wire shape the queue panel
+/// already reads.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct JobCancel {
+    /// ComfyUI had the job queued or running.
+    pub found: bool,
+    /// It was pending and was removed from the queue.
+    pub queue_delete_ok: bool,
+    /// It was running and was interrupted.
+    pub interrupt_ok: bool,
+}
+
+/// The connected ComfyUI and the live job pumps, held as Tauri managed state.
 ///
-/// `comfy` is `None` until [`connect_comfy`] succeeds. `jobs` maps a prompt id
-/// to the abort handle of its monitor task, so [`cancel_job`] can stop a pump
-/// that is stuck polling (CONVENTIONS: no detached fire-and-forget loops).
-/// `pending` holds the provenance records for jobs submitted through
-/// `generate_audio` or `generate_image`; a bare `run_workflow` job has no record
-/// and is not ingested.
+/// `cancelled` remembers which prompts this app asked to stop: a pending job
+/// deleted from the queue never reaches history, so without the memory the
+/// pump could not tell "cancelled" from "lost" (COMFY-HTTP-SURFACE 6).
 #[derive(Default)]
 pub struct ComfyState {
-    comfy: RwLock<Option<Arc<LocalComfy>>>,
-    /// Serialises the check-connect-store in `ensure_connected` and
-    /// [`connect_comfy`]. Without it, two concurrent first-use commands each
-    /// see `comfy == None`, each spawn a `comfy-mcp`, and the second store
-    /// drops the first -- two console windows, one killed immediately (the
-    /// Setup view's ComfyUI and Models steps do exactly this on mount).
+    comfy: RwLock<Option<Arc<ComfyHttp>>>,
+    /// Serialises the check-probe-store in `ensure_connected`, so two
+    /// first-use commands do not probe and store twice.
     pub(crate) connect: tokio::sync::Mutex<()>,
     jobs: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
     pending: Arc<Mutex<HashMap<String, PendingOutput>>>,
+    cancelled: Arc<Mutex<HashSet<String>>>,
 }
 
 impl ComfyState {
-    /// The connected backend, or `None` before the first successful connect.
-    pub async fn connected(&self) -> Option<Arc<LocalComfy>> {
+    /// The connected client, or `None` before the first successful probe.
+    pub async fn connected(&self) -> Option<Arc<ComfyHttp>> {
         self.comfy.read().await.clone()
     }
 
-    /// Store a freshly connected backend, replacing any existing one, and
-    /// hand back the shared handle.
-    pub async fn store(&self, comfy: LocalComfy) -> Arc<LocalComfy> {
+    /// Store a freshly found client, replacing any existing one.
+    pub async fn store(&self, comfy: ComfyHttp) -> Arc<ComfyHttp> {
         let comfy = Arc::new(comfy);
         *self.comfy.write().await = Some(Arc::clone(&comfy));
         comfy
     }
 
-    /// How many pumps are running.
-    ///
-    /// Exists so a test can pin that cancelling does **not** retire one; a pump
-    /// is retired by itself, on reaching a terminal status.
-    #[cfg(test)]
-    pub(crate) fn pump_count(&self) -> usize {
-        self.jobs.lock().expect("jobs lock poisoned").len()
+    /// Forget the client, so the next use probes again.
+    pub async fn forget(&self) {
+        *self.comfy.write().await = None;
     }
 
-    /// Start the lifecycle pump for a job ComfyUI has already accepted.
-    ///
-    /// The one way a submitted job becomes `job://` events. Every submitter
-    /// calls this rather than spawning its own monitor -- a second lifecycle
-    /// would emit a second set of events for the same prompt id, and
-    /// [`cancel_job`] would only know about one of them.
+    /// Start the lifecycle pump for a job ComfyUI has accepted. The one way a
+    /// submitted job becomes `job://` events.
     pub(crate) fn pump(
         &self,
         app: AppHandle,
-        comfy: Arc<LocalComfy>,
+        comfy: Arc<ComfyHttp>,
         id: String,
         pending: Option<PendingOutput>,
         root: PathBuf,
     ) {
-        self.remember(&id, pending);
+        if let Some(p) = pending {
+            self.pending
+                .lock()
+                .expect("pending lock poisoned")
+                .insert(id.clone(), p);
+        }
         let jobs = Arc::clone(&self.jobs);
         let pending_map = Arc::clone(&self.pending);
-        let handle =
-            async_runtime::spawn(monitor_job(app, comfy, id.clone(), root, pending_map, jobs));
+        let cancelled = Arc::clone(&self.cancelled);
+        let handle = async_runtime::spawn(monitor_job(
+            app,
+            comfy,
+            id.clone(),
+            root,
+            pending_map,
+            jobs,
+            cancelled,
+        ));
         self.jobs
             .lock()
             .expect("jobs lock poisoned")
             .insert(id, handle.inner().abort_handle());
     }
-
-    /// Record a job's provenance, when it has any.
-    ///
-    /// Split out of [`ComfyState::pump`] so the rule can be tested without an
-    /// `AppHandle`: no test in this crate builds one, and reaching for
-    /// `tauri::test` would turn a one-line invariant into a new dependency
-    /// feature. `None` is a bare `run_workflow` submission, which has no
-    /// profile behind it and therefore no sidecar to write.
-    fn remember(&self, id: &str, pending: Option<PendingOutput>) {
-        if let Some(p) = pending {
-            self.pending
-                .lock()
-                .expect("pending lock poisoned")
-                .insert(id.to_string(), p);
-        }
-    }
-
-    /// The provenance record for a finished job, if it had one.
-    #[cfg(test)]
-    fn remembered(&self, id: &str) -> Option<PendingOutput> {
-        self.pending
-            .lock()
-            .expect("pending lock poisoned")
-            .get(id)
-            .cloned()
-    }
 }
 
-/// Connect to `comfy-mcp`, replacing any existing connection.
+/// Probe for ComfyUI now, replacing any existing connection.
 #[tauri::command]
 pub async fn connect_comfy(
     state: State<'_, ComfyState>,
     config_dir: State<'_, ConfigDir>,
-    bin: Option<String>,
 ) -> Result<(), String> {
-    let _guard = state.connect.lock().await;
-    let bin = bin.unwrap_or_else(|| "comfy-mcp".to_string());
-    let log = SessionLog::open(config_dir.0.join("session.log")).map_err(|e| e.to_string())?;
-    let comfy = LocalComfy::connect(&bin, log)
+    state.forget().await;
+    ensure_connected(&state, &config_dir)
         .await
-        .map_err(|e| e.to_string())?;
-    state.store(comfy).await;
-    Ok(())
+        .map(|_| ())
+        .map_err(EnsureError::into_message)
 }
 
-/// Submit a workflow and stream its lifecycle as `job://progress|done|failed`
-/// events. Returns the prompt id the events are keyed on.
+/// Submit an API-format workflow file and follow it with `job://` events.
+/// Returns the prompt id the events are keyed on. A bare run has no profile,
+/// so nothing is ingested.
 #[tauri::command]
 pub async fn run_workflow(
     app: AppHandle,
@@ -178,114 +176,199 @@ pub async fn run_workflow(
     config_dir: State<'_, ConfigDir>,
     workflow_path: String,
 ) -> Result<String, String> {
-    let comfy = state
-        .comfy
-        .read()
+    let comfy = ensure_connected(&state, &config_dir)
         .await
-        .clone()
-        .ok_or_else(|| "comfy is not connected".to_string())?;
-
-    let run = comfy
-        .run(std::path::Path::new(&workflow_path))
-        .await
-        .map_err(|e| e.to_string())?;
-    let id = run.prompt_id.clone();
+        .map_err(EnsureError::into_message)?;
+    let text =
+        std::fs::read_to_string(&workflow_path).map_err(|e| format!("{workflow_path}: {e}"))?;
+    let graph: Value = serde_json::from_str(&text).map_err(|e| format!("{workflow_path}: {e}"))?;
+    let id = comfy.submit(&graph).await.map_err(|e| e.to_string())?;
     state.pump(app, comfy, id.clone(), None, config_dir.0.clone());
     Ok(id)
 }
 
-/// Ask ComfyUI to stop a job, and report what it actually managed.
+/// Ask ComfyUI to stop a job.
 ///
-/// **The pump is deliberately left running.** Aborting it here is what made
-/// cancel look broken: comfy-cli stops the job within seconds and reports
-/// `status: "cancelled"`, but killing the monitor removed the only thing that
-/// could ever say so, leaving the row stuck on "running" for ever. The next
-/// job then ran normally beside a stale row, which reads exactly like two
-/// generations at once (MCP-SURFACE 21).
-///
-/// The pump observes the cancellation on its next poll, emits
-/// `job://cancelled`, and retires itself -- and if the cancel did **not** take,
-/// it keeps reporting the job that is still running, which is the truth.
+/// **The pump is deliberately left running**: it observes the stop on its next
+/// poll, emits `job://cancelled` and retires itself -- and if the cancel did
+/// not take, it keeps reporting the job that is still running, which is the
+/// truth (MCP-SURFACE 21).
 #[tauri::command]
 pub async fn cancel_job(state: State<'_, ComfyState>, id: String) -> Result<JobCancel, String> {
-    cancel_on(&state, &id).await
-}
-
-/// The body of [`cancel_job`], taking the state directly so a test can hold one.
-///
-/// Split out for exactly one reason: the rule that matters here is that this
-/// function **does not** retire the job's pump, and an absence of code is not
-/// something a test can reach through a `tauri::State`.
-async fn cancel_on(state: &ComfyState, id: &str) -> Result<JobCancel, String> {
     let comfy = state
-        .comfy
-        .read()
+        .connected()
         .await
-        .clone()
-        .ok_or_else(|| "comfy is not connected".to_string())?;
-    comfy.cancel_job(id).await.map_err(|e| e.to_string())
+        .ok_or_else(|| "ComfyUI is not connected. Open Setup and Retry.".to_string())?;
+    cancel_on(&comfy, &state.cancelled, &id).await
 }
 
-/// `job://cancelled` payload: the job stopped because somebody stopped it.
-#[derive(Debug, Clone, Serialize)]
-pub struct JobCancelled {
-    pub id: String,
+/// The body of [`cancel_job`]: interrupt it if running, delete it if pending,
+/// and remember the request either way.
+async fn cancel_on(
+    comfy: &ComfyHttp,
+    cancelled: &Mutex<HashSet<String>>,
+    id: &str,
+) -> Result<JobCancel, String> {
+    let queue = comfy.queue().await.map_err(|e| e.to_string())?;
+    let mut report = JobCancel::default();
+    match queue.position(id) {
+        Some(QueuePosition::Running) => {
+            report.found = true;
+            cancelled
+                .lock()
+                .expect("cancel lock")
+                .insert(id.to_string());
+            comfy.interrupt(id).await.map_err(|e| e.to_string())?;
+            report.interrupt_ok = true;
+        }
+        Some(QueuePosition::Pending) => {
+            report.found = true;
+            cancelled
+                .lock()
+                .expect("cancel lock")
+                .insert(id.to_string());
+            comfy.delete_pending(id).await.map_err(|e| e.to_string())?;
+            report.queue_delete_ok = true;
+        }
+        None => {}
+    }
+    Ok(report)
 }
 
-/// Poll a job until terminal, emitting progress for each non-terminal status.
+/// How a followed job ended.
+#[derive(Debug, PartialEq)]
+enum Terminal {
+    Done {
+        outputs: Vec<OutputRef>,
+    },
+    /// Stopped on purpose. Distinct from `Failed`: a row reading "failed" with
+    /// an error text would misreport the user's own decision back to them.
+    Cancelled,
+    Failed {
+        error: String,
+    },
+}
+
+/// Poll until the job is terminal, calling `on_status` with `pending` or
+/// `running` on every non-terminal poll.
+async fn follow(
+    comfy: &ComfyHttp,
+    id: &str,
+    was_cancelled: impl Fn() -> bool,
+    interval: Duration,
+    mut on_status: impl FnMut(&str),
+    log: Option<&SessionLog>,
+) -> Terminal {
+    let mut misses = 0u8;
+    loop {
+        let observed = observe(comfy, id).await;
+        match observed {
+            Err(e) => {
+                if let Some(log) = log {
+                    log.log_result("job_follow", false, &format!("{e:?}"));
+                }
+                return Terminal::Failed {
+                    error: transport_reason(&e),
+                };
+            }
+            Ok(Seen::InQueue(position)) => {
+                misses = 0;
+                on_status(match position {
+                    QueuePosition::Running => "running",
+                    QueuePosition::Pending => "pending",
+                });
+            }
+            Ok(Seen::Finished(outcome, outputs)) => {
+                return match outcome {
+                    Outcome::Success => Terminal::Done { outputs },
+                    Outcome::Interrupted => Terminal::Cancelled,
+                    Outcome::Failed { node_type, message } => Terminal::Failed {
+                        error: failure_reason(node_type.as_deref(), message.as_deref()),
+                    },
+                };
+            }
+            Ok(Seen::Absent) => {
+                if was_cancelled() {
+                    return Terminal::Cancelled;
+                }
+                misses += 1;
+                if misses >= LOST_AFTER_MISSES {
+                    return Terminal::Failed {
+                        error: "ComfyUI no longer has this job -- it may have restarted, or the \
+                                queue was cleared. Queue the generation again."
+                            .into(),
+                    };
+                }
+            }
+        }
+        tokio::time::sleep(interval).await;
+    }
+}
+
+/// One poll's answer.
+enum Seen {
+    InQueue(QueuePosition),
+    Finished(Outcome, Vec<OutputRef>),
+    Absent,
+}
+
+/// Queue first (cheap, and the common answer), history only when the job has
+/// left the queue.
+async fn observe(comfy: &ComfyHttp, id: &str) -> Result<Seen, ComfyError> {
+    if let Some(position) = comfy.queue().await?.position(id) {
+        return Ok(Seen::InQueue(position));
+    }
+    Ok(match comfy.history(id).await? {
+        Some(record) => Seen::Finished(record.outcome(), record.output_files()),
+        None => Seen::Absent,
+    })
+}
+
+/// Follow a job to the end, emit its terminal event, ingest its outputs.
 async fn monitor_job(
     app: AppHandle,
-    comfy: Arc<LocalComfy>,
+    comfy: Arc<ComfyHttp>,
     id: String,
     root: PathBuf,
     pending: Arc<Mutex<HashMap<String, PendingOutput>>>,
     jobs: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
+    cancelled: Arc<Mutex<HashSet<String>>>,
 ) {
-    let result = poll_until_terminal(
-        id.clone(),
+    let log = SessionLog::open(root.join("session.log")).ok();
+    let terminal = follow(
+        &comfy,
+        &id,
+        || cancelled.lock().map(|c| c.contains(&id)).unwrap_or(false),
         POLL_INTERVAL,
-        |id| {
-            let comfy = Arc::clone(&comfy);
-            async move { comfy.job_status(&id).await }
-        },
         |status| {
             let _ = app.emit(
                 "job://progress",
                 JobProgress {
                     id: id.clone(),
-                    status: status.status.clone(),
-                    outputs: status.outputs.clone(),
+                    status: status.to_string(),
+                    outputs: Vec::new(),
                 },
             );
         },
+        log.as_ref(),
     )
     .await;
 
-    match terminal_outcome(&result) {
-        TerminalOutcome::Done { outputs } => {
+    match terminal {
+        Terminal::Done { outputs } => {
             let _ = app.emit(
                 "job://done",
                 JobDone {
                     id: id.clone(),
-                    outputs,
+                    outputs: outputs.iter().map(|o| o.filename.clone()).collect(),
                 },
             );
-            ingest_if_pending(&app, &comfy, &id, &root, &pending).await;
+            ingest_if_pending(&app, &comfy, &id, &root, &pending, &outputs).await;
         }
-        TerminalOutcome::Cancelled => {
+        Terminal::Cancelled => {
             let _ = app.emit("job://cancelled", JobCancelled { id: id.clone() });
         }
-        TerminalOutcome::Failed { error } => {
-            // The row now gets a sentence, so the tool's own diagnostic -- a
-            // prompt id, two timestamps and a CLI hint -- goes where detail
-            // belongs. Moved, not deleted (MCP-SURFACE 28.2). Only the `Err`
-            // path: a node failure's detail is already in the row via
-            // `failure_reason`.
-            if let Err(e) = &result {
-                if let Ok(log) = SessionLog::open(root.join("session.log")) {
-                    log.log_result("job_status", false, &e.to_string());
-                }
-            }
+        Terminal::Failed { error } => {
             let _ = app.emit(
                 "job://failed",
                 JobFailed {
@@ -299,48 +382,40 @@ async fn monitor_job(
     if let Ok(mut p) = pending.lock() {
         p.remove(&id);
     }
+    if let Ok(mut c) = cancelled.lock() {
+        c.remove(&id);
+    }
     if let Ok(mut jobs) = jobs.lock() {
         jobs.remove(&id);
     }
 }
 
-/// Fetch outputs and turn them into tracks or artwork when there is a pending record.
+/// Download the outputs over `/view` and file them as tracks or artwork, when
+/// the job has a pending provenance record.
 async fn ingest_if_pending(
     app: &AppHandle,
-    comfy: &Arc<LocalComfy>,
+    comfy: &ComfyHttp,
     id: &str,
     root: &Path,
     pending: &Arc<Mutex<HashMap<String, PendingOutput>>>,
+    outputs: &[OutputRef],
 ) {
     let maybe_pending = pending.lock().ok().and_then(|m| m.get(id).cloned());
     let Some(p) = maybe_pending else {
         return;
     };
-
     let target_dir = match p.kind {
         ModelKind::Music => library::tracks::tracks_dir(root, &p.project_slug),
         ModelKind::Image => library::art::art_dir(root, &p.project_slug),
     };
     let target_dir = match target_dir {
         Ok(d) => d,
-        Err(e) => {
-            log_ingest_failure(app, id, root, &e.to_string());
-            return;
-        }
+        Err(e) => return log_ingest_failure(app, id, root, &e.to_string()),
     };
-    if let Err(e) = std::fs::create_dir_all(&target_dir) {
-        log_ingest_failure(app, id, root, &e.to_string());
-        return;
-    }
-
-    let batch = match comfy.outputs(id, &target_dir).await {
+    let batch = match fetch_outputs(comfy, id, &target_dir, outputs).await {
         Ok(b) => b,
-        Err(e) => {
-            log_ingest_failure(app, id, root, &e.to_string());
-            return;
-        }
+        Err(e) => return log_ingest_failure(app, id, root, &e),
     };
-
     let now = library::projects::now_rfc3339();
     match ingest_outputs(root, &p, &batch, &now, id) {
         Ok(items) => {
@@ -369,14 +444,48 @@ async fn ingest_if_pending(
                 }
             }
         }
-        Err(e) => {
-            log_ingest_failure(app, id, root, &e.to_string());
-        }
+        Err(e) => log_ingest_failure(app, id, root, &e.to_string()),
     }
 }
 
+/// Download every output into `dir` under a name unique to this job, so the
+/// library's rename into place stays on one volume and two jobs never collide.
+async fn fetch_outputs(
+    comfy: &ComfyHttp,
+    prompt_id: &str,
+    dir: &Path,
+    outputs: &[OutputRef],
+) -> Result<OutputBatch, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let stem: String = prompt_id
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(12)
+        .collect();
+    let mut files = Vec::new();
+    for (n, output) in outputs.iter().enumerate() {
+        let bytes = comfy.view(output).await.map_err(|e| e.to_string())?;
+        let name = Path::new(&output.filename)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "output".into());
+        let path = dir.join(format!(".incoming-{stem}-{n}-{name}"));
+        std::fs::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        files.push(OutputFile {
+            url: format!("{}/view ({})", comfy.base_url(), output.filename),
+            path,
+            size: bytes.len() as u64,
+        });
+    }
+    Ok(OutputBatch {
+        prompt_id: Some(prompt_id.to_string()),
+        out_dir: Some(dir.to_path_buf()),
+        files,
+    })
+}
+
 /// Log an ingest failure and re-emit it as a job failure so the row does not
-/// show Done for a track that was never saved.
+/// show Done for an asset that was never saved.
 fn log_ingest_failure(app: &AppHandle, id: &str, root: &Path, message: &str) {
     if let Ok(log) = SessionLog::open(root.join("session.log")) {
         log.log_result("ingest_outputs", false, message);
@@ -390,578 +499,262 @@ fn log_ingest_failure(app: &AppHandle, id: &str, root: &Path, message: &str) {
     );
 }
 
-/// Poll `job_status` until the job is terminal, emitting progress for each
-/// non-terminal status. Returns the terminal status, or the first poll error.
-///
-/// `poll` is the status source (a closure over `LocalComfy::job_status` in
-/// production, a canned sequence in tests); `on_update` receives each
-/// non-terminal status. Terminal statuses are returned, not emitted, so the
-/// caller can map them to their final event.
-async fn poll_until_terminal<F, Fut>(
-    id: String,
-    interval: Duration,
-    mut poll: F,
-    mut on_update: impl FnMut(&JobStatus),
-) -> Result<JobStatus, ComfyError>
-where
-    F: FnMut(String) -> Fut,
-    Fut: std::future::Future<Output = Result<JobStatus, ComfyError>>,
-{
-    loop {
-        let status = poll(id.clone()).await?;
-        if status.is_terminal() {
-            return Ok(status);
-        }
-        on_update(&status);
-        tokio::time::sleep(interval).await;
+/// The sentence a failed job's row shows. The node class leads because it says
+/// where to look; ComfyUI's traceback is never read (COMFY-HTTP-SURFACE 6).
+fn failure_reason(node_type: Option<&str>, message: Option<&str>) -> String {
+    match (node_type, message) {
+        (Some(node), Some(detail)) => format!("{node} failed: {detail}"),
+        (None, Some(detail)) => detail.to_string(),
+        (Some(node), None) => format!("{node} failed. Check the ComfyUI console for details."),
+        (None, None) => "ComfyUI reported an error. Check the ComfyUI console for details.".into(),
     }
 }
 
-/// The terminal event a finished poll sequence produces.
-#[derive(Debug, PartialEq)]
-enum TerminalOutcome {
-    Done {
-        outputs: Vec<String>,
-    },
-    /// Stopped on purpose. Distinct from `Failed` because nothing went wrong,
-    /// and a row reading "failed" with an error text would misreport the
-    /// user's own decision back to them.
-    Cancelled,
-    Failed {
-        error: String,
-    },
-}
-
-fn terminal_outcome(result: &Result<JobStatus, ComfyError>) -> TerminalOutcome {
-    match result {
-        Ok(status) if status.is_success() => TerminalOutcome::Done {
-            outputs: status.outputs.clone(),
-        },
-        Ok(status) if status.is_cancelled() => TerminalOutcome::Cancelled,
-        Ok(status) => TerminalOutcome::Failed {
-            error: failure_reason(status),
-        },
-        Err(e) => TerminalOutcome::Failed {
-            error: transport_reason(e),
-        },
-    }
-}
-
-/// The sentence a failed job's row shows.
-///
-/// **This read `error.as_str()` and nothing else until 2026-08-28**, which is
-/// correct for exactly none of the shapes comfy-cli actually sends. A real
-/// failure's payload is an *object*, so `as_str()` returned `None` and the
-/// fallback rendered the whole error as the bare word `"error"`. Every test
-/// passed, because every test was written with `error: json!("node blew up")`
-/// -- a string nobody has ever observed.
-///
-/// The three shapes, captured verbatim in `testdata/mcp/job_outcomes.json`
-/// (MCP-SURFACE 24.3):
-///
-/// - ComfyUI's raw history record: `exception_message` plus `node_type`, and
-///   **no `code` key**. This is what an ordinary node failure looks like.
-/// - comfy-cli's normalized record: `{code, message, details}`, and no
-///   `exception_message`. A cancel arrives this way -- though a cancel never
-///   reaches here, because [`TerminalOutcome::Cancelled`] catches it first.
-/// - a bare string, which the old tests assumed and which is kept because
-///   handling it costs one line and dropping it would be a guess in the other
-///   direction.
-///
-/// The node name leads because it is the actionable half: "VAEDecodeAudio
-/// failed" tells someone where to look, where a bare `RuntimeError` does not.
-/// `traceback` is deliberately never read -- twelve frames of absolute paths
-/// into the user's install (24.2).
-fn failure_reason(status: &JobStatus) -> String {
-    let Some(error) = status.error.as_ref() else {
-        return status.status.clone();
-    };
-    if let Some(text) = error.as_str() {
-        return text.to_string();
-    }
-
-    let field = |name: &str| {
-        error
-            .get(name)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
-
-    // `exception_message` first: on the one payload that carries both, it is
-    // the specific one. `message` is the normalized record's equivalent.
-    let Some(detail) = field("exception_message").or_else(|| field("message")) else {
-        return status.status.clone();
-    };
-    match field("node_type") {
-        Some(node) => format!("{node} failed: {detail}"),
-        None => detail,
-    }
-}
-
-/// The sentence a row shows when *polling* a job failed, as opposed to the job
-/// itself failing.
-///
-/// [`failure_reason`] is the equivalent for a node failure. This path had no
-/// vocabulary at all until 2026-08-29 and rendered `ComfyError::to_string()`
-/// verbatim, which put ~400 characters of tool diagnostics into a row sized for
-/// a short sentence, with the error code and the word "failed" each appearing
-/// twice (MCP-SURFACE 28.2). The doubling is structural: `ComfyError::Tool`'s
-/// Display is `"{tool} failed [{code}]: {message}"` and comfy-mcp's own message
-/// already opens with `"... comfy jobs status <id> failed [server_not_running]:
-/// ..."`. The fallback below therefore reads `message`, never `to_string()`.
-///
-/// **`server_died` is deliberately absent.** That code names exactly this event
-/// and never reaches the app: it exists only in comfy-cli's state file once the
-/// server is back, by which time this pump has retired, having emitted the
-/// transport failure instead (MCP-SURFACE 28.1). An arm for it would be dead
-/// code for the one situation it describes.
-///
-/// Only two codes are mapped and both are verified: `server_not_running` is the
-/// observed crash (28.2), `prompt_not_found` is what `job(action="status")`
-/// returns for an id the server does not know (MCP-SURFACE 437, 462). Guessing
-/// a third would guess a remedy -- `parse_error_code` already records why a
-/// wrong slug is worse than none.
-///
-/// Nothing is lost: `monitor_job` writes the full diagnostic to `session.log`
-/// before this string reaches the row.
+/// The sentence a row shows when *following* a job failed, as opposed to the
+/// job itself failing.
 fn transport_reason(error: &ComfyError) -> String {
-    match error {
-        ComfyError::Tool { code, message, .. } => match code.as_deref() {
-            Some("server_not_running") => {
-                "ComfyUI stopped while this was generating. Start ComfyUI, then queue it again."
-                    .to_string()
-            }
-            // No cause is offered. A restart is the likely one, but this
-            // project has not observed *why* an id goes missing, and a row is
-            // the wrong place to publish a guess. What to do next is known.
-            Some("prompt_not_found") => {
-                "ComfyUI has no record of this job. Queue the generation again.".to_string()
-            }
-            // Un-truncated on purpose: the actionable half of an unknown
-            // message could sit anywhere in it, and a cut diagnostic is both a
-            // worse row and a worse bug report. Dropping the wrapper is what
-            // fixes the doubling.
-            _ => message.clone(),
-        },
-        ComfyError::Transport(_) => {
-            "Lost the connection to ComfyUI. Start ComfyUI, then queue this generation again."
-                .to_string()
-        }
-        // `NotInstalled` already ends in a next step; `Spawn` and `Payload`
-        // cannot be reached by a pump polling an already-submitted job, and
-        // copy for them would be written against nothing.
-        other => other.to_string(),
+    if error.is_unreachable() {
+        "Lost the connection to ComfyUI. Start ComfyUI, then queue this generation again."
+            .to_string()
+    } else {
+        error.to_string()
     }
 }
 
 #[cfg(test)]
 mod tests {
-
-    /// Protects: cancelling leaves the job's pump running.
-    ///
-    /// This is the defect a producer found by pressing the button, and the one
-    /// that made cancel look completely broken. comfy-cli stops the job within
-    /// seconds and reports `status: "cancelled"` -- but this command used to
-    /// abort the monitor task, which was **the only thing that could ever say
-    /// so**. The row froze on "running" for ever, and the next job ran normally
-    /// beside it, which reads as two generations at once (MCP-SURFACE 21).
-    ///
-    /// The pump retires itself on a terminal status. Nothing else may retire
-    /// it, because nothing else knows whether the cancel actually took.
-    #[tokio::test]
-    async fn test_cancelling_does_not_retire_the_pump() {
-        use mcp_bridge::mock::Reply;
-        use mcp_bridge::test_helpers::client_and_log;
-
-        let (comfy, _calls) = client_and_log(vec![Reply::Json(serde_json::json!({
-            "found": true,
-            "queue_delete_ok": true,
-            "interrupt_ok": true
-        }))])
-        .await;
-
-        let state = ComfyState::default();
-        state.store(comfy).await;
-        let handle = async_runtime::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await;
-        });
-        state
-            .jobs
-            .lock()
-            .expect("jobs lock poisoned")
-            .insert("p-1".to_string(), handle.inner().abort_handle());
-        assert_eq!(state.pump_count(), 1);
-
-        let cancelled = cancel_on(&state, "p-1").await.expect("the call succeeds");
-
-        assert!(cancelled.interrupt_ok);
-        assert_eq!(
-            state.pump_count(),
-            1,
-            "the pump must survive to report the cancellation"
-        );
-        assert!(
-            !handle.inner().is_finished(),
-            "the monitor task must not have been aborted"
-        );
-    }
-
-    /// Protects: the three booleans reach the caller instead of being dropped.
-    ///
-    /// The command used to return `Ok(())` whatever came back, so a cancel that
-    /// found nothing was indistinguishable from one that stopped a run.
-    #[tokio::test]
-    async fn test_a_cancel_that_found_nothing_says_so() {
-        use mcp_bridge::mock::Reply;
-        use mcp_bridge::test_helpers::client_and_log;
-
-        let (comfy, _calls) = client_and_log(vec![Reply::Json(serde_json::json!({
-            "found": false,
-            "queue_delete_ok": false,
-            "interrupt_ok": false
-        }))])
-        .await;
-        let state = ComfyState::default();
-        state.store(comfy).await;
-
-        let cancelled = cancel_on(&state, "gone").await.expect("the call succeeds");
-
-        assert!(!cancelled.found);
-        assert!(!cancelled.interrupt_ok);
-    }
-
-    /// Protects: a bare `run_workflow` job growing a provenance record.
-    ///
-    /// `run_workflow` submits a workflow with no profile behind it, so there is
-    /// nothing to write a sidecar from -- and inventing one would file a track
-    /// under a model that never ran. The `Option` states that in the type; this
-    /// asserts the type is actually honoured.
-    ///
-    /// Tests [`ComfyState::remember`] rather than [`ComfyState::pump`]: pump
-    /// needs an `AppHandle`, no test in this crate builds one, and enabling
-    /// `tauri`'s `test` feature to reach a one-line rule would be a dependency
-    /// change made in service of a test.
-    #[test]
-    fn test_a_bare_run_workflow_job_has_no_pending_record() {
-        let state = ComfyState::default();
-
-        state.remember("bare", None);
-        assert!(
-            state.remembered("bare").is_none(),
-            "a job with no profile must not be remembered"
-        );
-
-        state.remember("generated", Some(sample_pending()));
-        assert!(
-            state.remembered("generated").is_some(),
-            "a generated job must be remembered, or its provenance is lost"
-        );
-    }
-
-    /// A minimal pending record; only its presence is under test here.
-    fn sample_pending() -> PendingOutput {
-        PendingOutput {
-            project_slug: "night-drive".to_string(),
-            profile_id: "ace-step-1.5-turbo".to_string(),
-            profile_display_name: "ACE-Step 1.5 XL Turbo".to_string(),
-            model_license: "Apache-2.0".to_string(),
-            template: None,
-            spec: create_core::generation::GenerationSpec {
-                title: None,
-                profile_id: "ace-step-1.5-turbo".to_string(),
-                inputs: Default::default(),
-                loras: Vec::new(),
-                lyrics: None,
-            },
-            resolved_slots: Default::default(),
-            comfy: None,
-            kind: ModelKind::Music,
-        }
-    }
-
-    /// Protects: a cancelled poll result becomes a cancellation, not a failure.
-    ///
-    /// The queue row is the only place a user learns what happened, and
-    /// "failed" beside an error string reports their own decision back to them
-    /// as a fault.
-    #[test]
-    fn test_a_cancelled_status_is_its_own_outcome() {
-        let cancelled: JobStatus = serde_json::from_value(serde_json::json!({
-            "prompt_id": "p-1",
-            "status": "cancelled",
-            "outputs": [],
-            "error": { "code": "cancelled", "message": "Job was interrupted/cancelled." }
-        }))
-        .expect("decodes");
-
-        assert_eq!(terminal_outcome(&Ok(cancelled)), TerminalOutcome::Cancelled);
-    }
-
-    /// Protects: a real failure is still a failure, carrying its reason.
-    #[test]
-    fn test_a_failed_status_still_carries_its_error() {
-        let failed: JobStatus = serde_json::from_value(serde_json::json!({
-            "prompt_id": "p-1", "status": "failed", "outputs": [], "error": "node blew up"
-        }))
-        .expect("decodes");
-
-        assert_eq!(
-            terminal_outcome(&Ok(failed)),
-            TerminalOutcome::Failed {
-                error: "node blew up".to_string()
-            }
-        );
-    }
-
-    /// Every job outcome this project has observed, captured verbatim.
-    const OUTCOMES: &str = include_str!("../../testdata/mcp/job_outcomes.json");
-
-    /// The `error` object ComfyUI really sent for the deliberate failure of
-    /// MCP-SURFACE 24, read out of the committed capture rather than retyped.
-    fn captured_execution_error() -> Value {
-        let outcomes: Value = serde_json::from_str(OUTCOMES).expect("the capture decodes");
-        outcomes["execution_error"]["action_status_error_object"].clone()
-    }
-
-    /// Protects: the payload the server actually sends produces a sentence a
-    /// person can act on.
-    ///
-    /// **This is the test that was missing.** `failure_reason` read
-    /// `error.as_str()`, which is `None` for every real failure, so the whole
-    /// message rendered as the bare word `"error"` -- and the suite was green
-    /// throughout, because its only fixture was a hand-written string.
-    #[test]
-    fn test_a_real_execution_error_names_the_node_and_the_exception() {
-        let failed = JobStatus {
-            prompt_id: Some("p-1".to_string()),
-            status: "error".to_string(),
-            workflow_size: None,
-            outputs: vec![],
-            outputs_by_node: Default::default(),
-            error: Some(captured_execution_error()),
-        };
-
-        let reason = failure_reason(&failed);
-        assert_eq!(
-            reason,
-            "VAEDecodeAudio failed: shape '[2, 64, 250]' is invalid for input of size 16000"
-        );
-        // The bug in one assertion: the fallback must not be what comes out.
-        assert_ne!(reason, "error");
-        assert!(
-            !reason.contains("Comfy-Installs"),
-            "no traceback, and no absolute paths into the user's install: {reason}"
-        );
-    }
-
-    /// Protects: comfy-cli's *other* error shape still yields its message.
-    ///
-    /// It has no `exception_message` and no `node_type`, so a reader that only
-    /// knows the ComfyUI shape falls through to the status string here.
-    #[test]
-    fn test_the_normalized_error_shape_yields_its_message() {
-        let failed = JobStatus {
-            prompt_id: Some("p-1".to_string()),
-            status: "error".to_string(),
-            workflow_size: None,
-            outputs: vec![],
-            outputs_by_node: Default::default(),
-            error: Some(json!({
-                "code": "execution_error", "message": "the node blew up", "details": {}
-            })),
-        };
-        assert_eq!(failure_reason(&failed), "the node blew up");
-    }
-
-    /// Protects: an error payload carrying nothing sayable falls back to the
-    /// status rather than rendering an empty row.
-    #[test]
-    fn test_an_unreadable_error_payload_falls_back_to_the_status() {
-        let failed = JobStatus {
-            prompt_id: Some("p-1".to_string()),
-            status: "error".to_string(),
-            workflow_size: None,
-            outputs: vec![],
-            outputs_by_node: Default::default(),
-            error: Some(json!({ "details": {}, "exception_message": "   " })),
-        };
-        assert_eq!(failure_reason(&failed), "error");
-    }
     use super::*;
-    use serde_json::json;
+    use comfy_bridge::transport::{FakeTransport, Method, TransportError};
+    use std::cell::RefCell;
 
-    fn job_status(status: &str, error: Option<&str>) -> JobStatus {
-        JobStatus {
-            prompt_id: Some("id".to_string()),
-            status: status.to_string(),
-            workflow_size: None,
-            outputs: vec![],
-            outputs_by_node: Default::default(),
-            error: error.map(|e| json!(e)),
+    fn fixture(name: &str) -> Value {
+        let path = format!(
+            "{}/../testdata/comfy-http/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("JSON")
+    }
+
+    fn queue_with(running: &[&str], pending: &[&str]) -> Value {
+        let item = |id: &&str| serde_json::json!([1, id, {}, {}, []]);
+        serde_json::json!({
+            "queue_running": running.iter().map(item).collect::<Vec<_>>(),
+            "queue_pending": pending.iter().map(item).collect::<Vec<_>>(),
+        })
+    }
+
+    /// A captured history record re-keyed to `id`.
+    fn history_as(name: &str, id: &str) -> Value {
+        let value = fixture(name);
+        let record = value
+            .as_object()
+            .expect("obj")
+            .values()
+            .next()
+            .expect("record")
+            .clone();
+        serde_json::json!({ id: record })
+    }
+
+    fn client(fake: &Arc<FakeTransport>) -> ComfyHttp {
+        ComfyHttp::with_transport("127.0.0.1:8188", fake.clone(), None)
+    }
+
+    async fn run(fake: &Arc<FakeTransport>, cancelled: bool) -> (Terminal, Vec<String>) {
+        let seen = RefCell::new(Vec::new());
+        let terminal = follow(
+            &client(fake),
+            "job-1",
+            || cancelled,
+            Duration::ZERO,
+            |s| seen.borrow_mut().push(s.to_string()),
+            None,
+        )
+        .await;
+        (terminal, seen.into_inner())
+    }
+
+    /// Protects: a job is reported pending, then running, then done with the
+    /// outputs history lists -- from the real success record.
+    #[tokio::test]
+    async fn test_follow_reports_pending_running_then_done() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(Method::Get, "/queue", &queue_with(&["other"], &["job-1"]));
+        fake.on_json(Method::Get, "/queue", &queue_with(&["job-1"], &[]));
+        fake.on_json(Method::Get, "/queue", &queue_with(&[], &[]));
+        fake.on_json(
+            Method::Get,
+            "/history/job-1",
+            &history_as("history_audio_success.json", "job-1"),
+        );
+        let (terminal, seen) = run(&fake, false).await;
+        assert_eq!(seen, ["pending", "running"]);
+        match terminal {
+            Terminal::Done { outputs } => assert!(outputs[0].filename.ends_with(".flac")),
+            other => panic!("expected Done, got {other:?}"),
         }
     }
 
+    /// Protects: an interrupted job is a cancel, never a failure, even though
+    /// ComfyUI records it with `status_str: "error"`.
     #[tokio::test]
-    async fn test_poll_emits_non_terminal_and_returns_terminal() {
-        let seq = vec![
-            job_status("running", None),
-            job_status("running", None),
-            job_status("completed", None),
-        ];
-        let seq = std::sync::Mutex::new(seq.into_iter());
-        let mut emitted = Vec::new();
-
-        let result = poll_until_terminal(
-            "id".to_string(),
-            Duration::from_millis(1),
-            |_| {
-                let next = seq
-                    .lock()
-                    .expect("seq lock")
-                    .next()
-                    .expect("ran out of canned statuses");
-                async move { Ok(next) }
-            },
-            |s| emitted.push(s.status.clone()),
-        )
-        .await;
-
-        assert_eq!(result.expect("polls Ok").status, "completed");
-        assert_eq!(emitted, vec!["running".to_string(), "running".to_string()]);
+    async fn test_follow_reads_an_interrupt_as_cancelled() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(Method::Get, "/queue", &queue_with(&[], &[]));
+        fake.on_json(
+            Method::Get,
+            "/history/job-1",
+            &history_as("history_interrupted.json", "job-1"),
+        );
+        assert_eq!(run(&fake, false).await.0, Terminal::Cancelled);
     }
 
-    /// Protects: a first-poll terminal status must not be emitted as progress --
-    /// it goes to the terminal event instead.
+    /// Protects: a deleted pending job never reaches history; the remembered
+    /// cancel is what makes it read as cancelled rather than lost.
     #[tokio::test]
-    async fn test_poll_terminal_immediately_emits_nothing() {
-        let mut emitted = 0;
-        let result = poll_until_terminal(
-            "id".to_string(),
-            Duration::from_millis(1),
-            |_| async move { Ok(job_status("completed", None)) },
-            |_| emitted += 1,
-        )
-        .await;
-
-        assert!(result.expect("polls Ok").is_success());
-        assert_eq!(emitted, 0);
+    async fn test_follow_reads_a_vanished_cancelled_job_as_cancelled() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(Method::Get, "/queue", &queue_with(&[], &[]));
+        fake.on(Method::Get, "/history/job-1", 200, "{}");
+        assert_eq!(run(&fake, true).await.0, Terminal::Cancelled);
     }
 
-    /// Protects: a poll error is returned, not swallowed -- the caller maps it
-    /// to a failed event rather than polling forever.
+    /// Protects: a job that vanishes without a cancel is reported lost with a
+    /// next step, after exactly three misses -- not on the first.
     #[tokio::test]
-    async fn test_poll_error_returns_the_error() {
-        let result = poll_until_terminal(
-            "id".to_string(),
-            Duration::from_millis(1),
-            |_| async move { Err(ComfyError::Transport("closed".to_string())) },
-            |_| {},
-        )
-        .await;
-
-        assert!(result.is_err());
+    async fn test_follow_reports_a_vanished_job_lost_after_three_misses() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(Method::Get, "/queue", &queue_with(&[], &[]));
+        fake.on(Method::Get, "/history/job-1", 200, "{}");
+        match run(&fake, false).await.0 {
+            Terminal::Failed { error } => {
+                assert!(error.contains("Queue the generation again"), "{error}")
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+        let history_polls = fake
+            .call_lines()
+            .iter()
+            .filter(|l| l.contains("/history"))
+            .count();
+        assert_eq!(history_polls, 3);
     }
 
-    #[test]
-    fn test_terminal_outcome_maps_completed_to_done() {
-        let outcome = terminal_outcome(&Ok(job_status("completed", None)));
-        assert_eq!(outcome, TerminalOutcome::Done { outputs: vec![] });
+    #[tokio::test]
+    async fn test_follow_names_the_failing_node() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(Method::Get, "/queue", &queue_with(&[], &[]));
+        fake.on_json(
+            Method::Get,
+            "/history/job-1",
+            &history_as("history_node_error.json", "job-1"),
+        );
+        match run(&fake, false).await.0 {
+            Terminal::Failed { error } => {
+                assert!(
+                    error.starts_with("LoraLoaderModelOnly failed: The safetensors header"),
+                    "{error}"
+                );
+                assert!(!error.contains("Traceback"));
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
     }
 
-    #[test]
-    fn test_terminal_outcome_maps_error_status_to_failed() {
-        let outcome = terminal_outcome(&Ok(job_status("error", Some("node failed"))));
+    /// Protects: ComfyUI dying mid-job gives one sentence with a next step.
+    #[tokio::test]
+    async fn test_follow_turns_a_dead_server_into_a_next_step() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.fail(
+            Method::Get,
+            "/queue",
+            TransportError::Connect("refused".into()),
+        );
+        match run(&fake, false).await.0 {
+            Terminal::Failed { error } => assert_eq!(
+                error,
+                "Lost the connection to ComfyUI. Start ComfyUI, then queue this generation again."
+            ),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    /// Protects: cancel interrupts a running job and deletes a pending one, and
+    /// remembers both -- the memory is what `follow` reads.
+    #[tokio::test]
+    async fn test_cancel_routes_by_queue_position_and_remembers() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(Method::Get, "/queue", &queue_with(&["run-1"], &["wait-2"]));
+        fake.on(Method::Post, "/interrupt", 200, "");
+        fake.on(Method::Post, "/queue", 200, "");
+        let comfy = client(&fake);
+        let memory = Mutex::new(HashSet::new());
+
+        let running = cancel_on(&comfy, &memory, "run-1").await.expect("ok");
         assert_eq!(
-            outcome,
-            TerminalOutcome::Failed {
-                error: "node failed".to_string()
+            running,
+            JobCancel {
+                found: true,
+                queue_delete_ok: false,
+                interrupt_ok: true
             }
         );
+        let waiting = cancel_on(&comfy, &memory, "wait-2").await.expect("ok");
+        assert_eq!(
+            waiting,
+            JobCancel {
+                found: true,
+                queue_delete_ok: true,
+                interrupt_ok: false
+            }
+        );
+        let gone = cancel_on(&comfy, &memory, "gone").await.expect("ok");
+        assert!(!gone.found);
+
+        let memory = memory.into_inner().expect("lock");
+        assert!(memory.contains("run-1") && memory.contains("wait-2") && !memory.contains("gone"));
+        assert!(fake.call_lines().contains(&"POST /interrupt".to_string()));
     }
 
-    /// Protects: a poll error is a terminal ending, not a hang.
-    ///
-    /// **Updated by T-315, not replaced.** It used to assert the row contained
-    /// `"closed"` -- the raw transport string -- which is exactly the
-    /// behaviour T-315 removes. What it has always really protected is that
-    /// `Err` reaches `Failed` at all, and that is still worth a test.
+    /// Protects: outputs are downloaded over `/view` into the target directory
+    /// under job-unique names, ready for the library's rename.
+    #[tokio::test]
+    async fn test_fetch_outputs_downloads_each_file_over_view() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let fake = Arc::new(FakeTransport::new());
+        fake.on(
+            Method::Get,
+            "/view?filename=ace_00001.flac&subfolder=latentcreate_probe&type=output",
+            200,
+            "fLaC-bytes",
+        );
+        let output = OutputRef {
+            node_id: "111".into(),
+            kind: "audio".into(),
+            filename: "ace_00001.flac".into(),
+            subfolder: "latentcreate_probe".into(),
+            file_type: "output".into(),
+        };
+        let batch = fetch_outputs(&client(&fake), "abc-123", dir.path(), &[output])
+            .await
+            .expect("fetched");
+        assert_eq!(batch.files.len(), 1);
+        let file = &batch.files[0];
+        assert!(
+            file.path.ends_with(".incoming-abc123-0-ace_00001.flac"),
+            "{:?}",
+            file.path
+        );
+        assert_eq!(std::fs::read(&file.path).expect("read"), b"fLaC-bytes");
+        assert_eq!(file.size, 10);
+    }
+
     #[test]
-    fn test_terminal_outcome_maps_poll_error_to_failed() {
-        let outcome = terminal_outcome(&Err(ComfyError::Transport("closed".to_string())));
-        assert!(matches!(
-            outcome,
-            TerminalOutcome::Failed { error } if error.contains("Start ComfyUI")
-        ));
-    }
-
-    /// The message a real crash actually produced, as recorded in MCP-SURFACE
-    /// 28.2. A short stand-in here is how `failure_reason` shipped a bug that
-    /// every one of its tests passed.
-    const CRASH_MESSAGE: &str = "Error executing tool job: comfy jobs status \
-d3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe failed [server_not_running]: ComfyUI not running on \
-127.0.0.1:8188 - job d3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe was 'running' when the server was \
-last seen (submitted 2026-08-29T07:49:09+00:00, last update 2026-08-29T07:49:27+00:00). The \
-server may have died while executing it (e.g. killed by the OS on an out-of-memory \
-allocation). hint: run: comfy launch - then check `comfy jobs ls` for the job's last recorded \
-state";
-
-    fn tool_error(code: &str, message: &str) -> ComfyError {
-        ComfyError::Tool {
-            tool: "job".to_string(),
-            code: Some(code.to_string()),
-            message: message.to_string(),
-        }
-    }
-
-    /// Protects: the row a person reads after a crash is a sentence, not the
-    /// tool's diagnostics.
-    ///
-    /// The producer closed ComfyUI mid-generation on 2026-08-29 and got ~400
-    /// characters with the code and the word "failed" doubled. CONVENTIONS
-    /// requires a user-facing error to say what to do next.
-    #[test]
-    fn test_a_crash_mid_job_says_what_to_do() {
-        let reason = transport_reason(&tool_error("server_not_running", CRASH_MESSAGE));
-
-        assert!(reason.contains("Start ComfyUI"), "{reason}");
-        assert!(!reason.contains("server_not_running"), "{reason}");
-        assert!(!reason.contains("comfy jobs status"), "{reason}");
-    }
-
-    /// Protects: even for a code we do not map, the wrapper never repeats what
-    /// the payload already said. comfy-mcp's message opens with the code and
-    /// `ComfyError::Tool`'s Display prepends it again.
-    #[test]
-    fn test_an_unknown_tool_code_shows_the_message_without_the_wrapper() {
-        let reason = transport_reason(&tool_error("something_new", "the engine said no"));
-
-        assert_eq!(reason, "the engine said no");
-    }
-
-    /// Protects: the second verified failure of this poll is mapped too, and
-    /// no job id leaks into the row.
-    #[test]
-    fn test_prompt_not_found_says_to_queue_it_again() {
-        let reason = transport_reason(&tool_error(
-            "prompt_not_found",
-            "No prompt with id 'd3715c6b-92a0-4f1b-ad3b-104e2d0cb7fe' on 127.0.0.1:8188",
-        ));
-
-        assert!(reason.contains("Queue the generation again"), "{reason}");
-        assert!(!reason.contains("d3715c6b"), "{reason}");
-    }
-
-    /// Protects: the MCP session dying is a user-facing error too, not an
-    /// rmcp string.
-    #[test]
-    fn test_a_lost_connection_says_what_to_do() {
-        let reason = transport_reason(&ComfyError::Transport(
-            "service cancelled: transport closed".to_string(),
-        ));
-
-        assert!(reason.contains("Start ComfyUI"), "{reason}");
-        assert!(!reason.contains("transport closed"), "{reason}");
+    fn test_failure_reason_always_ends_in_something_to_do() {
+        assert_eq!(
+            failure_reason(Some("VAEDecode"), Some("out of memory")),
+            "VAEDecode failed: out of memory"
+        );
+        assert!(failure_reason(None, None).contains("ComfyUI console"));
     }
 }

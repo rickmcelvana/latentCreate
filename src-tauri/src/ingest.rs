@@ -1,16 +1,38 @@
 //! Ingest finished ComfyUI outputs as tracks or artwork with provenance sidecars.
 //!
-//! Keeps every MCP call out of this module: tests run on real temp files with
-//! no transport.
+//! Keeps every ComfyUI call out of this module: the job pump downloads the
+//! outputs over `/view` first, and tests run on real temp files with no
+//! transport.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use create_core::generation::{GenerationSpec, ResolvedSlots};
 use create_core::profile::ModelKind;
 use create_core::project::{ArtId, Project, TrackId};
 use create_core::provenance::{Artwork, ComfyServerInfo, Provenance, Track};
-use mcp_bridge::{OutputBatch, OutputFile};
 use thiserror::Error;
+
+/// One output file, already downloaded next to its destination.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputFile {
+    /// Where it came from, for the session log.
+    pub url: String,
+    /// The downloaded file, on the same volume as the library.
+    pub path: PathBuf,
+    /// Bytes downloaded.
+    pub size: u64,
+}
+
+/// A finished job's downloaded outputs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputBatch {
+    /// The job they came from.
+    pub prompt_id: Option<String>,
+    /// The directory they were downloaded into.
+    pub out_dir: Option<PathBuf>,
+    /// The files, in the order ComfyUI listed them.
+    pub files: Vec<OutputFile>,
+}
 
 /// Everything a finished job needs to become a track or artwork, captured when it
 /// was submitted.
@@ -291,7 +313,6 @@ mod tests {
     use super::*;
     use create_core::generation::{InputValue, LoraRef, LyricDocId, LyricRef};
     use create_core::profile::SlotAddress;
-    use mcp_bridge::OutputFile;
     use std::collections::BTreeMap;
 
     const NOW: &str = "2026-08-25T20:11:04Z";

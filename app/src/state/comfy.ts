@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { comfyLaunch, comfyStatus, isTauri, type ComfyStatus } from '../bridge/comfy'
+import { comfyStatus, isTauri, type ComfyStatus } from '../bridge/comfy'
 
 /** How the pill should read for a given status. */
 export interface PillView {
@@ -23,28 +23,24 @@ export function pillFor(status: ComfyStatus | null): PillView {
     return { tone: 'neutral', label: 'Checking ComfyUI...', nextStep: null }
   }
   switch (status.state) {
-    case 'not_installed':
+    case 'not_found':
       return {
         tone: 'warn',
-        label: 'comfy-mcp not found',
-        nextStep: `Run ${status.install_command}, then Retry.`,
+        label: 'ComfyUI not found',
+        nextStep: status.configured
+          ? `Nothing answered at ${status.tried.join(' or ')}. Check that ComfyUI is running there and the address is right, then Retry.`
+          : `Nothing answered at ${status.tried.join(' or ')}. Start ComfyUI, then Retry -- or enter its address below.`,
       }
     case 'unreachable':
       return {
         tone: 'warn',
         label: 'ComfyUI unreachable',
-        nextStep: `${status.detail} Check the install, then Retry.`,
-      }
-    case 'server_down':
-      return {
-        tone: 'warn',
-        label: 'ComfyUI is not running',
-        nextStep: 'Start ComfyUI, then Retry.',
+        nextStep: `${status.detail} Check the address, then Retry.`,
       }
     case 'ready':
       return {
         tone: 'ok',
-        label: status.url === null ? 'ComfyUI ready' : `ComfyUI ready at ${status.url}`,
+        label: `ComfyUI ready at ${status.url}`,
         nextStep: null,
       }
   }
@@ -53,7 +49,7 @@ export function pillFor(status: ComfyStatus | null): PillView {
 /**
  * Total VRAM as a short human string, or null when it is unknown.
  *
- * Unknown stays unknown: comfy-cli does not always report a GPU, and showing
+ * Unknown stays unknown: a CPU-only ComfyUI reports no GPU, and showing
  * `0 GB` on a working machine reads as a broken app. GiB, because that is what
  * every GPU tool shows -- 17102733312 bytes is a "16 GB" card at 15.9 GiB.
  */
@@ -64,31 +60,21 @@ export function formatVram(bytes: number | null): string | null {
 
 interface ComfyState {
   status: ComfyStatus | null
-  /** True while a status or launch call is in flight. */
+  /** True while a probe is in flight. */
   busy: boolean
-  refresh: () => Promise<void>
-  launch: () => Promise<void>
+  /** Probe `url` if given, else the configured address or the local defaults. */
+  refresh: (url?: string) => Promise<void>
 }
 
 export const useComfyStore = create<ComfyState>((set) => ({
   status: null,
   busy: false,
 
-  refresh: async () => {
+  refresh: async (url?: string) => {
     if (!isTauri()) return
     set({ busy: true })
     try {
-      set({ status: await comfyStatus() })
-    } finally {
-      set({ busy: false })
-    }
-  },
-
-  launch: async () => {
-    if (!isTauri()) return
-    set({ busy: true })
-    try {
-      set({ status: await comfyLaunch() })
+      set({ status: await comfyStatus(url) })
     } finally {
       set({ busy: false })
     }

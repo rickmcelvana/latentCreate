@@ -147,7 +147,7 @@ export function approvedFill(
  * Why Generate is off, as sentences the user reads. Empty means go.
  *
  * **ComfyUI being disconnected is deliberately not here.** `generate_audio`
- * calls `ensure_connected`, which starts comfy-mcp itself, so refusing on a
+ * calls `ensure_connected`, which finds ComfyUI itself, so refusing on a
  * disconnected state would leave the button dead on every cold start -- and if
  * ComfyUI itself is down, the command's own error is what says so, accurately,
  * rather than this guessing ahead of it.

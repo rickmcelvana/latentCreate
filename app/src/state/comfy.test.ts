@@ -2,18 +2,19 @@ import { describe, expect, it } from 'vitest'
 import type { ComfyStatus } from '../bridge/comfy'
 import { formatVram, pillFor } from './comfy'
 
+const DEFAULTS = ['http://127.0.0.1:8188', 'http://127.0.0.1:8000']
+
 /** Every state the backend can report, so the sweep below cannot go stale. */
 const ALL_STATES: ComfyStatus[] = [
-  { state: 'not_installed', install_command: 'pip install comfy-mcp' },
-  { state: 'unreachable', detail: 'connection closed.' },
-  { state: 'server_down', workspace: 'C:/Comfy/ComfyUI' },
+  { state: 'not_found', tried: DEFAULTS, configured: false },
+  { state: 'not_found', tried: ['http://gpu-box:8188'], configured: true },
+  { state: 'unreachable', url: 'http://127.0.0.1:8000', detail: 'That is not a ComfyUI.' },
   {
     state: 'ready',
     url: 'http://127.0.0.1:8188',
     vram_bytes: 17102733312,
-    workspace: 'C:/Comfy/ComfyUI',
-    comfy_cli_version: '1.16.0',
-    update_available: true,
+    comfyui_version: '0.45.2',
+    local: true,
   },
 ]
 
@@ -37,16 +38,31 @@ describe('pillFor', () => {
     }
   })
 
-  /** Protects: the install command reaches the user verbatim, so it is copyable. */
-  it('quotes the install command when comfy-mcp is missing', () => {
-    const pill = pillFor({ state: 'not_installed', install_command: 'pip install comfy-mcp' })
-    expect(pill.nextStep).toContain('pip install comfy-mcp')
+  /**
+   * Protects: the state the owner's other PCs were in. Nothing listening names
+   * every address tried and says to start ComfyUI -- or where to type its
+   * address when it lives somewhere else.
+   */
+  it('names every address tried when nothing answered', () => {
+    const pill = pillFor(ALL_STATES[0])
+    expect(pill.label).toBe('ComfyUI not found')
+    for (const url of DEFAULTS) expect(pill.nextStep).toContain(url)
+    expect(pill.nextStep).toContain('Start ComfyUI')
+    expect(pill.nextStep).toContain('address')
+  })
+
+  /** Protects: a configured address that does not answer says to check it,
+   * not to start ComfyUI on this machine. */
+  it('points at the configured address when only it was tried', () => {
+    const pill = pillFor(ALL_STATES[1])
+    expect(pill.nextStep).toContain('http://gpu-box:8188')
+    expect(pill.nextStep).toContain('address is right')
   })
 
   /** Protects: the reason a connection failed is not swallowed. */
   it('carries the failure detail when unreachable', () => {
-    const pill = pillFor({ state: 'unreachable', detail: 'spawn failed.' })
-    expect(pill.nextStep).toContain('spawn failed.')
+    const pill = pillFor(ALL_STATES[2])
+    expect(pill.nextStep).toContain('That is not a ComfyUI.')
   })
 
   /** Protects: the ready pill names where ComfyUI is, so a user running two
@@ -68,9 +84,9 @@ describe('pillFor', () => {
 
 describe('formatVram', () => {
   /**
-   * Protects: unknown stays unknown. comfy-cli does not always report a GPU,
-   * and rendering that absence as `0.0 GiB` puts a hardware warning on a
-   * perfectly working machine.
+   * Protects: unknown stays unknown. A CPU-only ComfyUI reports no GPU, and
+   * rendering that absence as `0.0 GiB` puts a hardware warning on a perfectly
+   * working machine.
    */
   it('returns null for unknown or zero, never a zero reading', () => {
     expect(formatVram(null)).toBeNull()

@@ -71,7 +71,7 @@ export interface Submission {
  * `run_workflow`, and `applyJobEvent` drops events for ids the store does not
  * know about.
  *
- * This connects to comfy-mcp on its own if nothing is connected yet, so there
+ * This finds ComfyUI on its own if nothing is connected yet, so there
  * is no need to connect first, and no reason to gate the button on it.
  */
 export async function generateAudio(spec: GenerationSpec): Promise<Submission> {

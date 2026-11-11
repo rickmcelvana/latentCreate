@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A ComfyUI workflow slot address: `"<node_id>.<input_name>"` (e.g. `"94.tags"`),
-/// or `"<subgraph>/<node>.<input>"` for subgraph interiors. Produced by
-/// `list_workflow_slots`; see docs/MCP-SURFACE.md section 2.
+/// or `"<parent>:<child>.<input>"` for flattened subgraph interiors, as they
+/// appear in an Export (API) file; see docs/COMFY-HTTP-SURFACE.md.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SlotAddress(pub String);
@@ -181,16 +181,14 @@ fn default_true() -> bool {
 
 /// One model file this profile needs present in ComfyUI.
 ///
-/// **Declared, not derived.** comfy-mcp has no tool that answers "which model
-/// files does this workflow need": `workflow_deps` maps node classes to node
-/// *packs*, and `node_dependencies` checks a pack's *Python* requirements
-/// against the venv. The only signal is `local_check`'s prose errors --
-/// `"node 104: 'acestep_v1.5_xl_turbo_bf16.safetensors' not in 2 known options
-/// for unet_name"` -- and parsing English to decide whether to start a
-/// multi-gigabyte download is not something this app will do (MCP-SURFACE 14).
+/// **Declared, not derived.** ComfyUI has no route that answers "which model
+/// files does this workflow need"; the only signal is `/prompt`'s validation
+/// prose -- `"'acestep_v1.5_xl_turbo_bf16.safetensors' not in list"` -- and
+/// parsing English to decide whether to start a multi-gigabyte download is not
+/// something this app will do.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelFileSpec {
-    /// Exact name, as ComfyUI lists it in `search_models(folder=)`. Compared
+    /// Exact name, as ComfyUI lists it in `/models/{folder}`. Compared
     /// verbatim: this is the string the workflow's enum slot holds.
     ///
     /// ComfyUI reports nested models as a relative path with the OS-native
@@ -217,13 +215,16 @@ pub struct ModelFileSpec {
 /// How this profile reaches ComfyUI.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ComfySpec {
-    /// Gallery template name, e.g. `"audio_ace_step1_5_xl_turbo"`.
+    /// The ComfyUI gallery template this workflow was converted from, e.g.
+    /// `"audio_ace_step1_5_xl_turbo"`. **Informational**: recorded in provenance,
+    /// never fetched -- the workflow ships beside the profile (T-519).
     #[serde(default)]
     pub template: Option<String>,
-    /// Path to a user-imported **frontend-format** workflow, when the profile does not
-    /// use a gallery template. Not API format: `list_workflow_slots` refuses an API
-    /// export, and slots are the whole parameter mechanism, so an API-format import
-    /// would offer nothing to map (MCP-SURFACE 29, which corrected ARCHITECTURE 5b).
+    /// The **API-format** workflow this profile writes into, relative to the
+    /// directory the profile was loaded from (`workflows/<id>.json`); an absolute
+    /// path also works. Required to generate. API format because it is what
+    /// ComfyUI executes and what **Export (API)** produces, and because in it every
+    /// slot write is checkable by reading the graph (ARCHITECTURE 3a, 5b).
     #[serde(default)]
     pub workflow: Option<String>,
     /// Rough VRAM floor in gibibytes. **Advisory only -- nothing compares it to the
@@ -233,10 +234,10 @@ pub struct ComfySpec {
     /// measures the card rather than the model (MCP-SURFACE 30.3).
     #[serde(default)]
     pub vram_gb_min: Option<u32>,
-    /// Slot values pinned by the profile, applied to the fetched template before
+    /// Slot values pinned by the profile, applied to its workflow before
     /// the user's inputs. This is how a profile targets a specific checkpoint
     /// variant: MiniMax Music 3's template hardcodes the fp16 DiT, so the profile
-    /// overrides `37/6.unet_name` to the int8 file (MCP-SURFACE 6).
+    /// overrides `37:6.unet_name` to the int8 file (MCP-SURFACE 6).
     #[serde(default)]
     pub slot_overrides: BTreeMap<SlotAddress, InputValue>,
     /// Every model file this profile needs. Empty means "not declared", which
@@ -337,8 +338,8 @@ impl ModelProfile {
     /// pins, and the `lyrics_contract.languages_from` address it reads the
     /// live language list from.
     ///
-    /// Pair with `SlotList::missing` in `mcp-bridge` to check a profile
-    /// against a fetched template; nothing here touches ComfyUI.
+    /// `create-core`'s `shipped_profiles` test audits these against each
+    /// profile's own workflow; nothing here touches ComfyUI.
     pub fn slot_addresses(&self) -> BTreeSet<SlotAddress> {
         let mut addresses = BTreeSet::new();
         for input in self.inputs.values() {
@@ -499,7 +500,7 @@ mod tests {
     /// first profile exercising `A/B.name` addressing.
     ///
     /// It used to fan out -- three seeds and two duration fields. T-309e dropped
-    /// `37/13.seed`, `37/9.seed` and `37/15.seconds` because `GET /history`
+    /// `37:13.seed`, `37:9.seed` and `37:15.seconds` because `GET /history`
     /// showed all three are driven by interior nodes and ignored
     /// (MCP-SURFACE 18.5). Exact equality, not `contains`: the whole value of
     /// this test is that it notices a slot arriving or leaving.
@@ -510,27 +511,27 @@ mod tests {
         let caption = profile.inputs.get("caption").expect("caption input");
         match caption {
             InputSpec::Text { slots, .. } => {
-                assert_eq!(slots, &[SlotAddress("37/13.caption".to_string())]);
+                assert_eq!(slots, &[SlotAddress("37:13.caption".to_string())]);
             }
             other => panic!("caption was not Text: {:?}", other),
         }
 
-        // `37/15.seconds` is not here: the text encoder drives it from
+        // `37:15.seconds` is not here: the text encoder drives it from
         // `max_duration`, so writing it does nothing.
         let duration = profile.inputs.get("duration_s").expect("duration_s input");
         match duration {
             InputSpec::Float { slots, .. } => {
-                assert_eq!(slots, &[SlotAddress("37/13.max_duration".to_string())]);
+                assert_eq!(slots, &[SlotAddress("37:13.max_duration".to_string())]);
             }
             other => panic!("duration_s was not Float: {:?}", other),
         }
 
-        // `37/13.seed` and `37/9.seed` are not here: `SeedNode` 38 drives both,
+        // `37:13.seed` and `37:9.seed` are not here: `SeedNode` 38 drives both,
         // and 38 is the one this writes.
         let seed = profile.inputs.get("seed").expect("seed input");
         match seed {
             InputSpec::Seed { slots } => {
-                assert_eq!(slots, &[SlotAddress("37/38.seed".to_string())]);
+                assert_eq!(slots, &[SlotAddress("37:38.seed".to_string())]);
             }
             other => panic!("seed was not Seed: {:?}", other),
         }
@@ -543,7 +544,7 @@ mod tests {
         let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
         let overrides = &profile.comfy.slot_overrides;
         assert_eq!(
-            overrides.get(&SlotAddress("37/6.unet_name".to_string())),
+            overrides.get(&SlotAddress("37:6.unet_name".to_string())),
             Some(&InputValue::Enum(
                 "minimax_music3_dit_int8_convrot.safetensors".to_string()
             ))
@@ -639,7 +640,7 @@ mod tests {
     }
 
     /// Protects: a pinned checkpoint variant is checked like any other
-    /// address. `37/6.unet_name` appears in no input -- only in
+    /// address. `37:6.unet_name` appears in no input -- only in
     /// `slot_overrides` -- and an override the template lacks fails at
     /// generation time, which is exactly what this collector exists to
     /// prevent.
@@ -647,11 +648,11 @@ mod tests {
     fn test_slot_addresses_include_slot_overrides() {
         let profile: ModelProfile = serde_json::from_str(MINIMAX_FIXTURE).unwrap();
         let addresses = profile.slot_addresses();
-        assert!(addresses.contains(&SlotAddress("37/6.unet_name".to_string())));
+        assert!(addresses.contains(&SlotAddress("37:6.unet_name".to_string())));
         assert!(profile
             .inputs
             .values()
-            .all(|input| !format!("{input:?}").contains("37/6.unet_name")));
+            .all(|input| !format!("{input:?}").contains("37:6.unet_name")));
     }
 
     /// Protects: `lyrics_contract.languages_from` is collected even when no

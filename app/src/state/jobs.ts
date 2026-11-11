@@ -135,7 +135,7 @@ interface JobsState {
   jobs: Record<string, Job>
   connected: boolean
   listening: boolean
-  connect: (bin?: string) => Promise<void>
+  connect: () => Promise<void>
   run: (workflowPath: string) => Promise<string>
   register: (id: string, profileId: string) => void
   cancel: (id: string) => Promise<void>
@@ -147,8 +147,8 @@ export const useJobsStore = create<JobsState>((set, get) => ({
   connected: false,
   listening: false,
 
-  connect: async (bin) => {
-    await connectComfy(bin)
+  connect: async () => {
+    await connectComfy()
     set({ connected: true })
   },
 

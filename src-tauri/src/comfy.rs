@@ -1,282 +1,272 @@
-//! The wizard's ComfyUI step: one status call, one launch call.
+//! The Setup ComfyUI step: find the user's ComfyUI and say what was found.
 //!
-//! The backend classifies; the frontend renders. Every way this can go wrong
-//! becomes a [`ComfyStatus`] variant rather than an error string the UI has to
-//! parse, because CONVENTIONS requires degraded services to degrade into a
-//! status pill with a next step -- never a modal wall, never a raw error.
+//! The backend classifies; the frontend renders. Every outcome is a
+//! [`ComfyStatus`] variant rather than an error string the UI has to parse,
+//! because CONVENTIONS requires degraded services to degrade into a status pill
+//! with a next step -- never a modal wall, never a raw error.
 
-use mcp_bridge::{ComfyError, LocalComfy, ServerInfo, SessionLog};
+use std::sync::Arc;
+
+use comfy_bridge::{discover, ComfyError, ComfyHttp, SessionLog, SystemStats, DEFAULT_URLS};
 use serde::Serialize;
 use tauri::State;
 
 use crate::jobs::ComfyState;
 use crate::ConfigDir;
 
-/// What the setup wizard shows for ComfyUI.
-///
-/// Ordered worst to best. Each variant carries exactly what its pill needs to
-/// say, and every one of them has a next step the user can take.
-#[derive(Debug, Clone, Serialize)]
+/// What the Setup card shows for ComfyUI.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum ComfyStatus {
-    /// `comfy-mcp` is not on PATH. The only state with an install step.
-    NotInstalled {
-        /// What to run, shown verbatim so it can be copied.
-        install_command: String,
+    /// No ComfyUI answered at any address tried. The card lists them and says
+    /// "Start ComfyUI, then Retry" -- or, for a configured address, to check it.
+    NotFound {
+        /// Every address probed, in order.
+        tried: Vec<String>,
+        /// The user set the address (so only it was tried).
+        configured: bool,
     },
-    /// `comfy-mcp` exists but could not be spoken to.
-    Unreachable { detail: String },
-    /// `comfy-mcp` answers, but ComfyUI itself is not running. This is the
-    /// state the Launch button exists for.
-    ServerDown {
-        /// Install comfy-cli is pointed at, so the user can tell which one
-        /// would start.
-        workspace: Option<String>,
+    /// Something answered, but not in a way the app can use -- not a ComfyUI,
+    /// or a version whose responses it cannot read.
+    Unreachable {
+        /// The address that answered.
+        url: String,
+        /// The sentence to show.
+        detail: String,
     },
     /// ComfyUI is up.
     Ready {
-        url: Option<String>,
-        /// Total VRAM in bytes. `None` means comfy-cli did not report a GPU,
-        /// which the UI shows as unknown rather than as zero.
+        /// The address it answered at.
+        url: String,
+        /// Total VRAM in bytes. `None` is unknown, never zero.
         vram_bytes: Option<u64>,
-        workspace: Option<String>,
-        comfy_cli_version: Option<String>,
-        /// A ComfyUI core update is available. A quiet badge, never a block.
-        update_available: bool,
+        /// `"0.45.2"`.
+        comfyui_version: Option<String>,
+        /// On this machine, by address -- the condition for one-click Install.
+        local: bool,
     },
 }
 
 impl ComfyStatus {
-    /// The install command shown when `comfy-mcp` is missing.
-    const INSTALL_COMMAND: &'static str = "pip install comfy-mcp";
-
-    /// Classify a [`ServerInfo`] into what the wizard should show.
-    fn from_info(info: &ServerInfo) -> Self {
-        let workspace = info.workspace.as_ref().and_then(|w| w.path.clone());
-        if !info.is_running() {
-            return ComfyStatus::ServerDown { workspace };
-        }
+    /// Classify a successful probe.
+    fn ready(comfy: &ComfyHttp, stats: &SystemStats) -> Self {
         ComfyStatus::Ready {
-            url: info.url().map(str::to_string),
-            vram_bytes: info.vram_bytes(),
-            workspace,
-            comfy_cli_version: info
-                .compatibility
-                .as_ref()
-                .and_then(|c| c.comfy_cli_version.clone()),
-            update_available: info.update_available(),
+            url: comfy.base_url().to_string(),
+            vram_bytes: stats.vram_bytes(),
+            comfyui_version: stats.system.comfyui_version.clone(),
+            local: comfy.is_loopback(),
         }
     }
 
-    /// Classify a failure. Only a missing binary is [`ComfyStatus::NotInstalled`];
-    /// everything else is unreachable with the reason attached.
-    fn from_error(error: &ComfyError) -> Self {
-        match error {
-            ComfyError::NotInstalled => ComfyStatus::NotInstalled {
-                install_command: Self::INSTALL_COMMAND.to_string(),
-            },
-            other => ComfyStatus::Unreachable {
-                detail: other.to_string(),
-            },
+    /// Classify a failed probe of every candidate.
+    fn from_attempts(tried: Vec<(String, ComfyError)>, configured: bool) -> Self {
+        // An address that answered with something unusable is the more useful
+        // thing to report than the ports nobody was listening on.
+        if let Some((url, e)) = tried.iter().find(|(_, e)| !e.is_unreachable()) {
+            return ComfyStatus::Unreachable {
+                url: url.clone(),
+                detail: e.to_string(),
+            };
+        }
+        ComfyStatus::NotFound {
+            tried: tried.into_iter().map(|(url, _)| url).collect(),
+            configured,
         }
     }
 }
 
-/// Connect if needed, then report what the wizard should show.
+/// The addresses to probe: the user's when set, else the defaults.
+pub(crate) fn candidates(configured: Option<&str>) -> (Vec<String>, bool) {
+    match configured.map(str::trim).filter(|u| !u.is_empty()) {
+        Some(url) => (vec![url.to_string()], true),
+        None => (DEFAULT_URLS.iter().map(|u| u.to_string()).collect(), false),
+    }
+}
+
+/// Find ComfyUI now and report what the Setup card should show.
 ///
-/// **Never returns `Err` for a service problem.** A missing binary, a dead
-/// ComfyUI and a broken connection are all states with a next step, so they
-/// come back as `Ok(ComfyStatus)`; the `Err` arm is reserved for this app
-/// failing to open its own session log.
+/// `url` tests an address before it is saved; otherwise the configured one is
+/// used, and with none configured the defaults are probed. The found client
+/// replaces any earlier one, so Retry after starting ComfyUI is all it takes.
+///
+/// **Never returns `Err` for a service problem**; `Err` is reserved for this
+/// app failing to open its own session log.
 #[tauri::command]
 pub async fn comfy_status(
     state: State<'_, ComfyState>,
     config_dir: State<'_, ConfigDir>,
-    bin: Option<String>,
+    url: Option<String>,
 ) -> Result<ComfyStatus, String> {
-    let comfy = match ensure_connected(&state, &config_dir, bin).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Ok(ComfyStatus::from_error(&e)),
-        Err(EnsureError::Log(detail)) => return Err(detail),
+    let _guard = state.connect.lock().await;
+    let configured = match url {
+        Some(u) if !u.trim().is_empty() => Some(u),
+        _ => library::config::load(&config_dir.0).config.comfy.url,
     };
-
-    match comfy.health().await {
-        Ok(info) => Ok(ComfyStatus::from_info(&info)),
-        Err(e) => Ok(ComfyStatus::from_error(&e)),
-    }
-}
-
-/// Start ComfyUI, then report the resulting status.
-///
-/// `[port_in_use]` is **not** surfaced as a failure: it means something is
-/// already serving that port, so the honest answer is whatever the following
-/// health check reports.
-#[tauri::command]
-pub async fn comfy_launch(
-    state: State<'_, ComfyState>,
-    config_dir: State<'_, ConfigDir>,
-    bin: Option<String>,
-) -> Result<ComfyStatus, String> {
-    let comfy = match ensure_connected(&state, &config_dir, bin).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Ok(ComfyStatus::from_error(&e)),
-        Err(EnsureError::Log(detail)) => return Err(detail),
-    };
-
-    if let Err(e) = comfy.launch().await {
-        if !is_port_in_use(&e) {
-            return Ok(ComfyStatus::from_error(&e));
+    let (urls, is_configured) = candidates(configured.as_deref());
+    let log = open_log(&config_dir).map_err(EnsureError::into_message)?;
+    match discover(&urls, |u| ComfyHttp::new(u, Some(log.clone()))).await {
+        Ok((comfy, stats)) => {
+            let status = ComfyStatus::ready(&comfy, &stats);
+            state.store(comfy).await;
+            Ok(status)
+        }
+        Err(tried) => {
+            state.forget().await;
+            Ok(ComfyStatus::from_attempts(tried, is_configured))
         }
     }
-
-    match comfy.health().await {
-        Ok(info) => Ok(ComfyStatus::from_info(&info)),
-        Err(e) => Ok(ComfyStatus::from_error(&e)),
-    }
-}
-
-/// Whether a launch failure was "something already holds the port".
-fn is_port_in_use(error: &ComfyError) -> bool {
-    matches!(error, ComfyError::Tool { code, .. } if code.as_deref() == Some("port_in_use"))
 }
 
 /// Why `ensure_connected` gave up.
 pub(crate) enum EnsureError {
-    /// A service problem, which becomes a status rather than an error.
-    Comfy(ComfyError),
+    /// No usable ComfyUI: the sentence to show, with its next step.
+    Comfy(String),
     /// This app could not open its own session log. Genuinely our fault.
     Log(String),
 }
 
-/// The connected backend, connecting on first use.
+impl EnsureError {
+    /// The message, whichever kind it is.
+    pub(crate) fn into_message(self) -> String {
+        match self {
+            EnsureError::Comfy(m) | EnsureError::Log(m) => m,
+        }
+    }
+}
+
+fn open_log(config_dir: &ConfigDir) -> Result<SessionLog, EnsureError> {
+    SessionLog::open(config_dir.0.join("session.log")).map_err(|e| EnsureError::Log(e.to_string()))
+}
+
+/// The connected client, probing on first use.
+///
+/// Holds the connect lock across the check-and-probe so two first-use
+/// commands (the Setup view's ComfyUI and Models steps probe on mount) do not
+/// both probe and store.
 pub(crate) async fn ensure_connected(
     state: &State<'_, ComfyState>,
     config_dir: &State<'_, ConfigDir>,
-    bin: Option<String>,
-) -> Result<std::sync::Arc<LocalComfy>, EnsureError> {
-    // Hold the connect lock across the check-and-connect: two concurrent
-    // first-use commands must not both spawn a `comfy-mcp` (the Setup view's
-    // ComfyUI and Models steps probe on mount and race here). Re-checking after
-    // acquiring picks up the winner's connection instead of spawning again.
+) -> Result<Arc<ComfyHttp>, EnsureError> {
     let _guard = state.connect.lock().await;
     if let Some(comfy) = state.connected().await {
         return Ok(comfy);
     }
-    let bin = bin.unwrap_or_else(|| "comfy-mcp".to_string());
-    let log = SessionLog::open(config_dir.0.join("session.log"))
-        .map_err(|e| EnsureError::Log(e.to_string()))?;
-    let comfy = LocalComfy::connect(&bin, log)
-        .await
-        .map_err(EnsureError::Comfy)?;
-    Ok(state.store(comfy).await)
+    let configured = library::config::load(&config_dir.0).config.comfy.url;
+    let (urls, is_configured) = candidates(configured.as_deref());
+    let log = open_log(config_dir)?;
+    match discover(&urls, |u| ComfyHttp::new(u, Some(log.clone()))).await {
+        Ok((comfy, _)) => Ok(state.store(comfy).await),
+        Err(tried) => Err(EnsureError::Comfy(
+            match ComfyStatus::from_attempts(tried, is_configured) {
+                ComfyStatus::Unreachable { detail, .. } => detail,
+                _ => not_found_sentence(&urls),
+            },
+        )),
+    }
+}
+
+/// "No ComfyUI answered at ..." with every address tried.
+pub(crate) fn not_found_sentence(urls: &[String]) -> String {
+    format!(
+        "No ComfyUI answered at {}. Start ComfyUI, then Retry.",
+        urls.join(" or ")
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcp_bridge::ServerInfo;
+    use comfy_bridge::transport::{FakeTransport, Method, TransportError};
 
-    const CAPTURED: &str = include_str!("../../testdata/mcp/server_info.json");
+    fn stats() -> SystemStats {
+        let path = format!(
+            "{}/../testdata/comfy-http/system_stats.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("JSON")
+    }
 
-    /// Protects: the healthy path reads the live payload, including the two
-    /// facts the pill shows beyond "up" -- VRAM and the update badge.
     #[test]
-    fn test_running_server_classifies_as_ready() {
-        let info: ServerInfo = serde_json::from_str(CAPTURED).expect("decodes");
-        match ComfyStatus::from_info(&info) {
+    fn test_candidates_prefer_the_configured_address() {
+        assert_eq!(
+            candidates(Some(" http://gpu:8188 ")),
+            (vec!["http://gpu:8188".to_string()], true)
+        );
+        let (defaults, configured) = candidates(None);
+        assert_eq!(defaults, ["http://127.0.0.1:8188", "http://127.0.0.1:8000"]);
+        assert!(!configured);
+        assert!(!candidates(Some("  ")).1, "a blank address is no address");
+    }
+
+    /// Protects: the live payload becomes the Ready pill, local by address.
+    #[test]
+    fn test_a_running_comfyui_is_ready_with_version_vram_and_locality() {
+        let fake = Arc::new(FakeTransport::new());
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake.clone(), None);
+        assert_eq!(
+            ComfyStatus::ready(&comfy, &stats()),
             ComfyStatus::Ready {
-                url,
-                vram_bytes,
-                update_available,
-                comfy_cli_version,
-                ..
-            } => {
-                assert_eq!(url.as_deref(), Some("http://127.0.0.1:8188"));
-                assert_eq!(vram_bytes, Some(17_102_733_312));
-                assert!(update_available);
-                assert_eq!(comfy_cli_version.as_deref(), Some("1.16.0"));
+                url: "http://127.0.0.1:8188".into(),
+                vram_bytes: Some(17_074_749_440),
+                comfyui_version: Some("0.45.2".into()),
+                local: true,
             }
-            other => panic!("expected Ready, got {other:?}"),
-        }
-    }
-
-    /// Protects: comfy-mcp answering while ComfyUI is down is its own state,
-    /// not an error. This is the one the Launch button exists for, and it must
-    /// carry the workspace so the user can see which install would start.
-    #[test]
-    fn test_stopped_server_classifies_as_server_down() {
-        let info: ServerInfo = serde_json::from_value(serde_json::json!({
-            "server": { "running": false },
-            "workspace": { "path": "C:/Comfy/ComfyUI", "type": "default" }
-        }))
-        .expect("decodes");
-        match ComfyStatus::from_info(&info) {
-            ComfyStatus::ServerDown { workspace } => {
-                assert_eq!(workspace.as_deref(), Some("C:/Comfy/ComfyUI"));
-            }
-            other => panic!("expected ServerDown, got {other:?}"),
-        }
-    }
-
-    /// Protects: only a missing binary offers an install command. Every other
-    /// failure is unreachable-with-a-reason, because telling a user to
-    /// reinstall when their ComfyUI merely crashed sends them down the wrong
-    /// path.
-    #[test]
-    fn test_only_a_missing_binary_offers_an_install_command() {
-        match ComfyStatus::from_error(&ComfyError::NotInstalled) {
-            ComfyStatus::NotInstalled { install_command } => {
-                assert_eq!(install_command, "pip install comfy-mcp");
-            }
-            other => panic!("expected NotInstalled, got {other:?}"),
-        }
-
-        let spawn = ComfyError::Spawn(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "permission denied",
+        );
+        let remote = ComfyHttp::with_transport("http://192.168.1.20:8188", fake, None);
+        assert!(matches!(
+            ComfyStatus::ready(&remote, &stats()),
+            ComfyStatus::Ready { local: false, .. }
         ));
-        match ComfyStatus::from_error(&spawn) {
-            ComfyStatus::Unreachable { detail } => assert!(detail.contains("permission denied")),
+    }
+
+    /// Protects: nothing listening is NotFound listing every address -- the
+    /// state the owner's other PCs were in, which used to read "Unreachable"
+    /// with a comfy-cli traceback behind it.
+    #[test]
+    fn test_nobody_listening_is_not_found_with_every_address() {
+        let tried = DEFAULT_URLS
+            .iter()
+            .map(|u| {
+                (
+                    u.to_string(),
+                    ComfyError::Unreachable {
+                        url: u.to_string(),
+                        detail: "refused".into(),
+                    },
+                )
+            })
+            .collect();
+        assert_eq!(
+            ComfyStatus::from_attempts(tried, false),
+            ComfyStatus::NotFound {
+                tried: DEFAULT_URLS.iter().map(|u| u.to_string()).collect(),
+                configured: false,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_something_that_is_not_comfyui_is_reported_as_such() {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on(Method::Get, "/system_stats", 200, r#"{"hello": "world"}"#);
+        fake.fail(Method::Get, "/never", TransportError::Timeout);
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8000", fake, None);
+        let err = comfy.system_stats().await.expect_err("not comfy");
+        match ComfyStatus::from_attempts(vec![("http://127.0.0.1:8000".into(), err)], false) {
+            ComfyStatus::Unreachable { url, .. } => assert_eq!(url, "http://127.0.0.1:8000"),
             other => panic!("expected Unreachable, got {other:?}"),
         }
     }
 
-    /// Protects: the verified already-running launch failure is recognised, so
-    /// the wizard reports what is actually there instead of an alarming error.
     #[test]
-    fn test_port_in_use_is_recognised() {
-        let busy = ComfyError::Tool {
-            tool: "launch_comfyui".to_string(),
-            code: Some("port_in_use".to_string()),
-            message: "The 8188 port is already in use.".to_string(),
-        };
-        assert!(is_port_in_use(&busy));
-
-        let other = ComfyError::Tool {
-            tool: "launch_comfyui".to_string(),
-            code: Some("workspace_not_found".to_string()),
-            message: "nope".to_string(),
-        };
-        assert!(!is_port_in_use(&other));
-    }
-
-    /// Protects: the status crosses the Tauri boundary as a tagged union the
-    /// frontend can switch on, with snake_case tags. A rename here silently
-    /// breaks every branch of the UI.
-    #[test]
-    fn test_status_serialises_as_a_tagged_union() {
-        let json =
-            serde_json::to_value(ComfyStatus::ServerDown { workspace: None }).expect("serialises");
-        assert_eq!(json["state"], serde_json::json!("server_down"));
-
-        let json = serde_json::to_value(ComfyStatus::NotInstalled {
-            install_command: "pip install comfy-mcp".to_string(),
-        })
-        .expect("serialises");
-        assert_eq!(json["state"], serde_json::json!("not_installed"));
+    fn test_not_found_sentence_names_every_address_and_the_next_step() {
+        let text = not_found_sentence(&[
+            "http://127.0.0.1:8188".into(),
+            "http://127.0.0.1:8000".into(),
+        ]);
         assert_eq!(
-            json["install_command"],
-            serde_json::json!("pip install comfy-mcp")
+            text,
+            "No ComfyUI answered at http://127.0.0.1:8188 or http://127.0.0.1:8000. Start ComfyUI, then Retry."
         );
     }
 }

@@ -63,7 +63,7 @@ pub struct Bounds {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MappedSlot {
     pub address: String,
-    /// `STRING` / `INT` / `FLOAT`, as `list_workflow_slots` reports it.
+    /// `STRING` / `INT` / `FLOAT`, as `/object_info` declares it.
     pub widget_type: String,
     /// What the user's graph currently holds -- the emitted default, because
     /// it is the value they already chose.
@@ -117,27 +117,15 @@ fn label_for(role: Role) -> &'static str {
 /// Whether `workflow` -- top-level nodes or any subgraph interior -- has a node
 /// whose `type` is in `types`.
 fn graph_has_save_node(workflow: &Value, types: &[&str]) -> bool {
-    fn scan(nodes: Option<&Vec<Value>>, types: &[&str]) -> bool {
-        nodes.is_some_and(|nodes| {
-            nodes.iter().any(|n| {
-                n.get("type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|t| types.contains(&t))
-            })
+    // API format: every node, subgraph interiors included (they are flattened
+    // to `parent:child` ids), is a top-level entry with a `class_type`.
+    workflow.as_object().is_some_and(|nodes| {
+        nodes.values().any(|n| {
+            n.get("class_type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| types.contains(&t))
         })
-    }
-    if scan(workflow.get("nodes").and_then(Value::as_array), types) {
-        return true;
-    }
-    // Subgraph interiors count: MiniMax's save node lives inside one, and
-    // Klein's controls do too.
-    workflow
-        .pointer("/definitions/subgraphs")
-        .and_then(Value::as_array)
-        .is_some_and(|subs| {
-            subs.iter()
-                .any(|s| scan(s.get("nodes").and_then(Value::as_array), types))
-        })
+    })
 }
 
 /// Whether `workflow` has a node the pipeline can save audio through.
@@ -339,7 +327,7 @@ mod tests {
     use serde_json::json;
 
     fn graph_with_save() -> Value {
-        json!({ "nodes": [{ "id": 107, "type": "SaveAudioMP3" }] })
+        json!({ "107": { "class_type": "SaveAudioMP3", "inputs": {} } })
     }
 
     fn slot(address: &str, widget_type: &str, current: Value) -> MappedSlot {
@@ -512,7 +500,7 @@ mod tests {
         let err = build_profile(
             "x",
             "X",
-            &json!({ "nodes": [{ "id": 1, "type": "PreviewAudio" }] }),
+            &json!({ "1": { "class_type": "PreviewAudio", "inputs": {} } }),
             "C:/x.json",
             &[(Role::Seed, vec![slot("109.value", "INT", json!(0))])],
         )
@@ -523,17 +511,13 @@ mod tests {
         assert!(err.to_string().contains("Save Image"), "{err}");
     }
 
-    /// Protects: a save node inside a subgraph counts.
-    ///
-    /// MiniMax's lives in one, and `ensure_lossless_output` rewrites both
-    /// levels -- a top-level-only scan would refuse a graph that works.
+    /// Protects: a save node inside a subgraph counts. In API format its
+    /// flattened `parent:child` id is a top-level entry like any other.
     #[test]
     fn test_a_save_node_inside_a_subgraph_counts() {
         let nested = json!({
-            "nodes": [{ "id": 1, "type": "UNETLoader" }],
-            "definitions": { "subgraphs": [
-                { "nodes": [{ "id": 35, "type": "SaveAudioAdvanced" }] }
-            ]}
+            "1": { "class_type": "UNETLoader", "inputs": {} },
+            "37:35": { "class_type": "SaveAudioAdvanced", "inputs": {} }
         });
         assert!(has_audio_save_node(&nested));
     }
@@ -550,7 +534,7 @@ mod tests {
     /// spec, so CoverArt can use it.
     #[test]
     fn test_an_image_graph_emits_an_image_profile() {
-        let workflow = serde_json::json!({ "nodes": [{ "type": "SaveImage" }] });
+        let workflow = serde_json::json!({ "9": { "class_type": "SaveImage", "inputs": {} } });
         let mappings = [(
             Role::Tags,
             vec![MappedSlot {

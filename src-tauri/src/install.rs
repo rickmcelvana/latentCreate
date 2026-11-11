@@ -1,293 +1,282 @@
-//! Installing a profile's missing models.
+//! Installing a profile's missing models into the user's ComfyUI.
 //!
 //! Separate from `models`, which only reports. This module is the only thing in
 //! the app that starts a multi-gigabyte transfer, and it runs solely from an
-//! explicit user action -- ACE-Step 1.5 is 18.5 GiB across four files
-//! (MCP-SURFACE 14.5).
+//! explicit user action -- ACE-Step 1.5 is 18.5 GiB across four files.
 //!
-//! Files are submitted and reported one at a time. comfy-cli takes a single URL
-//! per call, and a failure on the third file must not discard the two already
-//! running or leave the user unsure what did download.
+//! **Where the files go is ComfyUI's answer, not the app's guess** (T-519).
+//! Each file lands in the directory `/internal/folder_paths` reports for its
+//! folder, written as `.partial` and renamed into place, so ComfyUI never lists
+//! a half-written model and lists the finished one at once -- the readiness
+//! check that follows reads Installed with no restart. comfy-mcp's
+//! `download_model` wrote into comfy-cli's own workspace instead, which on a
+//! Comfy Desktop install was a different drive, and the row never turned green.
 
-use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
+use comfy_bridge::download::{destination_dir, download_client, run_transfer, Transfer};
+use create_core::readiness::ModelInventory;
 use serde::Serialize;
-use tauri::State;
+use tauri::{async_runtime, State};
 
 use crate::comfy::{ensure_connected, EnsureError};
 use crate::jobs::ComfyState;
-use crate::models::{take_inventory, TakeError};
+use crate::models::inventory_of;
 use crate::{ConfigDir, ProfilesDir};
 
 /// One file's download, once submitted.
 #[derive(Debug, Clone, Serialize)]
 pub struct StartedFile {
     pub file: String,
-    /// The handle progress is polled with, or `None` when the submit failed.
+    /// The handle progress is read with, or `None` when it could not start.
     pub download_id: Option<String>,
-    /// Why this file could not be started, when it could not. Per-file so a
-    /// partly-started install reports exactly what is missing rather than
-    /// failing whole and leaving the user unsure what already downloaded.
+    /// Why this file could not be started. Per-file, so a partly-started
+    /// install reports exactly what is missing.
     pub error: Option<String>,
 }
 
-/// Progress for one file being downloaded.
-#[derive(Debug, Clone, Serialize)]
+/// Progress for one file.
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct FileProgress {
     pub download_id: String,
+    /// `starting` | `downloading` | `completed` | `failed` | `unknown`.
     pub status: String,
     pub completed_bytes: Option<u64>,
     pub total_bytes: Option<u64>,
-    /// `0..100`, null until the server sends a content length.
+    /// `0..100`, null until the size is known.
     pub percent: Option<f64>,
     pub error: Option<String>,
 }
 
+impl FileProgress {
+    fn starting(id: &str, total: Option<u64>) -> Self {
+        FileProgress {
+            download_id: id.to_string(),
+            status: "starting".into(),
+            completed_bytes: Some(0),
+            total_bytes: total,
+            percent: total.map(|_| 0.0),
+            error: None,
+        }
+    }
+}
+
+/// Every download this session started, by id. Managed state.
+#[derive(Default)]
+pub struct InstallState {
+    progress: Arc<Mutex<HashMap<String, FileProgress>>>,
+    /// Checked between chunks. Nothing sets it yet -- there is no Cancel
+    /// button -- but the transfer honours it, and a closed app needs none: the
+    /// task dies with the process and the `.partial` resumes next time.
+    cancel: Arc<AtomicBool>,
+    next: AtomicU64,
+}
+
 /// Start downloading everything one profile is missing.
 ///
-/// **Only ever called from an explicit user action.** ACE-Step 1.5 is 18.5 GiB
-/// across four files; nothing here may run on its own, and the size is shown
-/// before the button is offered.
-///
-/// Files are submitted individually and reported individually. comfy-cli takes
-/// one URL per call, and a failure on the third file must not discard the two
-/// already running.
+/// **Only ever called from an explicit user action.** Files download one after
+/// another in the background; the call returns as soon as each has an id (or a
+/// reason it cannot start), and `models_progress` reports them.
 #[tauri::command]
 pub async fn models_install(
-    state: State<'_, ComfyState>,
+    comfy_state: State<'_, ComfyState>,
+    install: State<'_, InstallState>,
     config_dir: State<'_, ConfigDir>,
     profiles_dir: State<'_, ProfilesDir>,
     id: String,
-    bin: Option<String>,
 ) -> Result<Vec<StartedFile>, String> {
     let set = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"));
-    let loaded = set
+    let profile = set
         .profiles
         .get(&id)
+        .map(|loaded| loaded.profile.clone())
         .ok_or_else(|| format!("no profile with id {id}"))?;
 
-    let folders: BTreeSet<String> = loaded
-        .profile
+    let comfy = ensure_connected(&comfy_state, &config_dir)
+        .await
+        .map_err(EnsureError::into_message)?;
+    if !comfy.is_loopback() {
+        return Err(format!(
+            "ComfyUI is at {}, not on this computer, so latentCreate cannot put files in its \
+             models folder. Install the model on that computer, then Retry here.",
+            comfy.base_url()
+        ));
+    }
+
+    let folders = profile
         .comfy
         .models
         .iter()
-        .map(|spec| spec.folder.clone())
+        .map(|m| m.folder.clone())
         .collect();
-    let inventory = match take_inventory(&state, &config_dir, bin.clone(), &folders).await {
-        Ok(inventory) => inventory,
-        Err(TakeError::Comfy(e)) => return Err(e.to_string()),
-        Err(TakeError::Log(detail)) => return Err(detail),
-    };
-
-    let comfy = match ensure_connected(&state, &config_dir, bin).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Err(e.to_string()),
-        Err(EnsureError::Log(detail)) => return Err(detail),
-    };
+    let inventory: ModelInventory = inventory_of(&comfy, &folders).await?;
+    let paths = comfy.folder_paths().await.map_err(|e| {
+        format!(
+            "ComfyUI did not say where it keeps models ({e}). Download the files into its models \
+             folder by hand, then Retry."
+        )
+    })?;
 
     let mut started = Vec::new();
-    for spec in loaded.profile.readiness(Some(&inventory)).missing() {
-        let Some(url) = spec.source_url.as_deref() else {
-            started.push(StartedFile {
-                file: spec.file.clone(),
-                download_id: None,
-                error: Some("no download URL; place this file by hand".to_string()),
-            });
+    let mut transfers: Vec<(String, Transfer)> = Vec::new();
+    for spec in profile.readiness(Some(&inventory)).missing() {
+        let fail = |error: String| StartedFile {
+            file: spec.file.clone(),
+            download_id: None,
+            error: Some(error),
+        };
+        let Some(url) = spec.source_url.clone() else {
+            started.push(fail("no download URL; place this file by hand".into()));
             continue;
         };
-        // `filename` is sent even though these URLs end in the name --
-        // comfy-cli fails the call outright when it cannot work one out.
-        let relative = models_relative_path(&spec.folder);
-        let submitted = comfy.download_model(url, &relative, Some(&spec.file)).await;
-        started.push(match submitted {
-            Ok(submit) => StartedFile {
-                file: spec.file.clone(),
-                download_id: Some(submit.download_id),
-                error: None,
+        let dir = match destination_dir(&spec.folder, &paths, |p| p.is_dir()) {
+            Ok(dir) => dir,
+            Err(e) => {
+                started.push(fail(e.to_string()));
+                continue;
+            }
+        };
+        let download_id = format!("dl-{}", install.next.fetch_add(1, Ordering::Relaxed));
+        install.progress.lock().expect("progress lock").insert(
+            download_id.clone(),
+            FileProgress::starting(&download_id, spec.size_bytes),
+        );
+        transfers.push((
+            download_id.clone(),
+            Transfer {
+                url,
+                dest: dir.join(&spec.file),
+                expected_size: spec.size_bytes,
             },
-            Err(e) => StartedFile {
-                file: spec.file.clone(),
-                download_id: None,
-                error: Some(e.to_string()),
-            },
+        ));
+        started.push(StartedFile {
+            file: spec.file.clone(),
+            download_id: Some(download_id),
+            error: None,
         });
+    }
+
+    if !transfers.is_empty() {
+        install.cancel.store(false, Ordering::Relaxed);
+        let progress = Arc::clone(&install.progress);
+        let cancel = Arc::clone(&install.cancel);
+        let log_dir = config_dir.0.clone();
+        async_runtime::spawn(run_all(transfers, progress, cancel, log_dir));
     }
     Ok(started)
 }
 
-/// Poll every in-flight download.
-///
-/// One call for the whole set, so the view makes a single round trip per tick
-/// rather than one per file.
+/// Download each file in turn, recording progress as it goes.
+async fn run_all(
+    transfers: Vec<(String, Transfer)>,
+    progress: Arc<Mutex<HashMap<String, FileProgress>>>,
+    cancel: Arc<AtomicBool>,
+    log_dir: PathBuf,
+) {
+    let client = download_client();
+    for (id, transfer) in transfers {
+        let update = |done: u64, total: Option<u64>| {
+            if let Ok(mut map) = progress.lock() {
+                if let Some(p) = map.get_mut(&id) {
+                    p.status = "downloading".into();
+                    p.completed_bytes = Some(done);
+                    p.total_bytes = total;
+                    p.percent = total
+                        .filter(|t| *t > 0)
+                        .map(|t| (done as f64 / t as f64 * 100.0).min(100.0));
+                }
+            }
+        };
+        let result = run_transfer(&client, &transfer, update, &cancel).await;
+        if let Ok(log) = comfy_bridge::SessionLog::open(log_dir.join("session.log")) {
+            log.log_result(
+                "model_download",
+                result.is_ok(),
+                &format!(
+                    "{} -> {}: {result:?}",
+                    transfer.url,
+                    transfer.dest.display()
+                ),
+            );
+        }
+        if let Ok(mut map) = progress.lock() {
+            if let Some(p) = map.get_mut(&id) {
+                match &result {
+                    Ok(()) => {
+                        p.status = "completed".into();
+                        p.percent = Some(100.0);
+                    }
+                    Err(e) => {
+                        p.status = "failed".into();
+                        p.error = Some(e.to_string());
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Report every download asked about, in one round trip.
 #[tauri::command]
 pub async fn models_progress(
-    state: State<'_, ComfyState>,
-    config_dir: State<'_, ConfigDir>,
+    install: State<'_, InstallState>,
     ids: Vec<String>,
-    bin: Option<String>,
 ) -> Result<Vec<FileProgress>, String> {
-    let comfy = match ensure_connected(&state, &config_dir, bin).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Err(e.to_string()),
-        Err(EnsureError::Log(detail)) => return Err(detail),
-    };
-    let mut out = Vec::with_capacity(ids.len());
-    for id in ids {
-        out.push(match comfy.download_status(&id).await {
-            Ok(state) => FileProgress {
+    let map = install.progress.lock().map_err(|e| e.to_string())?;
+    Ok(progress_of(&map, ids))
+}
+
+/// Look each id up. An id this session never started -- the app restarted
+/// mid-download -- is `failed` with a sentence, because the view polls until
+/// every row is terminal and an `unknown` would hold it there forever. The
+/// `.partial` file is still on disk, so Install again resumes it.
+fn progress_of(map: &HashMap<String, FileProgress>, ids: Vec<String>) -> Vec<FileProgress> {
+    ids.into_iter()
+        .map(|id| {
+            map.get(&id).cloned().unwrap_or(FileProgress {
                 download_id: id,
-                status: state.status,
-                completed_bytes: state.completed_bytes,
-                total_bytes: state.total_bytes,
-                percent: state.percent,
-                error: state.error,
-            },
-            // A poll that fails is not a failed download -- report it as
-            // unknown and let the next tick answer.
-            Err(e) => FileProgress {
-                download_id: id,
-                status: "unknown".to_string(),
+                status: "failed".into(),
                 completed_bytes: None,
                 total_bytes: None,
                 percent: None,
-                error: Some(e.to_string()),
-            },
-        });
-    }
-    Ok(out)
-}
-
-/// Where comfy-cli writes a model for one ComfyUI folder.
-///
-/// **Must start with `models`**: comfy-cli rejects anything else, and the
-/// folder name alone (`"vae"`) is exactly the mistake that reads correctly
-/// (MCP-SURFACE 11.2).
-fn models_relative_path(folder: &str) -> String {
-    format!("models/{folder}")
+                error: Some(
+                    "This download stopped when latentCreate closed. Install again to resume it."
+                        .into(),
+                ),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// The real install, against a live comfy-mcp and a running ComfyUI.
-    ///
-    /// **Downloads gigabytes.** Excluded from CI and from the gate; run it
-    /// deliberately with `cargo test -p app -- --ignored --nocapture`.
-    ///
-    /// It settled the one thing no mock could: `"completed"` was **inferred**
-    /// until this ran, never observed, and a wrong terminal value would leave
-    /// the install UI spinning forever on a finished download. Run 2026-08-25
-    /// against the real ACE-Step files: `starting` -> `downloading` ->
-    /// `completed`, 18.5 GiB in 821 seconds, and readiness flipped to Ready
-    /// with no ComfyUI restart. Every status seen is still printed, so a future
-    /// comfy-cli that adds one is caught here rather than in the UI.
-    #[tokio::test]
-    #[ignore = "downloads gigabytes; run deliberately"]
-    async fn test_install_against_a_live_comfyui() {
-        use create_core::profile::ModelProfile;
-        use create_core::readiness::ModelInventory;
-        use std::collections::{BTreeMap, BTreeSet};
 
-        const ACE_STEP: &str = include_str!("../../profiles/ace-step-1.5-turbo.json");
-        let profile: ModelProfile = serde_json::from_str(ACE_STEP).expect("profile decodes");
-
-        let log = mcp_bridge::SessionLog::open(std::env::temp_dir().join("latentcreate-live.log"))
-            .expect("session log opens");
-        let comfy = mcp_bridge::LocalComfy::connect("comfy-mcp", log)
-            .await
-            .expect("comfy-mcp connects");
-
-        let folders: BTreeSet<String> = profile
-            .comfy
-            .models
-            .iter()
-            .map(|spec| spec.folder.clone())
-            .collect();
-
-        async fn inventory(
-            comfy: &mcp_bridge::LocalComfy,
-            folders: &BTreeSet<String>,
-        ) -> ModelInventory {
-            let mut listed = BTreeMap::new();
-            for folder in folders {
-                let contents = comfy.list_models_in(folder).await.expect("folder lists");
-                listed.insert(
-                    folder.clone(),
-                    contents
-                        .files
-                        .into_iter()
-                        .map(|f| f.name)
-                        .collect::<BTreeSet<String>>(),
-                );
-            }
-            ModelInventory::new(listed)
-        }
-
-        let before = inventory(&comfy, &folders).await;
-        let missing = profile.readiness(Some(&before)).missing().to_vec();
-        println!("missing before: {} file(s)", missing.len());
-        if missing.is_empty() {
-            println!("already installed; nothing to prove here");
-            return;
-        }
-
-        let mut ids = Vec::new();
-        for spec in &missing {
-            let url = spec
-                .source_url
-                .as_deref()
-                .expect("shipped profile has URLs");
-            let submit = comfy
-                .download_model(url, &models_relative_path(&spec.folder), Some(&spec.file))
-                .await
-                .unwrap_or_else(|e| panic!("submitting {} failed: {e}", spec.file));
-            println!(
-                "submitted {} -> {} ({})",
-                spec.file, submit.download_id, submit.status
-            );
-            ids.push((spec.file.clone(), submit.download_id));
-        }
-
-        let mut seen: BTreeSet<String> = BTreeSet::new();
-        loop {
-            let mut all_done = true;
-            for (file, id) in &ids {
-                let state = comfy.download_status(id).await.expect("status polls");
-                if seen.insert(state.status.clone()) {
-                    println!("STATUS OBSERVED: {:?}", state.status);
-                }
-                match state.status.as_str() {
-                    "failed" => panic!("{file} failed: {:?}", state.error),
-                    "completed" => {}
-                    _ => all_done = false,
-                }
-            }
-            if all_done {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-        }
-        println!("every status seen across the run: {seen:?}");
-
-        let after = profile.readiness(Some(&inventory(&comfy, &folders).await));
-        assert!(
-            after.is_ready(),
-            "after installing everything the profile must read Ready, got {after:?}"
-        );
+    #[test]
+    fn test_a_new_download_starts_at_zero_of_its_declared_size() {
+        let p = FileProgress::starting("dl-0", Some(100));
+        assert_eq!(p.status, "starting");
+        assert_eq!(p.percent, Some(0.0));
+        let unknown = FileProgress::starting("dl-1", None);
+        assert_eq!(unknown.percent, None);
     }
 
-    /// Protects: the destination comfy-cli is given. It must start with
-    /// `models` or the call is rejected outright, and the bare folder name is
-    /// the plausible-looking mistake. Verified against the live folder list.
+    /// Protects: an id this session never started is terminal for the view,
+    /// with a next step -- not a row the poll loop waits on forever.
     #[test]
-    fn test_download_destination_is_under_models() {
-        assert_eq!(
-            models_relative_path("diffusion_models"),
-            "models/diffusion_models"
-        );
-        assert_eq!(models_relative_path("vae"), "models/vae");
-        for folder in ["diffusion_models", "text_encoders", "vae"] {
-            assert!(models_relative_path(folder).starts_with("models/"));
-        }
+    fn test_progress_for_an_unknown_id_is_failed_with_a_next_step() {
+        let mut map = HashMap::new();
+        map.insert("dl-0".to_string(), FileProgress::starting("dl-0", Some(10)));
+        let out = progress_of(&map, vec!["dl-0".into(), "dl-9".into()]);
+        assert_eq!(out[0].status, "starting");
+        assert_eq!(out[1].status, "failed");
+        assert!(out[1]
+            .error
+            .as_deref()
+            .expect("why")
+            .contains("Install again"));
     }
 }

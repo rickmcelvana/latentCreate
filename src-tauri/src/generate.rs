@@ -1,42 +1,31 @@
 //! The generation pipeline: a `GenerationSpec` becomes a queued ComfyUI job.
 //!
-//! ARCHITECTURE 7, in order: place a **per-job** working copy, `set_slots` for
-//! everything addressable, the graph edits slots cannot express,
-//! `validate_workflow`, then submit into the job pump T-104b already runs.
-//! Nothing here duplicates that lifecycle.
+//! ARCHITECTURE 7, in order: load the profile's API-format workflow, audit
+//! every resolved address, write the values, apply the graph edits slots
+//! cannot express, record the exact graph, `POST /prompt`, and hand the prompt
+//! id to the job pump.
 //!
-//! The working copy comes from a gallery `fetch_template` **or** a copy of a
-//! workflow the user imported (ARCHITECTURE 5b) -- see [`place_working_copy`].
-//! Every step after it is identical either way, which is the whole reason the
-//! seam is there and not further down.
+//! Two signals this module deliberately does not trust:
 //!
-//! Three things this module deliberately does NOT do, each of them a signal
-//! that looks like it should be trusted and is not:
-//!
-//! - **`local_check` is not a gate.** It is evaluated when the template is
-//!   fetched, before the profile's `slot_overrides` are applied, and MiniMax
-//!   Music 3 is `runnable: false` for exactly the filename its own overrides
-//!   correct (MCP-SURFACE 14.4). Gating on it would refuse to generate with a
-//!   fully installed model.
-//! - **A clean validation is not evidence an edit took effect.** A LoRA chain
-//!   spliced in but feeding nothing validates clean, runs, and writes audio
-//!   with no LoRA applied (17.1). Reachability is asserted in `create-core`'s
-//!   own tests, before anything is submitted.
-//! - **`applied` is not `effective`.** `set_workflow_slot` accepts a write to
-//!   an input a real backend node drives, and the engine ignores it (18.1), so
-//!   the resolved addresses are audited before the first write, not after.
+//! - **ComfyUI's acceptance is not evidence an edit took effect.** A LoRA chain
+//!   spliced in but feeding nothing validates, runs, and writes audio with no
+//!   LoRA applied (MCP-SURFACE 17.1). Reachability is asserted in
+//!   `create-core`'s own tests, before anything is submitted.
+//! - **A value written is not a value read** unless the input holds a literal.
+//!   The audit refuses a link-fed or missing address before the first write
+//!   (ARCHITECTURE 3a).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use create_core::audit::{audit_slots, SlotAudit};
+use comfy_bridge::{ComfyHttp, SystemStats};
+use create_core::audit::{audit_slots, write_slot};
 use create_core::generation::{GenerationSpec, ResolvedSlots};
 use create_core::graph::{ensure_lossless_output, splice_loras, GraphError, LoraChoice};
 use create_core::profile::{ModelKind, ModelProfile};
 use create_core::provenance::ComfyServerInfo;
 use create_core::workflow::{detect_format, WorkflowFormat};
-use mcp_bridge::{Finding, LocalComfy, ServerInfo, SlotOverride, Validation, Verdict};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
@@ -47,34 +36,24 @@ use crate::jobs::ComfyState;
 use crate::projectctx::selected_project;
 use crate::{ConfigDir, ProfilesDir};
 
-/// What was queued, and what the app could not check while queueing it.
+/// What was queued.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Submission {
     /// The handle every later job call keys on.
     pub prompt_id: String,
-    /// The working copy actually submitted -- the record of what ran.
+    /// The exact graph submitted, saved as the record of what ran.
     pub workflow_path: String,
-    /// Resolved addresses the audit could not resolve: subgraph interiors, and
-    /// addresses naming a node the top-level graph does not have. Reported
-    /// rather than swallowed; MiniMax's seed is in here, unverified rather
-    /// than working (MCP-SURFACE 18.5).
+    /// Addresses that could not be checked. Always empty since T-519 -- in API
+    /// format every address is checkable, and an unresolvable one is refused --
+    /// kept on the wire so the queue panel's notes line needs no change.
     pub unchecked_slots: Vec<String>,
     /// Ids of the LoRA loader nodes spliced in, in apply order.
     pub lora_nodes: Vec<String>,
-    /// The save format the graph edit wrote, `None` when the profile opted out
-    /// of the lossless swap.
+    /// The save format the graph edit wrote, `None` when the profile opted out.
     pub output_format: Option<String>,
 }
 
-/// What the graph edits changed, for the submission record.
-#[derive(Debug, Clone, PartialEq)]
-struct GraphEdits {
-    lora_nodes: Vec<String>,
-    output_format: Option<String>,
-}
-
-/// Queue one audio generation and start its pump. Returns as soon as ComfyUI has the
-/// job; progress arrives on the `job://` events T-104b already emits.
+/// Queue one audio generation and start its pump.
 #[tauri::command]
 pub async fn generate_audio(
     app: AppHandle,
@@ -86,8 +65,7 @@ pub async fn generate_audio(
     queue_generation(app, state, config_dir, profiles_dir, spec, ModelKind::Music).await
 }
 
-/// Queue one image generation and start its pump. Returns as soon as ComfyUI has the
-/// job; progress arrives on the `job://` events T-104b already emits.
+/// Queue one image generation and start its pump.
 #[tauri::command]
 pub async fn generate_image(
     app: AppHandle,
@@ -99,10 +77,8 @@ pub async fn generate_image(
     queue_generation(app, state, config_dir, profiles_dir, spec, ModelKind::Image).await
 }
 
-/// Shared body of `generate_audio` and `generate_image`.
-///
-/// The two commands are one pipeline with one difference: which kind of asset
-/// the outputs become. A mismatch is refused before any connection is opened.
+/// Shared body of `generate_audio` and `generate_image`. A kind mismatch is
+/// refused before anything connects.
 async fn queue_generation(
     app: AppHandle,
     state: State<'_, ComfyState>,
@@ -112,29 +88,28 @@ async fn queue_generation(
     kind: ModelKind,
 ) -> Result<Submission, String> {
     let set = library::profiles::load(&profiles_dir.0, &config_dir.0.join("profiles"));
-    let profile = set
+    let loaded = set
         .profiles
         .get(&spec.profile_id)
-        .map(|loaded| loaded.profile.clone())
         .ok_or_else(|| format!("no profile named {}", spec.profile_id))?;
-
+    let profile = loaded.profile.clone();
     if let Some(err) = kind_error(&profile, kind) {
         return Err(err);
     }
+    let source = workflow_source(&profile, &loaded.path)?;
 
-    let comfy = match ensure_connected(&state, &config_dir, None).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Err(e.to_string()),
-        Err(EnsureError::Log(detail)) => return Err(detail),
-    };
+    let comfy = ensure_connected(&state, &config_dir)
+        .await
+        .map_err(EnsureError::into_message)?;
 
-    let workflow = workflow_path(&config_dir.0, &mint_job_id());
-    if let Some(dir) = workflow.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-
-    let (submission, resolved) = build_and_submit(&comfy, &workflow, &profile, &spec).await?;
-    let server_info = comfy.health().await.ok().as_ref().map(server_info_of);
+    let record = record_path(&config_dir.0, &mint_job_id());
+    let (submission, resolved) =
+        build_and_submit(&comfy, &source, &record, &profile, &spec).await?;
+    let server_info = comfy
+        .system_stats()
+        .await
+        .ok()
+        .map(|stats| server_info_of(&comfy, &stats));
     let project = selected_project(&config_dir.0).map_err(|e| e.to_string())?;
     let pending = PendingOutput {
         project_slug: project.slug,
@@ -159,12 +134,9 @@ async fn queue_generation(
 
 /// Why this profile cannot be queued by this command, or `None` to go ahead.
 ///
-/// The two commands are one pipeline with one difference: which kind of asset
-/// the outputs become. A music profile queued as an image would download its
-/// FLAC into `art/` and file nothing, because ingest dispatches on the record's
-/// kind -- a Done row and no output, which is the silent failure this task
-/// exists to remove. So the mismatch is refused at submit, in a sentence that
-/// says where the profile does belong.
+/// A music profile queued as an image would file its FLAC nowhere -- a Done
+/// row and no output -- so the mismatch is refused at submit, in a sentence
+/// that says where the profile does belong.
 fn kind_error(profile: &ModelProfile, wanted: ModelKind) -> Option<String> {
     if profile.kind == wanted {
         return None;
@@ -183,162 +155,107 @@ fn kind_error(profile: &ModelProfile, wanted: ModelKind) -> Option<String> {
     })
 }
 
-/// Put this job's own copy of the graph at `workflow`.
-///
-/// Two sources, one contract: when this returns `Ok`, `workflow` holds a
-/// **frontend-format** graph that the later steps may freely rewrite. Never a
-/// shared path -- the MCP docs warn about TOCTOU, and two generations at once
-/// would edit each other's graph.
-///
-/// A profile declares a gallery `template` **or** an imported `workflow`
-/// (ARCHITECTURE 5b), never both. The imported file is copied rather than
-/// fetched because nothing remote owns it.
-async fn place_working_copy(
-    comfy: &LocalComfy,
-    profile: &ModelProfile,
-    workflow: &Path,
-) -> Result<(), String> {
-    match (
-        profile.comfy.template.as_deref(),
-        profile.comfy.workflow.as_deref(),
-    ) {
-        // Not a precedence rule. A profile saying two contradictory things
-        // would otherwise generate from whichever the code checked first.
-        (Some(_), Some(_)) => Err(format!(
-            "{} declares both a gallery template and an imported workflow; it must declare one",
+/// The profile's workflow file, resolved against the directory the profile
+/// was loaded from (ARCHITECTURE 5).
+fn workflow_source(profile: &ModelProfile, profile_file: &Path) -> Result<PathBuf, String> {
+    let rel = profile.comfy.workflow.as_deref().ok_or_else(|| {
+        format!(
+            "{} has no workflow. Re-import it from a ComfyUI Workflow > Export (API) file.",
             profile.id
+        )
+    })?;
+    let dir = profile_file.parent().unwrap_or_else(|| Path::new("."));
+    Ok(dir.join(rel))
+}
+
+/// Read and check the profile's workflow, naming the user's file in every
+/// message -- a path under `jobs/` would tell them nothing they can act on.
+fn load_workflow(source: &Path, profile_id: &str) -> Result<Value, String> {
+    let text = std::fs::read_to_string(source).map_err(|e| {
+        format!(
+            "{profile_id} could not read its workflow at {}: {e}. \
+             Re-import it, or restore the file.",
+            source.display()
+        )
+    })?;
+    let graph: Value = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "{profile_id}'s workflow at {} is not valid JSON ({e}). \
+             Re-export it from ComfyUI with Workflow > Export (API).",
+            source.display()
+        )
+    })?;
+    match detect_format(&graph) {
+        Some(WorkflowFormat::Api) => Ok(graph),
+        Some(WorkflowFormat::Frontend) => Err(format!(
+            "{profile_id}'s workflow is a saved (editing) workflow, which latentCreate no longer \
+             runs. In ComfyUI open it, choose Workflow > Export (API), and import that file."
         )),
-        (Some(template), None) => comfy
-            .fetch_template(template, workflow)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
-        (None, Some(source)) => {
-            let source = Path::new(source);
-            std::fs::copy(source, workflow).map_err(|e| {
-                format!(
-                    "{} could not read its workflow at {}: {e}. \
-                     Re-import it, or point the profile at the file's new location.",
-                    profile.id,
-                    source.display()
-                )
-            })?;
-            // Parsed here rather than through `read_workflow` so the message
-            // names the **user's** file. `read_workflow` reports against the
-            // path it was given -- the working copy, buried under `jobs/` --
-            // which tells someone who picked the wrong file nothing they can
-            // act on.
-            let text = std::fs::read_to_string(workflow).map_err(|e| {
-                format!(
-                    "{} could not read its workflow at {}: {e}",
-                    profile.id,
-                    source.display()
-                )
-            })?;
-            let graph: Value = serde_json::from_str(&text).map_err(|e| {
-                format!(
-                    "{}'s workflow at {} is not valid JSON ({e}). \
-                     Re-export it from ComfyUI with File > Save (As).",
-                    profile.id,
-                    source.display()
-                )
-            })?;
-            ensure_frontend_format(&graph, &profile.id)
-        }
-        (None, None) => Err(format!(
-            "{} declares neither a gallery template nor an imported workflow",
-            profile.id
+        None => Err(format!(
+            "{profile_id}'s workflow at {} is not a ComfyUI workflow.",
+            source.display()
         )),
     }
 }
 
-/// Refuse a graph the later steps cannot edit.
+/// Build this job's graph, record it at `record`, and submit it.
 ///
-/// The check is the presence of a top-level `nodes` array, which is what
-/// separates the frontend ("editing") export from the API export (MCP-SURFACE
-/// 29). It is done here rather than left to `validate_workflow`, because
-/// validate accepts **both** formats and reports an API export as `valid: true`
-/// (29.1) -- the run would then fail three steps later with a message about
-/// inert slots, which describes nothing the user did.
-///
-/// The remedy names the menu item, taken from comfy-cli's own refusal, which
-/// words it better than this app could.
-fn ensure_frontend_format(graph: &Value, profile_id: &str) -> Result<(), String> {
-    // Shares `detect_format` with the import path (T-313b) rather than keeping
-    // a second copy of the rule. Two format checks that could disagree is a bug
-    // waiting for a fixture; this one predates the shared home by one task.
-    if detect_format(graph) == Some(WorkflowFormat::Frontend) {
-        return Ok(());
-    }
-    Err(format!(
-        "{profile_id}'s workflow is not the format latentCreate can edit. \
-         In ComfyUI use File > Save (As) to export the editing format. \
-         The File > Export (API) output cannot be used here."
-    ))
-}
-
-/// Build this job's working copy and submit it.
-///
-/// Takes the workflow path rather than minting one so a test can place a real
-/// captured template where `fetch_template` would have written it: a mock
-/// transport reproduces comfy-mcp's replies, not its side effects.
-///
-/// Returns the submission record plus the resolved slots, so the caller can
-/// capture them in the pending provenance record without recomputing.
+/// Returns the submission plus the resolved slots, so the caller can capture
+/// them in the pending provenance record without recomputing.
 pub(crate) async fn build_and_submit(
-    comfy: &LocalComfy,
-    workflow: &Path,
+    comfy: &ComfyHttp,
+    source: &Path,
+    record: &Path,
     profile: &ModelProfile,
     spec: &GenerationSpec,
 ) -> Result<(Submission, ResolvedSlots), String> {
-    // 1. This job's own copy, from a gallery template or an imported file.
-    place_working_copy(comfy, profile, workflow).await?;
+    // 1. This job's own in-memory copy of the profile's graph.
+    let mut graph = load_workflow(source, &profile.id)?;
 
-    // 2. Resolve, then refuse a write the engine would ignore -- before the
-    //    write, so a profile bug costs nothing.
+    // 2. Resolve, then refuse a write the engine would ignore or that has
+    //    nowhere to go -- before the first write, so a profile bug costs nothing.
     let resolved = profile.resolve_slots(spec).map_err(|e| e.to_string())?;
     let addresses: Vec<String> = resolved.keys().map(|a| a.0.clone()).collect();
-    let audit = audit_slots(&read_workflow(workflow)?, &addresses);
-    let inert = inert_slots(&audit);
-    if !inert.is_empty() {
+    let audit = audit_slots(&graph, &addresses);
+    if !audit.missing.is_empty() {
         return Err(format!(
-            "{} writes {} to inputs a node drives, so the engine would ignore them",
+            "{} names {}, which its workflow does not have. Update latentCreate, or re-import \
+             the workflow.",
             profile.id,
-            inert.join(", ")
+            audit.missing.join(", ")
+        ));
+    }
+    if !audit.link_fed.is_empty() {
+        let fed: Vec<&str> = audit.link_fed.iter().map(|f| f.address.as_str()).collect();
+        return Err(format!(
+            "{} writes {} to inputs another node drives, so the engine would ignore them",
+            profile.id,
+            fed.join(", ")
         ));
     }
 
-    // 3. Slot writes first, graph edits second, and never a slot write after an
-    //    edit: the swap retypes the save node, and this app has not re-read the
-    //    slot list that a new node class produces.
-    let overrides = slot_overrides(&resolved);
-    if !overrides.is_empty() {
-        comfy
-            .set_slots(workflow, &overrides)
-            .await
-            .map_err(|e| e.to_string())?;
+    // 3. Values first, graph edits second: the edits add and retype nodes, and
+    //    no address was checked against the edited graph.
+    for (address, value) in &resolved {
+        write_slot(&mut graph, &address.0, value.to_slot_value()).map_err(|e| e.to_string())?;
     }
-
-    // 4. The two edits slots cannot express, on the file set_slots just wrote.
-    let mut graph = read_workflow(workflow)?;
     let edits = apply_graph_edits(&mut graph, profile, spec).map_err(|e| e.to_string())?;
-    write_workflow(workflow, &graph)?;
 
-    // 5. Cheap, and worth being precise about: this catches unknown enum
-    //    values, out-of-range numbers and missing required inputs before any
-    //    GPU time. It is blind to reachability (17.1) and to the save format's
-    //    dynamic combo (16.1), so it proves nothing about step 4.
-    let report = comfy.validate(workflow).await.map_err(|e| e.to_string())?;
-    if let Some(reason) = validation_error(&report) {
-        return Err(reason);
+    // 4. The record of what ran, written before submit so a refusal leaves the
+    //    exact graph ComfyUI refused on disk for the bug report.
+    if let Some(dir) = record.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
+    let text = serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())?;
+    std::fs::write(record, text).map_err(|e| format!("{}: {e}", record.display()))?;
 
-    let run = comfy.run(workflow).await.map_err(|e| e.to_string())?;
+    // 5. ComfyUI validates on submit and names the node and input it refuses.
+    let prompt_id = comfy.submit(&graph).await.map_err(|e| e.to_string())?;
     Ok((
         Submission {
-            prompt_id: run.prompt_id,
-            workflow_path: workflow.display().to_string(),
-            unchecked_slots: audit.unchecked,
+            prompt_id,
+            workflow_path: record.display().to_string(),
+            unchecked_slots: Vec::new(),
             lora_nodes: edits.lora_nodes,
             output_format: edits.output_format,
         },
@@ -346,74 +263,11 @@ pub(crate) async fn build_and_submit(
     ))
 }
 
-/// Map a live server info reading to the provenance record.
-fn server_info_of(info: &ServerInfo) -> ComfyServerInfo {
-    ComfyServerInfo {
-        comfyui_version: info
-            .freshness
-            .as_ref()
-            .and_then(|f| f.core.as_ref())
-            .and_then(|c| c.installed.clone()),
-        comfy_cli_version: info
-            .compatibility
-            .as_ref()
-            .and_then(|c| c.comfy_cli_version.clone()),
-        url: info.server.as_ref().and_then(|s| s.url.clone()),
-    }
-}
-
-/// The slot writes for one resolved spec, in the shape `set_slots` wants.
-///
-/// **`to_slot_value`, never `serde_json::to_value`.** `InputValue` is
-/// adjacently tagged, so serialising it whole sends `{"type":"seed","value":42}`
-/// where the slot wants `42` -- rejected with `[workflow_slot_invalid]` for
-/// every generation (MCP-SURFACE 18.2).
-fn slot_overrides(resolved: &ResolvedSlots) -> Vec<SlotOverride> {
-    resolved
-        .iter()
-        .map(|(address, value)| SlotOverride::new(address.0.clone(), value.to_slot_value()))
-        .collect()
-}
-
-/// Addresses whose write would be accepted, persisted, and then ignored.
-fn inert_slots(audit: &SlotAudit) -> Vec<String> {
-    audit
-        .link_fed
-        .iter()
-        .filter(|fed| fed.is_inert())
-        .map(|fed| fed.address.clone())
-        .collect()
-}
-
-/// Why this validation must stop the run, or `None` to go ahead.
-///
-/// `Vacuous` is a failure: a report that examined no nodes is not a pass, and
-/// treating it as one greenlights a graph nothing looked at (9.3).
-fn validation_error(report: &Validation) -> Option<String> {
-    match report.verdict() {
-        Verdict::Valid => None,
-        Verdict::Invalid => Some(format!(
-            "ComfyUI rejected the workflow: {}",
-            summarise(&report.errors)
-        )),
-        Verdict::Vacuous => {
-            Some("validation examined no nodes, so it proves nothing about this workflow".into())
-        }
-    }
-}
-
-/// One line per finding, node id included so the user can be pointed at it.
-fn summarise(findings: &[Finding]) -> String {
-    findings
-        .iter()
-        .map(|f| match (&f.node_id, &f.message) {
-            (Some(id), Some(msg)) => format!("node {id}: {msg}"),
-            (None, Some(msg)) => msg.clone(),
-            (Some(id), None) => format!("node {id}"),
-            (None, None) => "unspecified error".to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join("; ")
+/// What the graph edits changed, for the submission record.
+#[derive(Debug, Clone, PartialEq)]
+struct GraphEdits {
+    lora_nodes: Vec<String>,
+    output_format: Option<String>,
 }
 
 /// Apply the edits no slot can express: the LoRA stack, then the save format.
@@ -429,7 +283,6 @@ fn apply_graph_edits(
             strength: lora.strength,
         })
         .collect();
-
     let lora_nodes = match (&profile.loras, stack.is_empty()) {
         (_, true) => Vec::new(),
         (Some(support), false) => splice_loras(graph, support, &stack)?.nodes,
@@ -439,24 +292,34 @@ fn apply_graph_edits(
             })
         }
     };
-
-    let save = ensure_lossless_output(graph, &profile.comfy.output)?;
+    let save = if profile.kind == ModelKind::Music {
+        ensure_lossless_output(graph, &profile.comfy.output)?.format
+    } else {
+        None
+    };
     Ok(GraphEdits {
         lora_nodes,
-        output_format: save.format,
+        output_format: save,
     })
 }
 
-/// Where one job's working copy lives.
-fn workflow_path(root: &Path, job_id: &str) -> PathBuf {
+/// The provenance record of the server that ran a job. comfy-cli no longer
+/// exists in the chain, so its version is recorded as absent.
+fn server_info_of(comfy: &ComfyHttp, stats: &SystemStats) -> ComfyServerInfo {
+    ComfyServerInfo {
+        comfyui_version: stats.system.comfyui_version.clone(),
+        comfy_cli_version: None,
+        url: Some(comfy.base_url().to_string()),
+    }
+}
+
+/// Where one job's submitted graph is recorded.
+fn record_path(root: &Path, job_id: &str) -> PathBuf {
     root.join("jobs").join(job_id).join("workflow.json")
 }
 
-/// A per-job directory name: epoch millis plus a counter.
-///
-/// The counter is what makes it unique -- two jobs queued in the same
-/// millisecond are ordinary, and a collision would have one run editing the
-/// other's graph.
+/// A per-job directory name: epoch millis plus a counter, so two jobs queued in
+/// the same millisecond still get their own record.
 fn mint_job_id() -> String {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let millis = SystemTime::now()
@@ -466,111 +329,282 @@ fn mint_job_id() -> String {
     format!("{millis:013}-{:04}", SEQ.fetch_add(1, Ordering::Relaxed))
 }
 
-/// Read the working copy back after a tool wrote it.
-fn read_workflow(path: &Path) -> Result<Value, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
-}
-
-/// Write the edited graph back. A plain write, not an atomic swap: this file is
-/// this job's alone and nothing else reads it until it is submitted.
-fn write_workflow(path: &Path, graph: &Value) -> Result<(), String> {
-    let text = serde_json::to_string(graph).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use comfy_bridge::transport::{FakeTransport, Method};
     use create_core::generation::{InputValue, LoraRef};
-    use create_core::profile::SlotAddress;
-    use mcp_bridge::mock::Reply;
-    use mcp_bridge::test_helpers::client_and_log;
     use serde_json::json;
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
-    const ACE: &str = include_str!("../../profiles/ace-step-1.5-turbo.json");
-    const MINIMAX: &str = include_str!("../../profiles/minimax-music-3.json");
-    const KLEIN: &str = include_str!("../../testdata/profiles/flux2-klein-9b-image.json");
-
-    fn ace() -> ModelProfile {
-        serde_json::from_str(ACE).expect("profile decodes")
+    fn repo() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
     }
 
-    fn minimax() -> ModelProfile {
-        serde_json::from_str(MINIMAX).expect("profile decodes")
+    fn profile(id: &str) -> (ModelProfile, PathBuf) {
+        let file = repo().join("profiles").join(format!("{id}.json"));
+        let text = std::fs::read_to_string(&file).expect("profile");
+        let p: ModelProfile = serde_json::from_str(&text).expect("decodes");
+        let source = workflow_source(&p, &file).expect("workflow");
+        (p, source)
     }
 
-    fn klein() -> ModelProfile {
-        serde_json::from_str(KLEIN).expect("profile decodes")
-    }
-
-    /// The real captured template, as `fetch_template` would have written it.
-    fn fixture() -> String {
-        named_fixture("ace_step_1_5_xl_turbo.json")
-    }
-
-    fn named_fixture(name: &str) -> String {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../testdata/workflows")
-            .join(name);
-        std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
-    }
-
-    fn spec() -> GenerationSpec {
-        let mut inputs = BTreeMap::new();
-        inputs.insert("tags".to_string(), InputValue::Text("synthwave".into()));
-        inputs.insert("seed".to_string(), InputValue::Seed(42));
-        inputs.insert("duration_s".to_string(), InputValue::Float(30.0));
+    fn spec(profile_id: &str, inputs: &[(&str, InputValue)]) -> GenerationSpec {
         GenerationSpec {
             title: None,
-            profile_id: "ace-step-1.5-turbo".to_string(),
-            inputs,
+            profile_id: profile_id.to_string(),
+            inputs: inputs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect::<BTreeMap<_, _>>(),
             loras: Vec::new(),
             lyrics: None,
         }
     }
 
-    /// The four replies a clean run consumes, in call order.
-    fn happy_replies() -> Vec<Reply> {
-        vec![
-            Reply::Json(
-                json!({ "path": "ignored", "local_check": { "checked": true, "runnable": true } }),
-            ),
-            Reply::Json(json!({ "applied": [], "warnings": [], "wrote": "ignored" })),
-            Reply::Json(
-                json!({ "valid": true, "errors": [], "warnings": [], "converted_from_ui": true, "converted_node_count": 30 }),
-            ),
-            Reply::Json(json!({ "prompt_id": "abc-123", "status": "queued", "outputs": [] })),
-        ]
+    fn ace_spec() -> GenerationSpec {
+        spec(
+            "ace-step-1.5-turbo",
+            &[
+                ("tags", InputValue::Text("synthwave".into())),
+                ("seed", InputValue::Seed(u64::MAX)),
+                ("duration_s", InputValue::Float(30.0)),
+            ],
+        )
     }
 
-    /// `set_slots` refuses a write whose address is not echoed back, so the
-    /// canned reply has to applaud exactly what was sent.
-    fn applied(overrides: &[SlotOverride]) -> Vec<String> {
-        overrides.iter().map(|o| o.address.clone()).collect()
+    fn accepting() -> Arc<FakeTransport> {
+        let fake = Arc::new(FakeTransport::new());
+        fake.on_json(
+            Method::Post,
+            "/prompt",
+            &json!({"prompt_id": "abc-123", "number": 1, "node_errors": {}}),
+        );
+        fake
+    }
+
+    async fn submit(
+        fake: &Arc<FakeTransport>,
+        id: &str,
+        spec: &GenerationSpec,
+    ) -> (
+        Result<(Submission, ResolvedSlots), String>,
+        PathBuf,
+        tempfile::TempDir,
+    ) {
+        let (p, source) = profile(id);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let record = record_path(dir.path(), "job");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake.clone(), None);
+        let out = build_and_submit(&comfy, &source, &record, &p, spec).await;
+        (out, record, dir)
+    }
+
+    /// Protects: the submitted graph carries the user's values at the profile's
+    /// addresses -- the seed as an exact u64, the duration in **both** places --
+    /// is made lossless, is recorded on disk, and is what was POSTed.
+    #[tokio::test]
+    async fn test_pipeline_writes_values_edits_records_and_submits_one_graph() {
+        let fake = accepting();
+        let (out, record, _dir) = submit(&fake, "ace-step-1.5-turbo", &ace_spec()).await;
+        let (submission, resolved) = out.expect("queued");
+        assert_eq!(submission.prompt_id, "abc-123");
+        assert_eq!(submission.output_format.as_deref(), Some("flac"));
+        assert!(!resolved.is_empty());
+
+        assert_eq!(fake.call_lines(), ["POST /prompt"]);
+        let sent = fake.body_of(0)["prompt"].clone();
+        assert_eq!(sent["109"]["inputs"]["value"], json!(u64::MAX));
+        assert_eq!(sent["94"]["inputs"]["tags"], "synthwave");
+        assert_eq!(sent["94"]["inputs"]["duration"], json!(30.0));
+        assert_eq!(sent["98"]["inputs"]["seconds"], json!(30.0));
+        assert_eq!(sent["111"]["inputs"]["format"], "flac");
+        assert!(sent["111"]["inputs"].get("format.quality").is_none());
+        assert_eq!(
+            sent["3"]["inputs"]["seed"],
+            json!(["109", 0]),
+            "the link is untouched"
+        );
+
+        let on_disk: Value =
+            serde_json::from_str(&std::fs::read_to_string(record).expect("record")).expect("json");
+        assert_eq!(on_disk, sent, "the record is exactly what ran");
+    }
+
+    /// Protects: an enabled LoRA reaches the submitted graph, on the MODEL path;
+    /// a bypassed one does not.
+    #[tokio::test]
+    async fn test_an_enabled_lora_is_spliced_and_a_bypassed_one_is_not() {
+        let fake = accepting();
+        let mut s = ace_spec();
+        s.loras = vec![
+            LoraRef {
+                file: "mine\\style.safetensors".into(),
+                strength: 0.8,
+                enabled: true,
+            },
+            LoraRef {
+                file: "off.safetensors".into(),
+                strength: 1.0,
+                enabled: false,
+            },
+        ];
+        let (out, _, _dir) = submit(&fake, "ace-step-1.5-turbo", &s).await;
+        let (submission, _) = out.expect("queued");
+        assert_eq!(submission.lora_nodes, ["112"]);
+        let sent = fake.body_of(0)["prompt"].clone();
+        assert_eq!(
+            sent["112"]["inputs"]["lora_name"],
+            "mine\\style.safetensors"
+        );
+        assert_eq!(sent["78"]["inputs"]["model"], json!(["112", 0]));
+        assert_eq!(sent["112"]["inputs"]["model"], json!(["104", 0]));
+        assert!(!sent.to_string().contains("off.safetensors"));
+    }
+
+    /// Protects: MiniMax's flattened subgraph addresses and its int8 override
+    /// both land.
+    #[tokio::test]
+    async fn test_minimax_writes_through_flattened_subgraph_ids() {
+        let fake = accepting();
+        let s = spec(
+            "minimax-music-3",
+            &[
+                ("caption", InputValue::Text("lofi".into())),
+                ("seed", InputValue::Seed(7)),
+            ],
+        );
+        let (out, _, _dir) = submit(&fake, "minimax-music-3", &s).await;
+        out.expect("queued");
+        let sent = fake.body_of(0)["prompt"].clone();
+        assert_eq!(sent["37:13"]["inputs"]["caption"], "lofi");
+        assert_eq!(sent["37:38"]["inputs"]["seed"], json!(7));
+        assert_eq!(
+            sent["37:6"]["inputs"]["unet_name"],
+            "minimax_music3_dit_int8_convrot.safetensors"
+        );
+    }
+
+    /// Protects: an image profile is never given an audio save edit.
+    #[tokio::test]
+    async fn test_image_pipeline_makes_no_save_node_edit() {
+        let fake = accepting();
+        let s = spec(
+            "flux-1-schnell-fp8",
+            &[("tags", InputValue::Text("a fox".into()))],
+        );
+        let (out, _, _dir) = submit(&fake, "flux-1-schnell-fp8", &s).await;
+        let (submission, _) = out.expect("queued");
+        assert_eq!(submission.output_format, None);
+        assert_eq!(fake.body_of(0)["prompt"]["6"]["inputs"]["text"], "a fox");
+    }
+
+    /// Protects: ComfyUI's refusal reaches the user as one sentence naming the
+    /// node and input, and the refused graph is on disk for the report.
+    #[tokio::test]
+    async fn test_a_refusal_names_the_node_and_keeps_the_record() {
+        let fake = Arc::new(FakeTransport::new());
+        let path = repo().join("testdata/comfy-http/prompt_400_node_errors.json");
+        let body: Value =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("f")).expect("j");
+        fake.on(Method::Post, "/prompt", 400, body["body"].to_string());
+        let (out, record, _dir) = submit(
+            &fake,
+            "flux-1-schnell-fp8",
+            &spec("flux-1-schnell-fp8", &[]),
+        )
+        .await;
+        let err = out.expect_err("refused");
+        assert!(
+            err.starts_with("ComfyUI rejected the workflow: EmptySD3LatentImage (#27)"),
+            "{err}"
+        );
+        assert!(record.exists());
+    }
+
+    /// Protects: a profile address the workflow lacks stops the run before any
+    /// request, naming the address.
+    #[tokio::test]
+    async fn test_an_address_the_workflow_lacks_stops_the_run() {
+        let fake = accepting();
+        let (mut p, source) = profile("flux-1-schnell-fp8");
+        let mut spec = spec(
+            "flux-1-schnell-fp8",
+            &[("tags", InputValue::Text("x".into()))],
+        );
+        if let create_core::profile::InputSpec::Text { slots, .. } =
+            p.inputs.get_mut("tags").expect("tags")
+        {
+            *slots = vec![create_core::profile::SlotAddress("999.text".into())];
+        }
+        spec.profile_id = p.id.clone();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake.clone(), None);
+        let err = build_and_submit(&comfy, &source, &record_path(dir.path(), "j"), &p, &spec)
+            .await
+            .expect_err("refused");
+        assert!(err.contains("999.text"), "{err}");
+        assert!(fake.calls().is_empty());
+    }
+
+    /// Protects: a link-fed address (the 18.1 trap) stops the run before any
+    /// request.
+    #[tokio::test]
+    async fn test_a_link_fed_address_stops_the_run() {
+        let fake = accepting();
+        let (mut p, source) = profile("ace-step-1.5-turbo");
+        if let create_core::profile::InputSpec::Seed { slots, .. } =
+            p.inputs.get_mut("seed").expect("seed")
+        {
+            *slots = vec![create_core::profile::SlotAddress("3.seed".into())];
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake.clone(), None);
+        let err = build_and_submit(
+            &comfy,
+            &source,
+            &record_path(dir.path(), "j"),
+            &p,
+            &ace_spec(),
+        )
+        .await
+        .expect_err("refused");
+        assert!(
+            err.contains("3.seed") && err.contains("another node drives"),
+            "{err}"
+        );
+        assert!(fake.calls().is_empty());
+    }
+
+    /// Protects: an old frontend-format import is refused with the menu path to
+    /// the export that works -- not half-run.
+    #[test]
+    fn test_a_saved_editing_workflow_is_refused_with_the_menu_item() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("old.json");
+        std::fs::write(&file, r#"{"nodes": [], "links": []}"#).expect("write");
+        let err = load_workflow(&file, "mine").expect_err("refused");
+        assert!(err.contains("Workflow > Export (API)"), "{err}");
     }
 
     #[test]
-    fn test_slot_overrides_send_bare_values_not_the_tag() {
-        let mut resolved: ResolvedSlots = BTreeMap::new();
-        resolved.insert(SlotAddress("109.value".into()), InputValue::Seed(u64::MAX));
-        let sent = slot_overrides(&resolved);
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].value, json!(u64::MAX));
-        assert!(sent[0].value.get("type").is_none());
+    fn test_a_missing_workflow_names_the_file_and_the_fix() {
+        let err = load_workflow(Path::new("/nope/wf.json"), "mine").expect_err("missing");
+        assert!(
+            err.contains("wf.json") && err.contains("Re-import"),
+            "{err}"
+        );
     }
 
     #[test]
-    fn test_vacuous_validation_is_a_failure() {
-        let vacuous: Validation = serde_json::from_value(json!({
-            "valid": true,
-            "errors": [],
-            "warnings": [{ "code": "non_node_key" }]
-        }))
-        .expect("decodes");
-        assert!(validation_error(&vacuous).is_some());
+    fn test_workflow_resolves_beside_the_profile_and_absolute_paths_pass_through() {
+        let (p, _) = profile("flux-1-schnell-fp8");
+        let got = workflow_source(&p, Path::new("/x/profiles/flux.json")).expect("ok");
+        assert_eq!(
+            got,
+            Path::new("/x/profiles").join("workflows/flux-1-schnell-fp8.json")
+        );
     }
 
     #[test]
@@ -579,493 +613,16 @@ mod tests {
     }
 
     #[test]
-    fn test_kind_error_refuses_a_music_profile_on_the_image_command() {
-        let err = kind_error(&ace(), ModelKind::Image).expect("refused");
-        assert!(err.contains("ace-step-1.5-turbo"), "{err}");
-    }
-
-    #[test]
-    fn test_kind_error_refuses_an_image_profile_on_the_audio_command() {
-        let err = kind_error(&klein(), ModelKind::Music).expect("refused");
-        assert!(err.contains("flux-2-klein-9b-text-to-image"), "{err}");
-    }
-
-    #[test]
-    fn test_kind_error_permits_matching_kind() {
-        assert!(kind_error(&ace(), ModelKind::Music).is_none());
-        assert!(kind_error(&klein(), ModelKind::Image).is_none());
-    }
-
-    #[tokio::test]
-    async fn test_pipeline_calls_the_tools_in_order_on_one_working_copy() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let workflow = dir.path().join("workflow.json");
-        std::fs::write(&workflow, fixture()).expect("place the fixture");
-
-        let profile = ace();
-        let spec = spec();
-        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
-        let mut replies = happy_replies();
-        replies[1] = Reply::Json(json!({
-            "applied": applied(&overrides),
-            "warnings": [],
-            "wrote": workflow.display().to_string()
-        }));
-
-        let (comfy, calls) = client_and_log(replies).await;
-        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
-            .await
-            .expect("pipeline runs");
-
-        assert_eq!(submission.prompt_id, "abc-123");
-        assert_eq!(submission.output_format.as_deref(), Some("flac"));
-
-        // The edit has to be on disk, not only in the return value: what is
-        // submitted is the file, and a pipeline that skipped the write-back
-        // would report `flac` while ComfyUI rendered the template's MP3.
-        let submitted: Value = serde_json::from_str(
-            &std::fs::read_to_string(&workflow).expect("the working copy survives"),
-        )
-        .expect("submitted workflow decodes");
-        let save = submitted
-            .get("nodes")
-            .and_then(|n| n.as_array())
-            .expect("nodes")
-            .iter()
-            .find(|n| n.get("id").and_then(|i| i.as_i64()) == Some(107))
-            .expect("the save node");
-        assert_eq!(
-            save.get("type").and_then(|t| t.as_str()),
-            Some("SaveAudioAdvanced")
-        );
-        assert_eq!(
-            save.pointer("/widgets_values/1").and_then(|f| f.as_str()),
-            Some("flac")
-        );
-
-        let calls = calls.lock().expect("calls lock");
-        let names: Vec<&str> = calls
-            .iter()
-            .map(|c| c.get("name").and_then(|n| n.as_str()).unwrap_or(""))
-            .collect();
-        assert_eq!(
-            names,
-            vec![
-                "fetch_template",
-                "set_workflow_slot",
-                "validate_workflow",
-                "run_workflow"
-            ]
-        );
-
-        let want = workflow.display().to_string();
-        for call in calls.iter() {
-            let args = call.get("arguments").expect("arguments");
-            let path = args
-                .get("workflow_path")
-                .or_else(|| args.get("out_path"))
-                .and_then(|p| p.as_str())
-                .expect("every call names the working copy");
-            assert_eq!(path, want);
-        }
-
-        let seed = calls[1]
-            .pointer("/arguments/overrides")
-            .and_then(|o| o.as_array())
-            .expect("overrides")
-            .iter()
-            .find(|o| o.get("address").and_then(|a| a.as_str()) == Some("109.value"))
-            .expect("the seed is written");
-        assert_eq!(seed.get("value"), Some(&json!(42)));
-    }
-
-    #[tokio::test]
-    async fn test_an_inert_slot_stops_the_run_before_anything_is_written() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let workflow = dir.path().join("workflow.json");
-        std::fs::write(&workflow, fixture()).expect("place the fixture");
-
-        // The profile as it read before T-306a: a seed written to two inputs
-        // that `PrimitiveInt` 109 drives.
-        let mut profile = ace();
-        profile.inputs.insert(
-            "seed".to_string(),
-            serde_json::from_value(json!({ "type": "seed", "slots": ["94.seed", "3.seed"] }))
-                .expect("input decodes"),
-        );
-
-        let (comfy, calls) = client_and_log(happy_replies()).await;
-        let error = build_and_submit(&comfy, &workflow, &profile, &spec())
-            .await
-            .expect_err("an inert write must not be submitted");
-
-        assert!(error.contains("94.seed"), "{error}");
-        let calls = calls.lock().expect("calls lock");
-        assert_eq!(calls.len(), 1, "nothing past fetch_template may be called");
-    }
-
-    /// A MiniMax run reports nothing unchecked, and is not refused.
-    ///
-    /// This is the seam the create-core tests cannot reach. `audit_slots`
-    /// returning a clean audit is one layer; what the user sees is
-    /// `Submission.unchecked_slots`, and what stops them generating is the
-    /// `inert` refusal above it. Before T-309e every one of MiniMax's eight
-    /// addresses came back unchecked -- so the warning fired on every single
-    /// generation this project has ever run, naming addresses a live run had
-    /// already proved effective.
-    ///
-    /// **Both halves of T-309e are load-bearing here.** Teach the audit to read
-    /// a subgraph without dropping the three link-fed addresses and this test
-    /// fails on the refusal, not the warning.
-    #[tokio::test]
-    async fn test_a_minimax_run_reports_nothing_unchecked() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let workflow = dir.path().join("workflow.json");
-        std::fs::write(&workflow, named_fixture("minimax_music3_int8.json"))
-            .expect("place the fixture");
-
-        let profile = minimax();
-        let mut inputs = BTreeMap::new();
-        inputs.insert("caption".to_string(), InputValue::Text("synthwave".into()));
-        inputs.insert("duration_s".to_string(), InputValue::Float(30.0));
-        inputs.insert("seed".to_string(), InputValue::Seed(8578771011914929));
-        let spec = GenerationSpec {
-            title: None,
-            profile_id: "minimax-music-3".to_string(),
-            inputs,
-            loras: Vec::new(),
-            lyrics: None,
-        };
-
-        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
-        let mut replies = happy_replies();
-        replies[1] = Reply::Json(json!({
-            "applied": applied(&overrides),
-            "warnings": [],
-            "wrote": workflow.display().to_string()
-        }));
-
-        let (comfy, _calls) = client_and_log(replies).await;
-        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
-            .await
-            .expect("MiniMax must still generate");
-
-        assert_eq!(
-            submission.unchecked_slots,
-            Vec::<String>::new(),
-            "every MiniMax address resolves now, so the warning must not fire"
-        );
-        // Vacuity guard: an empty `unchecked` also describes a spec that
-        // resolved to nothing at all.
-        assert!(!overrides.is_empty(), "the spec wrote no slots");
-    }
-
-    #[test]
-    fn test_a_bypassed_lora_is_not_spliced() {
-        let mut graph: Value = serde_json::from_str(&fixture()).expect("fixture decodes");
-        let profile = ace();
-        let mut spec = spec();
-        spec.loras = vec![LoraRef {
-            file: "whatever.safetensors".into(),
-            strength: 1.0,
-            enabled: false,
-        }];
-        let edits = apply_graph_edits(&mut graph, &profile, &spec).expect("edits apply");
-        assert!(edits.lora_nodes.is_empty());
-    }
-
-    /// Protects: an enabled LoRA reaches the file that is submitted.
-    ///
-    /// The counterpart to the bypass test, and the one that has to exist.
-    /// "No LoRA was spliced" passes on a pipeline that splices nothing at all,
-    /// and the reported `lora_nodes` is not evidence either -- splicing into a
-    /// throwaway copy fills that list correctly while the submitted graph keeps
-    /// none of it. That is MCP-SURFACE 17.1 one layer up: the run validates
-    /// clean, completes, and writes a track with none of the user's LoRAs on
-    /// it, and nothing anywhere says so. The assertion is therefore on the node
-    /// in the file, read back after submission.
-    #[tokio::test]
-    async fn test_an_enabled_lora_reaches_the_submitted_file() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let workflow = dir.path().join("workflow.json");
-        std::fs::write(&workflow, fixture()).expect("place the fixture");
-
-        let profile = ace();
-        let mut spec = spec();
-        spec.loras = vec![LoraRef {
-            file: "ambient_dream1\\adapter_model.safetensors".into(),
-            strength: 0.8,
-            enabled: true,
-        }];
-
-        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
-        let mut replies = happy_replies();
-        replies[1] = Reply::Json(json!({
-            "applied": applied(&overrides),
-            "warnings": [],
-            "wrote": workflow.display().to_string()
-        }));
-
-        let (comfy, _calls) = client_and_log(replies).await;
-        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
-            .await
-            .expect("pipeline runs");
-
-        assert_eq!(submission.lora_nodes.len(), 1, "one loader was reported");
-
-        let submitted: Value = serde_json::from_str(
-            &std::fs::read_to_string(&workflow).expect("the working copy survives"),
-        )
-        .expect("submitted workflow decodes");
-        let loader = submitted
-            .get("nodes")
-            .and_then(|n| n.as_array())
-            .expect("nodes")
-            .iter()
-            .find(|n| {
-                n.get("id").map(|i| i.to_string()).as_deref() == Some(&submission.lora_nodes[0])
-            })
-            .expect("the reported loader node is in the submitted file");
-
-        assert_eq!(
-            loader.get("type").and_then(|t| t.as_str()),
-            Some("LoraLoaderModelOnly")
-        );
-        assert_eq!(
-            loader.pointer("/widgets_values/0").and_then(|v| v.as_str()),
-            Some("ambient_dream1\\adapter_model.safetensors"),
-            "the name is passed through verbatim, separators included"
-        );
-        assert_eq!(
-            loader.pointer("/widgets_values/1").and_then(|v| v.as_f64()),
-            Some(0.8)
-        );
-    }
-
-    /// A profile that reaches ComfyUI by an imported file instead of a
-    /// gallery template. Built from the shipped ACE-Step profile so its slot
-    /// addresses still resolve against the captured graph -- the point here is
-    /// the *source* of the working copy, not the mapping.
-    fn imported(source: &std::path::Path) -> ModelProfile {
-        let mut profile = ace();
-        profile.comfy.template = None;
-        profile.comfy.workflow = Some(source.display().to_string());
-        profile
-    }
-
-    /// Protects: an imported profile reaches ComfyUI by the same path a gallery
-    /// one does. This is ARCHITECTURE 5b's whole purpose, and until T-313a the
-    /// pipeline refused it outright.
-    #[tokio::test]
-    async fn test_an_imported_workflow_is_copied_and_runs() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let source = dir.path().join("mine.json");
-        std::fs::write(&source, fixture()).expect("place the user's workflow");
-        let workflow = dir.path().join("job").join("workflow.json");
-        std::fs::create_dir_all(workflow.parent().expect("has a parent")).expect("mkdir");
-
-        let profile = imported(&source);
-        let spec = spec();
-        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
-        // No `fetch_template` reply: nothing should ask for one.
-        let mut replies = happy_replies();
-        replies.remove(0);
-        replies[0] = Reply::Json(json!({
-            "applied": applied(&overrides),
-            "warnings": [],
-            "wrote": workflow.display().to_string()
-        }));
-
-        let (comfy, calls) = client_and_log(replies).await;
-        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
-            .await
-            .expect("an imported workflow runs");
-
-        assert_eq!(submission.prompt_id, "abc-123");
-        let calls = calls.lock().expect("calls lock");
-        let names: Vec<&str> = calls
-            .iter()
-            .map(|c| c.get("name").and_then(|n| n.as_str()).unwrap_or(""))
-            .collect();
-        assert!(
-            !names.contains(&"fetch_template"),
-            "nothing may fetch a template for an imported profile: {names:?}"
-        );
-        assert!(
-            workflow.exists(),
-            "the user's graph is copied to this job's own working copy"
-        );
-    }
-
-    /// Protects: the image pipeline copies its workflow instead of fetching
-    /// one, and makes no save-node edit.
-    ///
-    /// Two differences from the audio case, and they are the point: a
-    /// workflow-backed profile copies the file (ARCHITECTURE 5b), and the
-    /// returned `Submission::output_format` is `None` because the profile opts
-    /// out of the lossless swap.
-    #[tokio::test]
-    async fn test_image_pipeline_copies_its_workflow_and_makes_no_save_node_edit() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let source = dir.path().join("flux2_klein_9b.json");
-        let workflow = dir.path().join("workflow.json");
-        std::fs::write(&source, named_fixture("flux2_klein_9b.json"))
-            .expect("place the image fixture");
-
-        let mut profile = klein();
-        profile.comfy.workflow = Some(source.display().to_string());
-
-        let mut inputs = BTreeMap::new();
-        inputs.insert(
-            "tags".to_string(),
-            InputValue::Text("synthwave cover".into()),
-        );
-        inputs.insert("negative".to_string(), InputValue::Text("blurry".into()));
-        inputs.insert("seed".to_string(), InputValue::Seed(42));
-        inputs.insert("steps".to_string(), InputValue::Int(20));
-        let spec = GenerationSpec {
-            title: None,
-            profile_id: "flux-2-klein-9b-text-to-image".to_string(),
-            inputs,
-            loras: Vec::new(),
-            lyrics: None,
-        };
-
-        let overrides = slot_overrides(&profile.resolve_slots(&spec).expect("resolves"));
-        let mut replies = happy_replies();
-        replies.remove(0); // no fetch_template for imported workflow
-        replies[0] = Reply::Json(json!({
-            "applied": applied(&overrides),
-            "warnings": [],
-            "wrote": workflow.display().to_string()
-        }));
-
-        let (comfy, _calls) = client_and_log(replies).await;
-        let (submission, _resolved) = build_and_submit(&comfy, &workflow, &profile, &spec)
-            .await
-            .expect("image pipeline runs");
-
-        assert_eq!(submission.prompt_id, "abc-123");
-        assert!(submission.output_format.is_none());
-        assert!(submission.unchecked_slots.is_empty());
-        assert!(submission.lora_nodes.is_empty());
-    }
-
-    /// Protects: the one shape that validates clean but cannot be edited is
-    /// caught here, not three steps later.
-    ///
-    /// `validate_workflow` accepts an API export and calls it `valid: true`
-    /// (MCP-SURFACE 29.1), so without this check the run would fail during the
-    /// slot audit with a message about inert slots -- which describes nothing
-    /// the user did. The fixture is a **real** API export: the executed graph
-    /// of the T-315 crash-path verification run.
-    #[tokio::test]
-    async fn test_an_api_format_workflow_is_refused_with_the_menu_item() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let source = dir.path().join("exported-api.json");
-        std::fs::write(&source, named_fixture("minimax_music3.api-format.json"))
-            .expect("place the API export");
-        let workflow = dir.path().join("workflow.json");
-
-        let (comfy, calls) = client_and_log(happy_replies()).await;
-        let err = build_and_submit(&comfy, &workflow, &imported(&source), &spec())
-            .await
-            .expect_err("an API export cannot be edited");
-
-        assert!(err.contains("File > Save (As)"), "{err}");
-        assert!(
-            calls.lock().expect("calls lock").is_empty(),
-            "nothing is submitted for a graph we cannot edit"
-        );
-    }
-
-    /// Protects: a profile saying two contradictory things is refused rather
-    /// than silently generating from whichever field the code checks first.
-    /// T-313d's emitter must never produce one.
-    #[tokio::test]
-    async fn test_a_profile_declaring_both_is_refused() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let source = dir.path().join("mine.json");
-        std::fs::write(&source, fixture()).expect("place the user's workflow");
-        let mut profile = imported(&source);
-        profile.comfy.template = Some("audio_ace_step1_5_xl_turbo".to_string());
-
-        let (comfy, calls) = client_and_log(happy_replies()).await;
-        let err = build_and_submit(&comfy, &dir.path().join("workflow.json"), &profile, &spec())
-            .await
-            .expect_err("both sources is a profile bug");
-
-        assert!(err.contains("must declare one"), "{err}");
-        assert!(calls.lock().expect("calls lock").is_empty());
-    }
-
-    /// Protects: the replacement for the old refusal. It must no longer say
-    /// "not wired up yet", which stopped being true in T-313a.
-    #[tokio::test]
-    async fn test_a_profile_declaring_neither_is_refused() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut profile = ace();
-        profile.comfy.template = None;
-
-        let (comfy, _calls) = client_and_log(happy_replies()).await;
-        let err = build_and_submit(&comfy, &dir.path().join("workflow.json"), &profile, &spec())
-            .await
-            .expect_err("a profile with no graph cannot run");
-
-        assert!(err.contains("neither"), "{err}");
-        assert!(!err.contains("not wired up yet"), "{err}");
-    }
-
-    /// Protects: someone who picks the wrong file entirely is told which of
-    /// **their** files is wrong.
-    ///
-    /// Found in review, not by a test failing: the check used to go through
-    /// `read_workflow`, which reports against the path it was handed -- the
-    /// working copy under `jobs/<id>/`. A user who picked a PNG would have got
-    /// an internal path and `expected value at line 1 column 1`.
-    #[tokio::test]
-    async fn test_a_file_that_is_not_json_names_the_users_file() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let source = dir.path().join("cover-art.png");
-        std::fs::write(&source, b"not a workflow at all").expect("place a non-workflow");
-
-        let (comfy, _calls) = client_and_log(happy_replies()).await;
-        let err = build_and_submit(
-            &comfy,
-            &dir.path().join("workflow.json"),
-            &imported(&source),
-            &spec(),
-        )
-        .await
-        .expect_err("a PNG is not a workflow");
-
-        assert!(err.contains("cover-art.png"), "{err}");
-        assert!(
-            !err.contains("workflow.json"),
-            "names their file, not ours: {err}"
-        );
-        assert!(err.contains("File > Save (As)"), "{err}");
-    }
-
-    /// Protects: CONVENTIONS line 29 -- a user-facing error says what to do
-    /// next. A moved or deleted workflow is the ordinary way an imported
-    /// profile goes stale.
-    #[tokio::test]
-    async fn test_a_missing_imported_file_says_how_to_fix_it() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let missing = dir.path().join("gone.json");
-
-        let (comfy, _calls) = client_and_log(happy_replies()).await;
-        let err = build_and_submit(
-            &comfy,
-            &dir.path().join("workflow.json"),
-            &imported(&missing),
-            &spec(),
-        )
-        .await
-        .expect_err("a missing workflow cannot run");
-
-        assert!(err.contains("gone.json"), "{err}");
-        assert!(err.contains("Re-import it"), "{err}");
+    fn test_kind_error_refuses_the_wrong_command_and_permits_the_right_one() {
+        let (ace, _) = profile("ace-step-1.5-turbo");
+        let (flux, _) = profile("flux-1-schnell-fp8");
+        assert!(kind_error(&ace, ModelKind::Image)
+            .expect("refused")
+            .contains("ace-step-1.5-turbo"));
+        assert!(kind_error(&flux, ModelKind::Music)
+            .expect("refused")
+            .contains("flux-1-schnell-fp8"));
+        assert!(kind_error(&ace, ModelKind::Music).is_none());
+        assert!(kind_error(&flux, ModelKind::Image).is_none());
     }
 }

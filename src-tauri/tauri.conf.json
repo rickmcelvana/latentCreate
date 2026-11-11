@@ -33,9 +33,9 @@
   },
   "bundle": {
     "active": true,
-    "resources": [
-      "../profiles/*.json"
-    ],
+    "resources": {
+      "../profiles/": "profiles/"
+    },
     "targets": "all",
     "licenseFile": "../LICENSE",
     "macOS": {

@@ -9,16 +9,19 @@ import { invoke } from '@tauri-apps/api/core'
  * message strings (CONVENTIONS: degraded services degrade, never block).
  */
 export type ComfyStatus =
-  | { state: 'not_installed'; install_command: string }
-  | { state: 'unreachable'; detail: string }
-  | { state: 'server_down'; workspace: string | null }
+  /** Nobody answered at any address tried. `configured`: the user set the
+   *  address, so only it was tried. */
+  | { state: 'not_found'; tried: string[]; configured: boolean }
+  /** Something answered, but not as a ComfyUI the app can use. */
+  | { state: 'unreachable'; url: string; detail: string }
   | {
       state: 'ready'
-      url: string | null
+      url: string
+      /** Total VRAM in bytes; null is unknown, never zero. */
       vram_bytes: number | null
-      workspace: string | null
-      comfy_cli_version: string | null
-      update_available: boolean
+      comfyui_version: string | null
+      /** On this machine, by address -- the condition for one-click Install. */
+      local: boolean
     }
 
 /** True when running inside the Tauri webview rather than a plain browser. */
@@ -27,23 +30,12 @@ export function isTauri(): boolean {
 }
 
 /**
- * Connect if needed and report what the wizard should show.
+ * Find ComfyUI and report what the Setup card should show.
  *
- * Rejects only when the app itself fails (it could not open its own session
- * log). A missing `comfy-mcp`, a dead ComfyUI and a broken connection all
- * resolve to a status.
+ * `url` tests an address before it is saved; without it the configured address
+ * is used, and with none configured the usual local ports are probed. Rejects
+ * only when the app itself fails (it could not open its own session log).
  */
-export async function comfyStatus(bin?: string): Promise<ComfyStatus> {
-  return await invoke<ComfyStatus>('comfy_status', { bin })
-}
-
-/**
- * Start ComfyUI, then report the resulting status.
- *
- * Only offered when the status is `server_down`. A port already in use is not
- * treated as a failure -- the following health check reports what is really
- * there.
- */
-export async function comfyLaunch(bin?: string): Promise<ComfyStatus> {
-  return await invoke<ComfyStatus>('comfy_launch', { bin })
+export async function comfyStatus(url?: string): Promise<ComfyStatus> {
+  return await invoke<ComfyStatus>('comfy_status', { url: url ?? null })
 }

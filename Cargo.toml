@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/create-core",
     "crates/comfy-bridge",
-    "crates/mcp-bridge",
     "crates/llm-bridge",
     "crates/library",
     "src-tauri",

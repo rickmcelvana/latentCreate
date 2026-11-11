@@ -104,12 +104,9 @@ pub enum EnumOptions {
     /// Read from the node registry.
     Loaded {
         choices: Vec<String>,
-        /// Whether comfy-cli answered from its cache rather than ComfyUI.
-        ///
-        /// A plain bool, classified here: a live read sends no `stale` key and
-        /// no warning, so the webview would have to know both signals and how
-        /// their absence reads. That is the backend's job (the rule
-        /// [`crate::comfy::ComfyStatus`] already follows).
+        /// Always false since T-519: ComfyUI's `/object_info` is read live,
+        /// and only comfy-cli ever answered from a cache. Kept on the wire
+        /// until the panel's cached-list note is removed with it.
         cached: bool,
     },
     /// The profile asks for live choices but names no node class, so there is
@@ -147,7 +144,7 @@ fn collect_enums(
             } => {
                 let field = slots
                     .first()
-                    .and_then(|a| a.0.rsplit_once('.'))
+                    .and_then(|a| create_core::audit::split_address(&a.0))
                     .map(|(_, field)| field.to_string());
                 into.insert(name.clone(), node.clone().zip(field));
             }
@@ -174,21 +171,22 @@ pub async fn enum_choices(
     };
     let wanted = enum_requests(&loaded.profile);
 
-    let Some(comfy) = state.connected().await else {
+    let Ok(comfy) = crate::comfy::ensure_connected(&state, &config_dir).await else {
         return Ok(wanted
             .into_keys()
             .map(|name| {
                 (
                     name,
                     EnumOptions::Unavailable {
-                        detail: "ComfyUI is not connected.".to_string(),
+                        detail: "ComfyUI is not reachable. Open Setup, start ComfyUI, then Retry."
+                            .to_string(),
                     },
                 )
             })
             .collect());
     };
 
-    let mut schemas: BTreeMap<String, Result<mcp_bridge::NodeSchema, String>> = BTreeMap::new();
+    let mut schemas: BTreeMap<String, Result<comfy_bridge::NodeSchema, String>> = BTreeMap::new();
     let mut out = BTreeMap::new();
     for (name, request) in wanted {
         let Some((class, field)) = request else {
@@ -196,7 +194,7 @@ pub async fn enum_choices(
             continue;
         };
         if !schemas.contains_key(&class) {
-            let read = comfy.node_schema(&class).await.map_err(|e| e.to_string());
+            let read = comfy.object_info(&class).await.map_err(|e| e.to_string());
             schemas.insert(class.clone(), read);
         }
         out.insert(name, options_for(&schemas[&class], &field));
@@ -205,7 +203,7 @@ pub async fn enum_choices(
 }
 
 /// Project one schema read into what the panel shows for one input.
-fn options_for(read: &Result<mcp_bridge::NodeSchema, String>, field: &str) -> EnumOptions {
+fn options_for(read: &Result<comfy_bridge::NodeSchema, String>, field: &str) -> EnumOptions {
     match read {
         Err(detail) => EnumOptions::Unavailable {
             detail: detail.clone(),
@@ -216,7 +214,7 @@ fn options_for(read: &Result<mcp_bridge::NodeSchema, String>, field: &str) -> En
             },
             Some(choices) => EnumOptions::Loaded {
                 choices: choices.to_vec(),
-                cached: schema.is_cached(),
+                cached: false,
             },
         },
     }
@@ -228,6 +226,34 @@ mod tests {
     use create_core::profile::ModelProfile;
 
     const ACE: &str = include_str!("../../profiles/ace-step-1.5-turbo.json");
+
+    /// The captured 53-entry LoRA list (taken in the comfy-mcp era, still the
+    /// real install's list), re-shaped as the `/object_info` entry ComfyUI
+    /// serves for `LoraLoaderModelOnly` (COMFY-HTTP-SURFACE 4: a legacy combo).
+    fn captured_schema() -> comfy_bridge::NodeSchema {
+        let raw: serde_json::Value = serde_json::from_str(include_str!(
+            "../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
+        ))
+        .expect("captured list decodes");
+        let choices = raw["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .find(|i| i["name"] == "lora_name")
+            .expect("lora_name")["choices"]
+            .clone();
+        let entry = serde_json::json!({
+            "input": {"required": {
+                "model": ["MODEL"],
+                "lora_name": [choices],
+                "strength_model": ["FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}]
+            }},
+            "input_order": {"required": ["model", "lora_name", "strength_model"]},
+            "output": ["MODEL"],
+            "name": "LoraLoaderModelOnly"
+        });
+        comfy_bridge::NodeSchema::from_object_info("LoraLoaderModelOnly", &entry).expect("parses")
+    }
 
     /// Protects: the prefill comes from the profile's own example, not a
     /// constant. The two shipped profiles disagree about what a style tag is,
@@ -346,44 +372,26 @@ mod tests {
         assert_eq!(enum_requests(&profile)["mystery"], None);
     }
 
-    /// Protects: a cached schema is reported as cached, all the way to the UI.
-    ///
-    /// `nodes(action="get")` succeeds with ComfyUI down -- comfy-cli answers
-    /// from its own cache and flags it. If that flag stops here, the panel
-    /// shows a cached list as the installed one. Harmless for key signatures;
-    /// the same path feeds the LoRA picker in T-309, where a cached list is
-    /// missing whatever the user has installed since ComfyUI last ran
-    /// (MCP-SURFACE 19.3).
-    #[test]
-    fn test_a_cached_schema_reaches_the_panel_as_cached() {
-        let captured: mcp_bridge::NodeSchema = serde_json::from_str(include_str!(
-            "../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
-        ))
-        .expect("the captured schema decodes");
-
-        let options = options_for(&Ok(captured), "lora_name");
-        match options {
-            EnumOptions::Loaded { choices, cached } => {
-                assert_eq!(choices.len(), 53);
-                assert!(cached);
-            }
-            other => panic!("expected Loaded, got {other:?}"),
-        }
-    }
-
     /// Protects: an input the class does not have is a reported failure, not an
     /// empty list. An empty list is indistinguishable from "this model offers
     /// no choices", which is a different thing entirely.
     #[test]
     fn test_an_unknown_input_name_is_unavailable_not_empty() {
-        let captured: mcp_bridge::NodeSchema = serde_json::from_str(include_str!(
-            "../../testdata/mcp/nodes.LoraLoaderModelOnly.json"
-        ))
-        .expect("the captured schema decodes");
-
-        match options_for(&Ok(captured), "keyscale") {
+        match options_for(&Ok(captured_schema()), "keyscale") {
             EnumOptions::Unavailable { detail } => assert!(detail.contains("keyscale")),
             other => panic!("expected Unavailable, got {other:?}"),
+        }
+    }
+
+    /// Protects: a live read lists the real choices and is never flagged cached.
+    #[test]
+    fn test_a_live_schema_reaches_the_panel_uncached() {
+        match options_for(&Ok(captured_schema()), "lora_name") {
+            EnumOptions::Loaded { choices, cached } => {
+                assert_eq!(choices.len(), 53);
+                assert!(!cached);
+            }
+            other => panic!("expected Loaded, got {other:?}"),
         }
     }
 }

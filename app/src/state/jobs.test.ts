@@ -10,7 +10,7 @@ let mockIsTauri = true
 
 vi.mock('../bridge/jobs', () => ({
   isTauri: () => mockIsTauri,
-  connectComfy: (bin?: string) => mockConnectComfy(bin),
+  connectComfy: () => mockConnectComfy(),
   runWorkflow: (path: string) => mockRunWorkflow(path),
   cancelJob: (id: string) => mockCancelJob(id),
   subscribeJobs: (cb: (e: unknown) => void) => mockSubscribeJobs(cb),

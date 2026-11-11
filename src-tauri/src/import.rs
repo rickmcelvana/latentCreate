@@ -1,30 +1,29 @@
-//! Custom workflow import (ARCHITECTURE 5b).
+//! Custom workflow import (ARCHITECTURE 5b): a ComfyUI **Workflow > Export
+//! (API)** file becomes a user profile.
 //!
-//! Takes a path the user picked, decides whether this app can drive it, keeps a
-//! **copy**, and reports everything the mapping screen needs.
+//! Two commands, two steps. `import_workflow` checks the file, copies it into
+//! the app's own `workflows/` directory and suggests which input carries which
+//! role. `save_imported_profile` turns the user's accepted mapping into a
+//! profile beside the shipped ones.
 //!
-//! **The copy is the point, and it is an owner decision** (PROJECT.md decisions
-//! log, 2026-08-30): a profile pointing at a live file in the user's ComfyUI
-//! folder would silently change behaviour when they edited it there, and every
-//! provenance sidecar written before that edit would quietly become a lie. A
-//! sidecar records the *inputs*; reproducing a track means the graph those
-//! inputs were resolved against must still be the same graph.
+//! **Why Export (API)** (owner decision 2026-11-11): it lands in Downloads
+//! where people can find it, and it is the format ComfyUI executes -- so what
+//! the user maps is exactly what runs, and every input's writability is a
+//! property of the file itself (ARCHITECTURE 3a).
 //!
-//! Two things follow, and they are why this module is not four lines:
-//!
-//! - The stored copy is the artifact of record, so what gets **validated** is
-//!   the copy, never the file the user picked.
-//! - A refused import leaves **nothing** behind, so the copy is staged under a
-//!   dot-name and only renamed into place once it has passed.
+//! **The workflow is copied, not referenced** (decisions log 2026-08-30): the
+//! copy is the artifact of record, so a sidecar cannot be staled by the user
+//! editing the original later.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
+use comfy_bridge::{ComfyError, ComfyHttp, NodeOptions, NodeSchema};
+use create_core::audit::{as_link, node_ids};
 use create_core::emit::{build_profile, resolve_model_files, Bounds, MappedSlot};
 use create_core::readiness::ModelInventory;
-use create_core::roles::{suggest_roles, Role, RoleSuggestion, SlotInfo};
+use create_core::roles::{slots_of, suggest_roles, Role, RoleSuggestion};
 use create_core::workflow::{detect_format, WorkflowFormat};
-use mcp_bridge::{Finding, LocalComfy, NodeOptions, NodeSchema, Slot, SlotList, Verdict};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
@@ -33,117 +32,115 @@ use crate::comfy::{ensure_connected, EnsureError};
 use crate::jobs::ComfyState;
 use crate::ConfigDir;
 
-/// Directory holding imported workflows, under the app config dir.
+/// Where imported workflows are kept, under the app data root.
 const WORKFLOWS_DIR: &str = "workflows";
 
-/// What an import produced: where it was stored, and what it exposes.
+/// One writable input of the imported graph, for the mapping screen. The field
+/// names are the wire shape the import view already reads.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Slot {
+    /// `node.input`.
+    pub address: String,
+    /// The input name.
+    pub name: String,
+    /// The registry's declared type (`STRING`, `INT`, `FLOAT`, `COMBO`, ...).
+    #[serde(rename = "type")]
+    pub ty: String,
+    /// The literal the user's graph holds.
+    pub current_value: Value,
+    /// The node id.
+    pub instance_id: String,
+    /// The node class.
+    pub node_type: String,
+}
+
+/// What an import produced.
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportReport {
-    /// Stable id for the stored copy; the filename stem under `workflows/`.
     pub workflow_id: String,
-    /// Absolute path of the stored copy -- what a profile's `comfy.workflow`
-    /// will point at.
     pub stored_path: String,
-    /// Every slot the graph exposes, each already carrying its node class and
-    /// widget type (MCP-SURFACE 29.5). This is what T-313c ranks into role
-    /// suggestions.
+    /// Every writable input, in node order.
     pub slots: Vec<Slot>,
-    /// What each semantic role could map to, ranked (T-313c).
-    ///
-    /// Built here rather than behind a second command: `import_into` already
-    /// holds both the graph and the slots at this moment, so it costs no extra
-    /// round trip and no second read of the stored file.
     pub suggestions: Vec<RoleSuggestion>,
-    /// Advisory findings from validation.
-    ///
-    /// **Never a reason to refuse.** The executed MiniMax graph from the T-315
-    /// run -- which produced a playable FLAC -- carries three of these, all
-    /// `COMFY_MATCHTYPE_V3` noise (MCP-SURFACE 29.3). Blocking on warnings
-    /// would reject this project's own reference model.
     pub warnings: Vec<String>,
 }
 
-/// Import the workflow at `source`, storing a copy and reporting its slots.
+/// Check, copy and analyse one exported workflow.
 #[tauri::command]
 pub async fn import_workflow(
     state: State<'_, ComfyState>,
     config_dir: State<'_, ConfigDir>,
     source: String,
 ) -> Result<ImportReport, String> {
-    let comfy = match ensure_connected(&state, &config_dir, None).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Err(e.to_string()),
-        Err(EnsureError::Log(detail)) => return Err(detail),
-    };
+    let comfy = ensure_connected(&state, &config_dir)
+        .await
+        .map_err(EnsureError::into_message)?;
     import_into(&comfy, &config_dir.0, Path::new(&source)).await
 }
 
-/// The body of [`import_workflow`], taking its inputs directly so a test can
-/// drive it with a mock transport and a temp directory.
+/// The body of [`import_workflow`], on a client a test can script.
 pub(crate) async fn import_into(
-    comfy: &LocalComfy,
+    comfy: &ComfyHttp,
     root: &Path,
     source: &Path,
 ) -> Result<ImportReport, String> {
-    // 1. Read and parse what the user picked. Both messages name *their* file:
-    //    an internal path tells someone who chose the wrong thing nothing they
-    //    can act on -- the defect T-313a's review caught, which must not come
-    //    back through a new door.
     let text = std::fs::read_to_string(source)
         .map_err(|e| format!("Could not read {}: {e}", source.display()))?;
     let graph: Value = serde_json::from_str(&text).map_err(|e| {
         format!(
-            "{} is not valid JSON ({e}). Pick a workflow exported from ComfyUI.",
+            "{} is not valid JSON ({e}). In ComfyUI choose Workflow > Export (API) and pick \
+             the file it downloads.",
             source.display()
         )
     })?;
-
-    // 2. Decide the shape before anything is written. `validate_workflow`
-    //    cannot do this job -- it accepts an API export and calls it valid
-    //    (MCP-SURFACE 29.1).
     match detect_format(&graph) {
-        Some(WorkflowFormat::Frontend) => {}
-        Some(WorkflowFormat::Api) => {
+        Some(WorkflowFormat::Api) => {}
+        Some(WorkflowFormat::Frontend) => {
             return Err(format!(
-                "{} is a File > Export (API) workflow, which cannot be edited. \
-                 In ComfyUI use File > Save (As) to export the editing format, \
-                 then import that.",
+                "{} is a saved workflow. latentCreate imports the API export instead: open it \
+                 in ComfyUI, choose Workflow > Export (API), and import the file it downloads.",
                 source.display()
             ))
         }
         None => {
             return Err(format!(
-                "{} is not a ComfyUI workflow. Export one from ComfyUI with File > Save (As).",
+                "{} is not a ComfyUI workflow. In ComfyUI choose Workflow > Export (API) and \
+                 import the file it downloads.",
                 source.display()
             ))
         }
     }
 
-    // 3. Stage the copy. Everything from here validates and reads *this* file,
-    //    so the report describes the bytes that were kept.
+    // Every class must exist in this ComfyUI; a missing custom node is named
+    // now rather than discovered on the first Generate.
+    let schemas = schemas_for(comfy, &graph).await?;
+    let slots = writable_slots(&graph, &schemas);
+    if slots.is_empty() {
+        return Err(
+            "This workflow has no adjustable values, so there is nothing to map. Check it in \
+             ComfyUI, then export it again."
+                .into(),
+        );
+    }
+    let mut warnings = Vec::new();
+    if !create_core::emit::has_audio_save_node(&graph) && !has_class(&graph, "SaveImage") {
+        warnings.push(
+            "This workflow has no Save Audio or Save Image node, so latentCreate would have \
+             nothing to collect. Add one in ComfyUI and export again."
+                .to_string(),
+        );
+    }
+
     let dir = root.join(WORKFLOWS_DIR);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let workflow_id = free_id(&dir, source)?;
-    let staged = dir.join(format!(".staging-{workflow_id}.json"));
     let stored = dir.join(format!("{workflow_id}.json"));
-    std::fs::copy(source, &staged).map_err(|e| format!("{}: {e}", staged.display()))?;
+    // Written from the parsed graph, so the copy is exactly what was checked.
+    let pretty = serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())?;
+    std::fs::write(&stored, pretty).map_err(|e| format!("{}: {e}", stored.display()))?;
 
-    let (slots, warnings) = match inspect(comfy, &staged).await {
-        Ok(inspected) => inspected,
-        Err(e) => {
-            // A refused import leaves nothing behind.
-            let _ = std::fs::remove_file(&staged);
-            return Err(e);
-        }
-    };
-
-    std::fs::rename(&staged, &stored).map_err(|e| {
-        let _ = std::fs::remove_file(&staged);
-        format!("{}: {e}", stored.display())
-    })?;
-
-    let suggestions = suggest_roles(&graph, &slot_infos(&slots));
-
+    let types = type_lookup(&schemas);
+    let suggestions = suggest_roles(&graph, &slots_of(&graph, &types));
     Ok(ImportReport {
         workflow_id,
         stored_path: stored.display().to_string(),
@@ -153,74 +150,114 @@ pub(crate) async fn import_into(
     })
 }
 
-/// Validate the staged copy and read its slots.
-///
-/// Split out so every failure between staging and committing funnels through
-/// one `Err`, and therefore through one cleanup.
-async fn inspect(comfy: &LocalComfy, staged: &Path) -> Result<(Vec<Slot>, Vec<String>), String> {
-    let report = comfy.validate(staged).await.map_err(|e| e.to_string())?;
-    match report.verdict() {
-        Verdict::Valid => {}
-        Verdict::Invalid => {
-            return Err(format!(
-                "ComfyUI rejected this workflow: {}",
-                summarise_findings(&report.errors)
-            ))
-        }
-        Verdict::Vacuous => {
-            return Err(
-                "validation examined no nodes, so it proves nothing about this workflow".into(),
-            )
-        }
-    }
-
-    // Warnings are collected, never gated on (MCP-SURFACE 29.3).
-    let warnings = report
-        .warnings
-        .iter()
-        .filter_map(|f| f.message.clone())
-        .collect();
-
-    let slots = comfy.list_slots(staged).await.map_err(|e| e.to_string())?;
-    if slots.slots.is_empty() {
-        return Err(
-            "This workflow exposes no adjustable parameters, so there is nothing to map. \
-             Check it has the widgets you expect in ComfyUI, then export it again."
-                .into(),
-        );
-    }
-    Ok((slots.slots, warnings))
-}
-
-/// One line per finding, node id included so the user can be pointed at it.
-fn summarise_findings(findings: &[Finding]) -> String {
-    findings
-        .iter()
-        .map(|f| match (&f.node_id, &f.message) {
-            (Some(id), Some(msg)) => format!("node {id}: {msg}"),
-            (None, Some(msg)) => msg.clone(),
-            (Some(id), None) => format!("node {id}"),
-            (None, None) => "unspecified error".to_string(),
+/// The registry schema of every class the graph uses. An unknown class is a
+/// refusal naming it; any other failure is passed on.
+async fn schemas_for(
+    comfy: &ComfyHttp,
+    graph: &Value,
+) -> Result<HashMap<String, NodeSchema>, String> {
+    let classes: BTreeSet<String> = graph
+        .as_object()
+        .map(|nodes| {
+            nodes
+                .values()
+                .filter_map(|n| n.get("class_type").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
         })
-        .collect::<Vec<_>>()
-        .join("; ")
+        .unwrap_or_default();
+    let mut schemas = HashMap::new();
+    let mut missing = Vec::new();
+    for class in classes {
+        match comfy.object_info(&class).await {
+            Ok(schema) => {
+                schemas.insert(class, schema);
+            }
+            Err(ComfyError::UnknownNode(c)) => missing.push(c),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(format!(
+            "This workflow uses {}, which this ComfyUI does not have. Install the custom nodes \
+             that provide them, restart ComfyUI, then import again.",
+            missing.join(", ")
+        ));
+    }
+    Ok(schemas)
 }
 
-/// A role the user accepted, and the slots they accepted for it.
+/// `class, input -> declared type`, from the registry.
+fn type_lookup(
+    schemas: &HashMap<String, NodeSchema>,
+) -> impl Fn(&str, &str) -> Option<String> + '_ {
+    move |class: &str, input: &str| {
+        schemas
+            .get(class)
+            .and_then(|s| s.input(input))
+            .map(|i| i.ty.clone())
+    }
+}
+
+/// Every literal input, typed by the registry (falling back to the literal's
+/// JSON shape for an input the registry does not declare, such as a dynamic
+/// combo's dotted sub-input).
+fn writable_slots(graph: &Value, schemas: &HashMap<String, NodeSchema>) -> Vec<Slot> {
+    let types = type_lookup(schemas);
+    let mut out = Vec::new();
+    for id in node_ids(graph) {
+        let node = &graph[&id];
+        let class = node.get("class_type").and_then(Value::as_str).unwrap_or("");
+        let Some(inputs) = node.get("inputs").and_then(Value::as_object) else {
+            continue;
+        };
+        for (name, value) in inputs {
+            if as_link(value).is_some() {
+                continue;
+            }
+            let ty = types(class, name).unwrap_or_else(|| match value {
+                Value::String(_) => "STRING".into(),
+                Value::Bool(_) => "BOOLEAN".into(),
+                Value::Number(n) if n.is_f64() => "FLOAT".into(),
+                Value::Number(_) => "INT".into(),
+                _ => "OTHER".into(),
+            });
+            out.push(Slot {
+                address: format!("{id}.{name}"),
+                name: name.clone(),
+                ty,
+                current_value: value.clone(),
+                instance_id: id.clone(),
+                node_type: class.to_string(),
+            });
+        }
+    }
+    out
+}
+
+fn has_class(graph: &Value, class: &str) -> bool {
+    graph.as_object().is_some_and(|nodes| {
+        nodes
+            .values()
+            .any(|n| n.get("class_type").and_then(Value::as_str) == Some(class))
+    })
+}
+
+/// One role the user accepted, and the slots it maps to.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RoleMapping {
     pub role: Role,
     pub addresses: Vec<String>,
 }
 
-/// Where an emitted profile landed.
+/// Where the emitted profile went.
 #[derive(Debug, Clone, Serialize)]
 pub struct SavedProfile {
     pub profile_id: String,
     pub path: String,
 }
 
-/// Turn accepted mappings into a user profile the picker will list.
+/// Turn an accepted mapping into a user profile.
 #[tauri::command]
 pub async fn save_imported_profile(
     state: State<'_, ComfyState>,
@@ -229,11 +266,9 @@ pub async fn save_imported_profile(
     display_name: String,
     mappings: Vec<RoleMapping>,
 ) -> Result<SavedProfile, String> {
-    let comfy = match ensure_connected(&state, &config_dir, None).await {
-        Ok(comfy) => comfy,
-        Err(EnsureError::Comfy(e)) => return Err(e.to_string()),
-        Err(EnsureError::Log(detail)) => return Err(detail),
-    };
+    let comfy = ensure_connected(&state, &config_dir)
+        .await
+        .map_err(EnsureError::into_message)?;
     emit_profile(
         &comfy,
         &config_dir.0,
@@ -244,10 +279,9 @@ pub async fn save_imported_profile(
     .await
 }
 
-/// The body of [`save_imported_profile`], taking its inputs directly so a test
-/// can drive it with a mock transport and a temp directory.
+/// The body of [`save_imported_profile`].
 pub(crate) async fn emit_profile(
-    comfy: &LocalComfy,
+    comfy: &ComfyHttp,
     root: &Path,
     workflow_id: &str,
     display_name: &str,
@@ -263,12 +297,34 @@ pub(crate) async fn emit_profile(
         &std::fs::read_to_string(&stored).map_err(|e| format!("{}: {e}", stored.display()))?,
     )
     .map_err(|e| format!("{}: {e}", stored.display()))?;
+    let schemas = schemas_for(comfy, &graph).await?;
+    let slots = writable_slots(&graph, &schemas);
 
-    // Read the stored copy's slots for widget types and current values. The
-    // mapping carries addresses only -- everything else about a slot is the
-    // graph's to say, not the caller's.
-    let slots = comfy.list_slots(&stored).await.map_err(|e| e.to_string())?;
-    let resolved = resolve_mappings(comfy, &slots, mappings).await?;
+    let mut resolved = Vec::new();
+    for mapping in mappings {
+        let mut mapped = Vec::new();
+        for address in &mapping.addresses {
+            let slot = slots
+                .iter()
+                .find(|s| &s.address == address)
+                .ok_or_else(|| {
+                    format!(
+                        "{address} is not an adjustable value in this workflow. Import it again."
+                    )
+                })?;
+            let bounds = schemas
+                .get(&slot.node_type)
+                .and_then(|s| s.input(&slot.name))
+                .and_then(|i| bounds_of(&i.options));
+            mapped.push(MappedSlot {
+                address: slot.address.clone(),
+                widget_type: slot.ty.clone(),
+                current_value: slot.current_value.clone(),
+                bounds,
+            });
+        }
+        resolved.push((mapping.role, mapped));
+    }
 
     let profile_id = free_profile_id(root, display_name)?;
     let mut profile = build_profile(
@@ -280,11 +336,9 @@ pub(crate) async fn emit_profile(
     )
     .map_err(|e| e.to_string())?;
 
-    // Declare the model files the graph's COMBO slots name, so an adopted row
-    // reads Ready instead of "Cannot check". Best-effort: an inventory we could
-    // not take leaves the list empty, which is today's Undeclared state.
+    // Loader inputs are combos holding filenames; a value found in a model
+    // folder becomes a declared file, so readiness works for imports too.
     let candidates: Vec<String> = slots
-        .slots
         .iter()
         .filter(|s| s.ty == "COMBO")
         .filter_map(|s| s.current_value.as_str().map(str::to_string))
@@ -297,86 +351,28 @@ pub(crate) async fn emit_profile(
     let path = dir.join(format!("{profile_id}.json"));
     let text = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
     std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
-
     Ok(SavedProfile {
         profile_id,
         path: path.display().to_string(),
     })
 }
 
-/// The model files ComfyUI currently has, across every folder it knows.
-///
-/// Unlike `models::take_inventory` (which lists only the folders a set of
-/// profiles already name), an adopted profile names no folders yet, so this
-/// walks them all -- `list_model_folders` then one listing per folder. It is a
-/// one-shot cost on a deliberate adopt, not a hot path.
-///
-/// **Best-effort:** any transport failure yields an empty inventory, and the
-/// profile then saves with `comfy.models = []` -- exactly today's behaviour
-/// (`Undeclared`), never a failed adopt. The profile is usable regardless;
-/// nothing gates on readiness.
-async fn full_inventory(comfy: &LocalComfy) -> ModelInventory {
-    let folders = match comfy.list_model_folders().await {
-        Ok(f) => f.folders,
-        Err(_) => return ModelInventory::default(),
+/// Every folder's files. A failure leaves an empty inventory, so the profile
+/// declares no files and reads "cannot check" rather than ready.
+async fn full_inventory(comfy: &ComfyHttp) -> ModelInventory {
+    let Ok(folders) = comfy.model_folders().await else {
+        return ModelInventory::default();
     };
     let mut listed: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for folder in folders {
-        if let Ok(contents) = comfy.list_models_in(&folder.name).await {
-            listed.insert(
-                folder.name.clone(),
-                contents.files.into_iter().map(|f| f.name).collect(),
-            );
+        if let Ok(files) = comfy.models_in(&folder).await {
+            listed.insert(folder, files.into_iter().collect());
         }
     }
     ModelInventory::new(listed)
 }
 
-/// Attach each mapped address to its slot, and each numeric one to its bounds.
-///
-/// **One registry lookup per node class, not per slot.** ACE-Step maps five
-/// roles onto three classes; asking `nodes(action="get")` per address would
-/// triple the round trips for the same answers.
-async fn resolve_mappings(
-    comfy: &LocalComfy,
-    slots: &SlotList,
-    mappings: &[RoleMapping],
-) -> Result<Vec<(Role, Vec<MappedSlot>)>, String> {
-    let mut schemas: HashMap<String, NodeSchema> = HashMap::new();
-    let mut out = Vec::new();
-
-    for mapping in mappings {
-        let mut mapped = Vec::new();
-        for address in &mapping.addresses {
-            let slot = slots.get(address).ok_or_else(|| {
-                format!("{address} is not a slot this workflow exposes. Import it again.")
-            })?;
-            if !schemas.contains_key(&slot.node_type) {
-                if let Ok(schema) = comfy.node_schema(&slot.node_type).await {
-                    schemas.insert(slot.node_type.clone(), schema);
-                }
-            }
-            let bounds = schemas
-                .get(&slot.node_type)
-                .and_then(|s| s.inputs.iter().find(|i| i.name == slot.name))
-                .and_then(|i| bounds_of(&i.options));
-            mapped.push(MappedSlot {
-                address: slot.address.clone(),
-                widget_type: slot.ty.clone(),
-                current_value: slot.current_value.clone(),
-                bounds,
-            });
-        }
-        out.push((mapping.role, mapped));
-    }
-    Ok(out)
-}
-
-/// `NodeOptions` to [`Bounds`], only when both ends are present.
-///
-/// A half-open range is treated as no range at all: `emit` refuses a numeric
-/// control it cannot bound, and inventing the missing end here would defeat
-/// that by the back door.
+/// The registry's numeric bounds, when it reports both ends.
 fn bounds_of(options: &NodeOptions) -> Option<Bounds> {
     Some(Bounds {
         min: options.min.as_ref().and_then(Value::as_f64)?,
@@ -385,7 +381,7 @@ fn bounds_of(options: &NodeOptions) -> Option<Bounds> {
     })
 }
 
-/// First unused profile id for `display_name`.
+/// A profile id that does not overwrite one the user already has.
 fn free_profile_id(root: &Path, display_name: &str) -> Result<String, String> {
     let dir = root.join("profiles");
     let base = library::projects::slugify(display_name);
@@ -402,39 +398,13 @@ fn free_profile_id(root: &Path, display_name: &str) -> Result<String, String> {
     Err(format!("too many profiles named {base}"))
 }
 
-/// `mcp_bridge::Slot` to the shape `create-core` ranks over.
-///
-/// The two are deliberately separate types: `create-core` does not depend on
-/// the transport crate for a pure ranking pass, so one mapping lives here.
-fn slot_infos(slots: &[Slot]) -> Vec<SlotInfo> {
-    slots
-        .iter()
-        .map(|s| SlotInfo {
-            address: s.address.clone(),
-            name: s.name.clone(),
-            widget_type: s.ty.clone(),
-            instance_id: s.instance_id.clone(),
-            node_type: s.node_type.clone(),
-        })
-        .collect()
-}
-
-/// First unused id for `source`'s filename in `dir`.
-///
-/// Reuses `library::projects::slugify` rather than growing a second one, and
-/// suffixes a taken name the way `free_slug` does for projects, for the same
-/// reason: two people may import `song.json`, and silently overwriting the
-/// earlier import is worse than a second file.
+/// A workflow id from the source file name that does not overwrite an earlier
+/// import of a file with the same name.
 fn free_id(dir: &Path, source: &Path) -> Result<String, String> {
     let stem = source
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("workflow");
-    // No safety check on the result, deliberately: `slugify` guarantees a safe
-    // slug by construction, and its own test pins that with
-    // `is_safe_slug(&slugify("../../etc/passwd"))`. Re-checking here would mean
-    // making that private helper public to assert something its sibling already
-    // promises.
     let base = library::projects::slugify(stem);
     for n in 1..1000u32 {
         let candidate = if n == 1 {
@@ -452,47 +422,58 @@ fn free_id(dir: &Path, source: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcp_bridge::mock::Reply;
-    use mcp_bridge::test_helpers::client_and_log;
+    use comfy_bridge::transport::{FakeTransport, Method};
     use serde_json::json;
+    use std::sync::Arc;
 
-    fn workflows(root: &Path) -> Vec<String> {
-        let dir = root.join(WORKFLOWS_DIR);
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            return Vec::new();
-        };
-        let mut names: Vec<String> = entries
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().to_string())
+    fn repo() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+    }
+
+    fn shipped_workflow(id: &str) -> String {
+        std::fs::read_to_string(repo().join("profiles/workflows").join(format!("{id}.json")))
+            .expect("workflow")
+    }
+
+    /// A ComfyUI that knows every class, with a minimal schema each, plus the
+    /// real KSampler/Lora/Empty-latent schemas from the captured subset.
+    fn registry_for(graph: &Value) -> Arc<FakeTransport> {
+        let fake = Arc::new(FakeTransport::new());
+        let subset: Value = serde_json::from_str(
+            &std::fs::read_to_string(repo().join("testdata/comfy-http/object_info_subset.json"))
+                .expect("f"),
+        )
+        .expect("j");
+        let classes: BTreeSet<&str> = graph
+            .as_object()
+            .into_iter()
+            .flat_map(|o| o.values())
+            .filter_map(|n| n["class_type"].as_str())
             .collect();
-        names.sort();
-        names
-    }
-
-    fn named_fixture(name: &str) -> String {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../testdata/workflows")
-            .join(name);
-        std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
-    }
-
-    /// A clean inspect: validate, then slots.
-    fn ok_replies() -> Vec<Reply> {
-        vec![
-            Reply::Json(json!({
-                "valid": true, "errors": [], "warnings": [],
-                "converted_from_ui": true, "converted_node_count": 11
-            })),
-            Reply::Json(json!({
-                "workflow": "staged", "count": 1,
-                "slots": [{
-                    "address": "94.tags", "name": "tags", "type": "STRING",
-                    "current_value": "synthwave", "instance_id": "94",
-                    "node_type": "TextEncodeAceStepAudio1.5"
-                }]
-            })),
-        ]
+        for class in classes {
+            let entry = match class {
+                // The loader's filename is a combo -- what makes it a model file.
+                "CheckpointLoaderSimple" => json!({"input": {"required": {
+                    "ckpt_name": [["flux1-schnell-fp8.safetensors"]]
+                }}}),
+                _ => subset
+                    .get(class)
+                    .cloned()
+                    .unwrap_or_else(|| json!({"input": {"required": {}}})),
+            };
+            fake.on_json(
+                Method::Get,
+                &format!("/object_info/{}", comfy_bridge::encode_segment(class)),
+                &json!({ class: entry }),
+            );
+        }
+        fake.on_json(Method::Get, "/models", &json!(["checkpoints"]));
+        fake.on_json(
+            Method::Get,
+            "/models/checkpoints",
+            &json!(["flux1-schnell-fp8.safetensors"]),
+        );
+        fake
     }
 
     fn place(dir: &Path, name: &str, body: &str) -> std::path::PathBuf {
@@ -501,388 +482,181 @@ mod tests {
         p
     }
 
-    /// Protects: the stored file is the file that was validated.
-    ///
-    /// Read back from disk rather than trusting the report -- the copy is the
-    /// artifact of record (decisions log, 2026-08-30), and a report describing
-    /// bytes we did not keep is the failure the staging order exists to
-    /// prevent.
-    #[tokio::test]
-    async fn test_a_valid_import_stores_the_bytes_it_validated() {
+    async fn import(text: &str, name: &str) -> (Result<ImportReport, String>, tempfile::TempDir) {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(
-            tmp.path(),
-            "my song.json",
-            &named_fixture("ace_step_1_5_xl_turbo.json"),
-        );
+        let source = place(tmp.path(), name, text);
+        let graph: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+        let fake = registry_for(&graph);
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake, None);
+        (import_into(&comfy, tmp.path(), &source).await, tmp)
+    }
 
-        let (comfy, calls) = client_and_log(ok_replies()).await;
-        let report = import_into(&comfy, tmp.path(), &source)
-            .await
-            .expect("a frontend workflow imports");
-
-        // **What was inspected is what was kept.** Every ComfyUI call names the
-        // staged copy, never the path the user picked. Without this the whole
-        // staging design is unasserted: swapping `&staged` for `source` passes
-        // every other test in this module, because a copy compares equal to its
-        // own source (measured, not assumed -- the mutation was run).
-        let seen = calls.lock().expect("calls");
-        assert_eq!(seen.len(), 2, "validate then slots");
-        for call in seen.iter() {
-            let path = call
-                .pointer("/arguments/workflow_path")
-                .and_then(|p| p.as_str())
-                .expect("every call names a workflow");
-            let name = std::path::Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default();
-            assert!(
-                name.starts_with(".staging-"),
-                "inspected {name}, which is not the staged copy"
-            );
-        }
-        drop(seen);
-
-        assert_eq!(report.workflow_id, "my-song");
-        assert_eq!(workflows(tmp.path()), vec!["my-song.json".to_string()]);
+    /// Protects: an Export (API) file is stored as checked and offered with its
+    /// writable inputs and role suggestions -- polarity included, so the
+    /// negative encoder is never offered as the prompt.
+    #[tokio::test]
+    async fn test_an_api_export_imports_with_slots_and_suggestions() {
+        let (report, tmp) = import(&shipped_workflow("flux-1-schnell-fp8"), "My Flux.json").await;
+        let report = report.expect("imports");
+        assert_eq!(report.workflow_id, "my-flux");
+        let stored: Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("workflows/my-flux.json")).expect("stored"),
+        )
+        .expect("json");
         assert_eq!(
-            std::fs::read_to_string(&report.stored_path).expect("stored file"),
-            std::fs::read_to_string(&source).expect("source file"),
-            "the stored copy is byte-for-byte what was picked"
+            stored,
+            serde_json::from_str::<Value>(&shipped_workflow("flux-1-schnell-fp8")).expect("j")
         );
-        assert_eq!(report.slots.len(), 1);
-        assert_eq!(report.slots[0].node_type, "TextEncodeAceStepAudio1.5");
-    }
-
-    /// Protects: an API export is refused locally, before ComfyUI is asked
-    /// anything and before a byte is written.
-    ///
-    /// `validate_workflow` would have called this file valid (MCP-SURFACE
-    /// 29.1), so the format check happens first or not at all.
-    #[tokio::test]
-    async fn test_an_api_export_is_refused_before_anything_is_stored() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(
-            tmp.path(),
-            "exported.json",
-            &named_fixture("minimax_music3.api-format.json"),
-        );
-
-        let (comfy, calls) = client_and_log(ok_replies()).await;
-        let err = import_into(&comfy, tmp.path(), &source)
-            .await
-            .expect_err("an API export cannot be driven");
-
-        assert!(err.contains("File > Save (As)"), "{err}");
+        assert!(report
+            .slots
+            .iter()
+            .any(|s| s.address == "31.seed" && s.ty == "INT"));
         assert!(
-            calls.lock().expect("calls").is_empty(),
-            "ComfyUI is not asked"
+            !report.slots.iter().any(|s| s.address == "31.model"),
+            "links are not slots"
         );
-        assert!(workflows(tmp.path()).is_empty(), "nothing is stored");
+        let tags = report
+            .suggestions
+            .iter()
+            .find(|s| s.role == Role::Tags)
+            .expect("tags");
+        assert!(tags.candidates.iter().any(|c| c.address == "6.text"));
+        assert!(!tags.candidates.iter().any(|c| c.address == "33.text"));
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     }
 
-    /// Protects: a refused import leaves nothing behind -- staging included.
-    ///
-    /// The one that would rot silently: a leftover `.staging-*.json` is
-    /// invisible until the directory is listed, and the next import of the same
-    /// name would collide with it.
+    /// Protects: a saved (frontend) workflow is refused with the menu path, and
+    /// nothing is stored.
     #[tokio::test]
-    async fn test_an_invalid_workflow_leaves_nothing_behind() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(
-            tmp.path(),
-            "broken.json",
-            &named_fixture("ace_step_1_5_xl_turbo.json"),
-        );
+    async fn test_a_saved_workflow_is_refused_with_the_export_menu_item() {
+        let (report, tmp) = import(r#"{"nodes": [], "links": []}"#, "saved.json").await;
+        let err = report.expect_err("refused");
+        assert!(err.contains("Workflow > Export (API)"), "{err}");
+        assert!(!tmp.path().join(WORKFLOWS_DIR).exists());
+    }
 
-        let replies = vec![Reply::Json(json!({
-            "valid": false,
-            "errors": [{ "node_id": "104", "message": "not in 2 known options" }],
-            "warnings": []
-        }))];
-        let (comfy, _calls) = client_and_log(replies).await;
+    #[tokio::test]
+    async fn test_something_that_is_not_a_workflow_says_what_to_export() {
+        let (report, _tmp) = import(r#"{"hello": 1}"#, "x.json").await;
+        assert!(report
+            .expect_err("refused")
+            .contains("is not a ComfyUI workflow"));
+        let (report, _tmp) = import("not json", "y.json").await;
+        assert!(report.expect_err("refused").contains("is not valid JSON"));
+    }
+
+    /// Protects: a workflow needing a custom node this ComfyUI lacks is refused
+    /// naming the class -- at import, not on the first Generate.
+    #[tokio::test]
+    async fn test_a_missing_custom_node_is_named_at_import() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let text = r#"{"1": {"class_type": "FancyCustomNode", "inputs": {"x": 1}}}"#;
+        let source = place(tmp.path(), "custom.json", text);
+        let fake = Arc::new(FakeTransport::new());
+        fake.on(Method::Get, "/object_info/FancyCustomNode", 200, "{}");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", fake, None);
         let err = import_into(&comfy, tmp.path(), &source)
             .await
-            .expect_err("ComfyUI rejected it");
-
-        assert!(err.contains("node 104"), "{err}");
+            .expect_err("refused");
         assert!(
-            workflows(tmp.path()).is_empty(),
-            "no file and no staging file: {:?}",
-            workflows(tmp.path())
+            err.contains("FancyCustomNode") && err.contains("Install the custom nodes"),
+            "{err}"
         );
     }
 
-    /// Protects: MCP-SURFACE 29.3 -- warnings never refuse an import.
-    ///
-    /// This warning comes off the executed MiniMax graph from the T-315 run,
-    /// which produced a playable FLAC. Gating on it would reject this project's
-    /// own reference model.
-    #[tokio::test]
-    async fn test_warnings_do_not_refuse_an_import() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(
-            tmp.path(),
-            "warny.json",
-            &named_fixture("ace_step_1_5_xl_turbo.json"),
-        );
-
-        let mut replies = ok_replies();
-        replies[0] = Reply::Json(json!({
-            "valid": true, "errors": [],
-            "warnings": [{
-                "node_id": "35", "code": "edge_type_mismatch",
-                "message": "input audio expects AUDIO but ComfySwitchNode produces COMFY_MATCHTYPE_V3"
-            }],
-            "converted_from_ui": true, "converted_node_count": 11
-        }));
-
-        let (comfy, _calls) = client_and_log(replies).await;
-        let report = import_into(&comfy, tmp.path(), &source)
-            .await
-            .expect("warnings are advisory");
-
-        assert_eq!(report.warnings.len(), 1);
-        assert!(report.warnings[0].contains("COMFY_MATCHTYPE_V3"));
-        assert_eq!(workflows(tmp.path()), vec!["warny.json".to_string()]);
-    }
-
-    /// Protects: a graph with nothing to map is refused rather than stored.
-    /// A profile built from it would have no controls at all.
-    #[tokio::test]
-    async fn test_a_graph_with_no_slots_is_refused() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(
-            tmp.path(),
-            "bare.json",
-            &named_fixture("ace_step_1_5_xl_turbo.json"),
-        );
-
-        let mut replies = ok_replies();
-        replies[1] = Reply::Json(json!({ "workflow": "staged", "count": 0, "slots": [] }));
-
-        let (comfy, _calls) = client_and_log(replies).await;
-        let err = import_into(&comfy, tmp.path(), &source)
-            .await
-            .expect_err("nothing to map");
-
-        assert!(err.contains("no adjustable parameters"), "{err}");
-        assert!(workflows(tmp.path()).is_empty());
-    }
-
-    /// Protects: two imports sharing a filename produce two workflows.
-    ///
-    /// Same rule `free_slug` uses for projects, for the same reason: silently
-    /// overwriting someone's earlier import is worse than a second file.
     #[tokio::test]
     async fn test_a_second_import_of_the_same_filename_does_not_overwrite_the_first() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let body = named_fixture("ace_step_1_5_xl_turbo.json");
-        let first_dir = tmp.path().join("a");
-        let second_dir = tmp.path().join("b");
-        std::fs::create_dir_all(&first_dir).expect("mkdir");
-        std::fs::create_dir_all(&second_dir).expect("mkdir");
-        let first = place(&first_dir, "song.json", &body);
-        let second = place(&second_dir, "song.json", &body);
-
-        let (comfy, _calls) = client_and_log(ok_replies()).await;
-        let one = import_into(&comfy, tmp.path(), &first)
+        let text = shipped_workflow("flux-1-schnell-fp8");
+        let source = place(tmp.path(), "song.json", &text);
+        let graph: Value = serde_json::from_str(&text).expect("j");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", registry_for(&graph), None);
+        let first = import_into(&comfy, tmp.path(), &source)
             .await
             .expect("first");
-        let (comfy, _calls) = client_and_log(ok_replies()).await;
-        let two = import_into(&comfy, tmp.path(), &second)
+        let second = import_into(&comfy, tmp.path(), &source)
             .await
             .expect("second");
-
-        assert_eq!(one.workflow_id, "song");
-        assert_eq!(two.workflow_id, "song-2");
-        assert_eq!(
-            workflows(tmp.path()),
-            vec!["song-2.json".to_string(), "song.json".to_string()]
-        );
+        assert_eq!(first.workflow_id, "song");
+        assert_eq!(second.workflow_id, "song-2");
     }
 
-    /// Protects: a file that is not a workflow at all is told so, rather than
-    /// being told to re-export it from ComfyUI. Three shapes, three messages.
-    #[tokio::test]
-    async fn test_something_that_is_not_a_workflow_is_not_told_to_re_export() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(tmp.path(), "notes.json", "{\"hello\":\"world\"}");
-
-        let (comfy, _calls) = client_and_log(ok_replies()).await;
-        let err = import_into(&comfy, tmp.path(), &source)
-            .await
-            .expect_err("not a workflow");
-
-        assert!(err.contains("is not a ComfyUI workflow"), "{err}");
-        assert!(workflows(tmp.path()).is_empty());
-    }
-
-    /// Replies for an emit: slots, then one node schema per distinct class,
-    /// then the model folder list and one folder listing.
-    fn emit_replies() -> Vec<Reply> {
-        vec![
-            Reply::Json(json!({
-                "workflow": "stored", "count": 3,
-                "slots": [
-                    { "address": "94.tags", "name": "tags", "type": "STRING",
-                      "current_value": "late night trap", "instance_id": "94",
-                      "node_type": "TextEncodeAceStepAudio1.5" },
-                    { "address": "3.steps", "name": "steps", "type": "INT",
-                      "current_value": 8, "instance_id": "3", "node_type": "KSampler" },
-                    { "address": "5.ckpt_name", "name": "ckpt_name", "type": "COMBO",
-                      "current_value": "ace_step.safetensors", "instance_id": "5",
-                      "node_type": "CheckpointLoaderSimple" }
-                ]
-            })),
-            Reply::Json(json!({
-                "id": "TextEncodeAceStepAudio1.5", "name": "TextEncodeAceStepAudio1.5",
-                "inputs": [{ "name": "tags", "type": "STRING", "options": {} }],
-                "outputs": []
-            })),
-            // The real KSampler bounds, read live 2026-08-30.
-            Reply::Json(json!({
-                "id": "KSampler", "name": "KSampler",
-                "inputs": [{
-                    "name": "steps", "type": "INT",
-                    "options": { "min": 1, "max": 10000, "step": null, "default": 20 }
-                }],
-                "outputs": []
-            })),
-            Reply::Json(json!({
-                "count": 1,
-                "folders": [{ "name": "checkpoints", "subfolders": [] }]
-            })),
-            Reply::Json(json!({
-                "folder": "checkpoints",
-                "total": 1,
-                "shown": 1,
-                "files": [{ "name": "ace_step.safetensors", "pathIndex": 0 }]
-            })),
-        ]
-    }
-
-    /// Protects: an emitted profile is loadable by the **real** profile
-    /// loader, from the directory the picker actually reads.
-    ///
-    /// 5b's bar is a profile indistinguishable from a shipped one, and the
-    /// only check that means anything is running it through
-    /// `library::profiles::load` -- the same call five commands make. A
-    /// serialization round trip inside `create-core` proves the struct;
-    /// this proves the *file*.
+    /// Protects: an emitted profile loads through the real loader, carries the
+    /// registry's bounds, and declares the loader's model file -- so an
+    /// imported model reads Ready on the Models step like a shipped one.
     #[tokio::test]
     async fn test_an_emitted_profile_loads_through_the_real_loader() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let dir = tmp.path().join(WORKFLOWS_DIR);
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        std::fs::write(
-            dir.join("mine.json"),
-            named_fixture("ace_step_1_5_xl_turbo.json"),
-        )
-        .expect("store a workflow");
-
-        let (comfy, _calls) = client_and_log(emit_replies()).await;
+        let text = shipped_workflow("flux-1-schnell-fp8");
+        let source = place(tmp.path(), "flux.json", &text);
+        let graph: Value = serde_json::from_str(&text).expect("j");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", registry_for(&graph), None);
+        import_into(&comfy, tmp.path(), &source)
+            .await
+            .expect("imports");
         let saved = emit_profile(
             &comfy,
             tmp.path(),
-            "mine",
-            "My Import",
+            "flux",
+            "My Flux",
             &[
                 RoleMapping {
                     role: Role::Tags,
-                    addresses: vec!["94.tags".to_string()],
+                    addresses: vec!["6.text".into()],
+                },
+                RoleMapping {
+                    role: Role::Seed,
+                    addresses: vec!["31.seed".into()],
                 },
                 RoleMapping {
                     role: Role::Steps,
-                    addresses: vec!["3.steps".to_string()],
+                    addresses: vec!["31.steps".into()],
                 },
             ],
         )
         .await
         .expect("emits");
+        assert_eq!(saved.profile_id, "my-flux");
 
-        assert_eq!(saved.profile_id, "my-import");
-
-        let set = library::profiles::load(Path::new("nonexistent"), &tmp.path().join("profiles"));
+        let set = library::profiles::load(&repo().join("profiles"), &tmp.path().join("profiles"));
         let loaded = set
             .profiles
-            .get("my-import")
-            .expect("the emitted profile loads like a shipped one");
-        assert_eq!(loaded.profile.display_name, "My Import");
-        assert_eq!(loaded.profile.comfy.template, None);
-        assert!(loaded.profile.comfy.workflow.is_some());
-        assert!(loaded.profile.inputs.contains_key("tags"));
-        assert!(loaded.profile.inputs.contains_key("steps"));
-
-        // T-507b: the COMBO model slot became a declared file, so the row
-        // reads Ready instead of Undeclared.
+            .get("my-flux")
+            .expect("loads like a shipped profile");
+        assert_eq!(loaded.profile.kind, create_core::profile::ModelKind::Image);
         assert_eq!(loaded.profile.comfy.models.len(), 1);
-        let spec = &loaded.profile.comfy.models[0];
-        assert_eq!(spec.file, "ace_step.safetensors");
-        assert_eq!(spec.folder, "checkpoints");
-        assert!(spec.source_url.is_none());
-        assert!(spec.size_bytes.is_none());
-        assert!(spec.license.is_none());
+        assert_eq!(
+            loaded.profile.comfy.models[0].file,
+            "flux1-schnell-fp8.safetensors"
+        );
     }
 
-    /// Protects: an address the stored graph does not expose is refused with
-    /// something actionable, rather than reaching `build_profile` as a slot
-    /// with invented properties.
     #[tokio::test]
-    async fn test_an_unknown_address_is_refused() {
+    async fn test_mapping_a_link_or_unknown_address_is_refused() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let dir = tmp.path().join(WORKFLOWS_DIR);
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        std::fs::write(
-            dir.join("mine.json"),
-            named_fixture("ace_step_1_5_xl_turbo.json"),
-        )
-        .expect("store a workflow");
-
-        let (comfy, _calls) = client_and_log(emit_replies()).await;
+        let text = shipped_workflow("flux-1-schnell-fp8");
+        let source = place(tmp.path(), "flux.json", &text);
+        let graph: Value = serde_json::from_str(&text).expect("j");
+        let comfy = ComfyHttp::with_transport("127.0.0.1:8188", registry_for(&graph), None);
+        import_into(&comfy, tmp.path(), &source)
+            .await
+            .expect("imports");
         let err = emit_profile(
             &comfy,
             tmp.path(),
-            "mine",
-            "My Import",
+            "flux",
+            "X",
             &[RoleMapping {
                 role: Role::Tags,
-                addresses: vec!["999.nope".to_string()],
+                addresses: vec!["31.positive".into()],
             }],
         )
         .await
-        .expect_err("that slot does not exist");
-
-        assert!(err.contains("999.nope"), "{err}");
-    }
-
-    /// Protects: emitting against a workflow id nothing stored says so.
-    #[tokio::test]
-    async fn test_emitting_for_an_unknown_workflow_is_refused() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let (comfy, _calls) = client_and_log(emit_replies()).await;
-
-        let err = emit_profile(&comfy, tmp.path(), "ghost", "Ghost", &[])
+        .expect_err("a link is not writable");
+        assert!(err.contains("31.positive"), "{err}");
+        let err = emit_profile(&comfy, tmp.path(), "nope", "X", &[])
             .await
-            .expect_err("nothing was imported");
-
-        assert!(err.contains("ghost"), "{err}");
-    }
-
-    /// Protects: the message names the user's file, not an internal path --
-    /// the defect T-313a's review caught, arriving through a new door.
-    #[tokio::test]
-    async fn test_a_file_that_is_not_json_names_the_users_file() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let source = place(tmp.path(), "cover-art.png", "not json at all");
-
-        let (comfy, _calls) = client_and_log(ok_replies()).await;
-        let err = import_into(&comfy, tmp.path(), &source)
-            .await
-            .expect_err("a PNG is not a workflow");
-
-        assert!(err.contains("cover-art.png"), "{err}");
-        assert!(err.contains("not valid JSON"), "{err}");
+            .expect_err("unknown");
+        assert!(err.contains("Import it again"), "{err}");
     }
 }
