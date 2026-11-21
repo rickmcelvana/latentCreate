@@ -67,10 +67,11 @@
   before T-519, so it still drives ComfyUI through comfy-mcp, the path that cannot reach ComfyUI off
   the developer's PC. The version is now **0.2.0** in every manifest. The owner reports (2026-11-21)
   that the current app installs clean on a fresh PC and finds ComfyUI, and friends began testing
-  the day before; the full T-519 click-through then passed the same day. Remaining: (1) done;
-  (2) delete the `v0.1.0` draft release; (3) push tag `v0.2.0`, which runs the release workflow
-  into a new draft; (4) **download and check the assets** (an installer carries `profiles/`) before
-  publishing. T-515 reduces to a click-through against a real second machine and does not block a
+  the day before; the full T-519 click-through then passed the same day. (1)-(4) are all done as of
+  2026-11-21: the `v0.1.0` draft was deleted, `v0.2.0` was tagged and the release workflow built
+  all nine assets into a **draft** release, and the Windows installer script, the macOS `.app` and
+  the Linux `.deb` were each checked to carry all 18 `profiles/` files plus `NOTICE` and
+  `THIRD-PARTY-LICENSES.md`. **Only publishing the draft remains** (owner's click). T-515 reduces to a click-through against a real second machine and does not block a
   testing release.
 - **Landed in Phase 1:** T-101 (stdio transport, `ComfyError`, health), T-102 (mock transport rig), T-102b (session log + redaction), T-102c (stderr capture + free-text redaction), T-103a (templates + `local_check` tri-state), T-103b (slots + self-verifying writes), T-103c (validation verdicts + untrusted notes), T-104a (job lifecycle wrappers), T-104b (Tauri managed state + job event pump), T-104c (frontend jobs bridge + store + queue panel), T-105a (model discovery), T-105b (model download), T-106 (node registry), T-106b (`minimax-music-3` profile + `slot_overrides`), T-107a (profile loader), T-107b (profile slot addresses), T-108a/b/c (`llm-bridge` `openai_compat`: SSE framing, wire types, streaming client), T-109a/b (`ollama_native`: model listing + pull with progress), T-110a/b/c (Setup wizard ComfyUI step: typed `server_info`, `ComfyStatus` tagged union, health pill with a next step per state), T-111a-e (models step: profiles declare their model files, readiness by exact match against `search_models`, per-file install with byte-weighted progress, licence on every row), **T-112a-d (LLM step: capability-filtered picker, remote-model privacy disclosure, suggestions as data, test call)**. The comfy-mcp surface these were built against is **verified live** and recorded in [docs/MCP-SURFACE.md](docs/MCP-SURFACE.md) — that file is the authority, not the tool docs.
 - **Landed in Phase 3 so far** (all 2026-08-27): the phase-start surface re-verification (docs/MCP-SURFACE.md §16), then **T-301** (no lyric model is recommended), **T-301b** (endpoint + API-key fields, so any OpenAI-compatible provider works -- verified live against QwenCloud), **T-302** (measured the cost of the conservative `reasoning_effort` rule: 11.8x billed tokens), **T-302b** (the app discovers acceptance per endpoint instead of inferring it -- 33 s became 1-2 s), **T-303** (`default_profile_id` persists; profile picker), **T-304** (`resolve_slots`: semantic inputs fanned out to slot addresses), **T-305a** (`ensure_lossless_output`), **T-305b** (`splice_loras`), **T-306a** (`to_slot_value` + `audit_slots`, and the ACE-Step seed fix), **T-306b** (the pipeline command, and the `test-support` mock feature that lets its call sequence be asserted offline). `create-core` is 126 tests, `app` 52.
@@ -7446,3 +7447,15 @@ decision -- confirm or reject it.
 
 **Not done:** the rest of T-519's click-through, deleting the `v0.1.0` draft, pushing `v0.2.0`,
 and checking the new assets. See the Snapshot's Order paragraph.
+
+**Later the same day -- v0.2.0 built; CI green again.** The owner reported T-519's click-through
+passed on all counts. The `v0.1.0` draft was deleted and `v0.2.0` tagged; the release workflow
+built all nine assets into a draft, and the macOS `.app` and Linux `.deb` were unpacked and found
+to carry `profiles/` (18 files), `NOTICE` and `THIRD-PARTY-LICENSES.md`. Waiting on it exposed
+that **CI had been red on Linux and macOS since T-519 (2026-11-11)**: the
+`folder_paths_desktop.json` fixture holds Windows paths, and on Unix a backslashed `PathBuf` is
+one component, so `ends_with("diffusion_models")` was false. Fixed by comparing the text, and
+`cargo test` now runs with `--no-fail-fast` in the gate and CI, because cargo stops at the first
+failing crate and that had hidden whether anything else was broken (nothing was: all four jobs
+green). The `v0.2.0` tag sits one commit before that fix; the change is test-only, so the shipped
+binaries are the same either way.
