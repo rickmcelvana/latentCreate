@@ -50,8 +50,9 @@
     Cloud, and `download_model` **refuses with a remote target configured** -- so curated install is
     local-only and the Models step will have to say so. Full scope in tasks/phase-5.md.
 
-  - **T-519 -- ComfyUI over its own HTTP API. ✅ CODE COMPLETE 2026-11-11, awaiting owner
-    click-through.** The app could not reach ComfyUI off the developer's PC (comfy-mcp needs an
+  - **T-519 -- ComfyUI over its own HTTP API. ✅ LANDED 2026-11-11; owner click-through PASSED on
+    all counts 2026-11-21** (fresh PC with only ComfyUI: found, model Install, generate, Export (API)
+    import, installer carries `profiles/`). The app could not reach ComfyUI off the developer's PC (comfy-mcp needs an
     undeclared comfy-cli), and its model installs landed where ComfyUI never looks (comfy-cli's own
     workspace). Owner decision: drop comfy-mcp, talk to ComfyUI directly, import Export (API) files.
     All seven lanes landed and were driven live in the real app (session log 2026-11-11, second
@@ -66,8 +67,7 @@
   before T-519, so it still drives ComfyUI through comfy-mcp, the path that cannot reach ComfyUI off
   the developer's PC. The version is now **0.2.0** in every manifest. The owner reports (2026-11-21)
   that the current app installs clean on a fresh PC and finds ComfyUI, and friends began testing
-  the day before -- the first half of T-519's click-through. Remaining: (1) the rest of that
-  click-through (Install a model, generate, import an Export (API) file, T-518's Lyrics pane);
+  the day before; the full T-519 click-through then passed the same day. Remaining: (1) done;
   (2) delete the `v0.1.0` draft release; (3) push tag `v0.2.0`, which runs the release workflow
   into a new draft; (4) **download and check the assets** (an installer carries `profiles/`) before
   publishing. T-515 reduces to a click-through against a real second machine and does not block a
