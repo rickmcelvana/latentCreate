@@ -614,7 +614,12 @@ mod tests {
             fixture("folder_paths_desktop.json"),
         );
         let paths = client(&fake).folder_paths().await.expect("ok");
-        assert!(paths["diffusion_models"][1].ends_with("diffusion_models"));
+        // The fixture was captured from ComfyUI Desktop on Windows. On Unix a
+        // backslashed path is one component, so `Path::ends_with` would be
+        // false there: compare the text, which is what the fixture pins.
+        assert!(paths["diffusion_models"][1]
+            .to_string_lossy()
+            .ends_with("\\diffusion_models"));
     }
 
     #[tokio::test]

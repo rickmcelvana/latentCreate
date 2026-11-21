@@ -18,7 +18,7 @@
     "licenses": "node scripts/third-party-licenses.mjs",
     "licenses:check": "node scripts/third-party-licenses.mjs --check",
     "gate": "npm run licenses:check && npm run gate:rust && npm run gate:app",
-    "gate:rust": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace",
+    "gate:rust": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace --no-fail-fast",
     "gate:app": "npm run gate --workspace app"
   },
   "devDependencies": {
