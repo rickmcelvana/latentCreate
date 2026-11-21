@@ -519,9 +519,10 @@ Headlines:
   ARCHITECTURE §11. **All nine of v0.1.0's release assets carry the defect and must be replaced** (the
   four platform builds emit nine files); none had been downloaded, and the draft's `targetCommitish`
   was pinned to the pre-fix commit, so the draft was deleted rather than rebuilt into.
-- **T-509 — THIRD-PARTY-LICENSES generation** (Rust + npm dependency licenses; the ported-viz
-  bookkeeping ARCHITECTURE §9 notes).
-- **T-510 — Public-repo readiness** — CONTRIBUTING, issue/PR templates, a README pass for a
+- **T-509 — THIRD-PARTY-LICENSES generation** ✅ **LANDED 2026-11-21** (Rust + npm dependency licenses; the ported-viz
+  bookkeeping ARCHITECTURE §9 notes -- nothing was ported, so there is none). `scripts/third-party-licenses.mjs`,
+  checked by `npm run gate` and CI; see PROJECT.md Snapshot.
+- **T-510 — Public-repo readiness** ✅ **LANDED 2026-11-21** — CONTRIBUTING, issue/PR templates, a README pass for a
   stranger cloning cold.
 
 ### Catalog pivot (owner decision 2026-09-05 — see PROJECT.md decisions log)

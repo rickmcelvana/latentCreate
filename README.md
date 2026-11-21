@@ -14,6 +14,24 @@ professional UI.
 ComfyUI / LLM server, or on APIs you configure with your own keys. Models and weights obtained
 through the app carry their own licenses, which you are responsible for reviewing.
 
+## Try it
+
+1. **Install and start [ComfyUI](https://www.comfy.org/)** (Desktop, portable or a manual
+   install) and leave it running.
+2. **Download latentCreate** from the
+   [Releases page](https://github.com/rickmcelvana/latentCreate/releases): the `.exe` for Windows,
+   the `.dmg` for macOS (`aarch64` for Apple Silicon, `x64` for Intel), or the `.AppImage` for
+   Linux. The builds are **unsigned**, so Windows SmartScreen ("More info" > "Run anyway") and
+   macOS Gatekeeper (right-click the app > **Open**) will warn the first time.
+3. **Open Setup.** The app looks for ComfyUI on this computer by itself; if yours is elsewhere,
+   type its address. Pick a music model and click **Install** -- the files go straight into
+   ComfyUI's own model folders, and the model licence is shown before you do.
+4. **Generate** from the Audio view. Lyrics can be written by hand, or by an LLM you connect in
+   Setup.
+
+Found a problem? [Open an issue](https://github.com/rickmcelvana/latentCreate/issues/new/choose) --
+the bug form asks for the details that make it reproducible.
+
 ## What it does
 
 - **Guided setup** — finds your running ComfyUI (or takes its address), picks an LLM provider,
@@ -76,9 +94,10 @@ npm run dev     # desktop app (Tauri + Vite, hot reload) — run from the repo R
 npm run gate    # everything CI runs, in CI's order
 ```
 
-`npm run gate` chains `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`,
-`cargo test --workspace`, `tsc -b`, oxlint, vitest, and `vite build` — a green gate locally means
-a green pipeline. (The frontend half alone is `npm run gate:app`, the Rust half
+`npm run gate` chains the third-party licence check, `cargo fmt --all --check`,
+`cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, `tsc -b`, oxlint, vitest, and
+`vite build` — a green gate locally means a green pipeline. After adding or updating a dependency,
+`npm run licenses` regenerates [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md). (The frontend half alone is `npm run gate:app`, the Rust half
 `npm run gate:rust`.)
 
 ## Building for production
@@ -100,7 +119,8 @@ installers under `src-tauri/target/release/bundle/`:
 - **Linux** — `.deb`, `.rpm`, and AppImage
 
 The first build downloads the bundler tooling for your platform automatically. `tauri build`
-also embeds the shipped `profiles/*.json` and `LICENSE` into the bundle.
+also embeds the shipped `profiles/` (profiles and their workflows), `LICENSE`, `NOTICE` and
+`THIRD-PARTY-LICENSES.md` into the bundle.
 
 ### Linux prerequisites
 
@@ -162,21 +182,19 @@ in the OS keychain.
 
 ## Status
 
-**Pre-alpha.** Phases 0–4 are complete — setup and connections, Lyrics Studio, the audio pipeline
-with workflow import, and the Library with playback, albums and provenance. **Phase 5 is in
-progress:** cover art, first-run/empty-state polish, and the **model catalog** have landed — the
-catalog is a curated, one-click-installable list of **nine** commercial-safe models (four audio,
-five image) surfaced on the Setup screen. What remains: installers, third-party licence generation,
-and public-repo readiness. There is **no released build yet** — build from source. See
-[PROJECT.md](PROJECT.md) for the live state.
+**Alpha — early testing.** Setup and connections, Lyrics Studio, the audio pipeline with workflow
+import, the Library with playback, albums and provenance, cover art, and a curated catalog of
+**nine** installable models (four audio, five image) are all in. Installers are built for Windows,
+macOS and Linux. Expect rough edges; reports from machines with a different ComfyUI setup are the
+most useful thing right now. See [PROJECT.md](PROJECT.md) for the live state.
 
 ## Contributing
 
-Start with [AGENTS.md](AGENTS.md), then [WORKFLOW.md](WORKFLOW.md) for how work is briefed,
-executed, and reviewed. Pull requests are welcome; anything non-trivial should first be discussed
-as a task in the roadmap.
+See [CONTRIBUTING.md](CONTRIBUTING.md) — bug reports, building from source, and the rules a change
+must not break. Coding agents start with [AGENTS.md](AGENTS.md).
 
 ## License
 
 [Apache-2.0](LICENSE). latentCreate ships no models — see [NOTICE](NOTICE) for how third-party
-model licenses apply to what you generate.
+model licenses apply to what you generate, and [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)
+for the software it is built from.

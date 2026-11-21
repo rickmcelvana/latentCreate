@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ComfyUI itself is not working
+    url: https://github.com/comfyanonymous/ComfyUI/issues
+    about: If a workflow fails in ComfyUI's own web UI too, the problem is upstream of latentCreate.

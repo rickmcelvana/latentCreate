@@ -1,0 +1,20 @@
+name: Feature request
+description: Something latentCreate should do that it does not.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The music-making task, not the button you would add -- it helps find the right fix.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: input
+    id: model
+    attributes:
+      label: Model or ComfyUI workflow involved
+      description: If it is about supporting a model, link its ComfyUI template or weights and its licence.

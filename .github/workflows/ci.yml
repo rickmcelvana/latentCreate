@@ -42,6 +42,13 @@ jobs:
       - name: Install
         run: npm ci
 
+      # THIRD-PARTY-LICENSES.md must list every crate and package the app ships
+      # (T-509). It reads `cargo metadata`, hence the toolchain on this job.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Third-party licences up to date
+        run: npm run licenses:check
+
       - name: Typecheck
         working-directory: app
         run: npx tsc -b

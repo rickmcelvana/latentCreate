@@ -1,7 +1,7 @@
 {
   "name": "latentcreate",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "description": "Open-source desktop app for AI music creation",
   "workspaces": [
@@ -15,7 +15,9 @@
     "app:build": "npm run build --workspace app",
     "app:test": "npm run test --workspace app",
     "app:lint": "npm run lint --workspace app",
-    "gate": "npm run gate:rust && npm run gate:app",
+    "licenses": "node scripts/third-party-licenses.mjs",
+    "licenses:check": "node scripts/third-party-licenses.mjs --check",
+    "gate": "npm run licenses:check && npm run gate:rust && npm run gate:app",
     "gate:rust": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace",
     "gate:app": "npm run gate --workspace app"
   },

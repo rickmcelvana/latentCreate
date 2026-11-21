@@ -7,6 +7,9 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 latentCreate ships no AI models and performs no inference. Music, lyric, and
 image generation are delegated at runtime to software and services the user
-installs or subscribes to (ComfyUI via Comfy MCP, LLM providers). Models and
-weights obtained through this application carry their own licenses, which the
-user is responsible for reviewing and complying with.
+installs or subscribes to (ComfyUI over its own HTTP API, LLM providers).
+Models and weights obtained through this application carry their own licenses,
+which the user is responsible for reviewing and complying with.
+
+The third-party software this application is built from, and its licenses, are
+listed in THIRD-PARTY-LICENSES.md.

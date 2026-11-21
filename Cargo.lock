@@ -77,7 +77,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "comfy-bridge",
  "create-core",
@@ -618,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "comfy-bridge"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "create-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2293,7 +2293,7 @@ dependencies = [
 
 [[package]]
 name = "library"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "create-core",
@@ -2329,7 +2329,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "llm-bridge"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "futures-core",
