@@ -32,14 +32,14 @@ Restore or regenerate the track, then try Send to again.";
 /// The address of each sibling app.
 ///
 /// The **only** place this app hardcodes the siblings' addresses, and a product
-/// decision rather than a constant to bury. Verified 2026-09-01: the live
-/// `latentbeats.com` links both, and `../latent-mixing`'s decisions log records
-/// `app.latentmixer.com` as the deployed address, with every
-/// `latentmixing.com` reference stale and awaiting a doc sweep there.
+/// decision rather than a constant to bury. Since 2026-11-28 both siblings live
+/// on one origin, `app.latentbeats.com`, under `/mixing/` and `/mastering/`
+/// (one origin is what lets them hand files to each other); the old
+/// `app.latentmixer.com` and `app.latentmastering.com` redirect there.
 pub fn target_url(target: SendTarget) -> &'static str {
     match target {
-        SendTarget::Mixing => "https://app.latentmixer.com",
-        SendTarget::Mastering => "https://app.latentmastering.com",
+        SendTarget::Mixing => "https://app.latentbeats.com/mixing/",
+        SendTarget::Mastering => "https://app.latentbeats.com/mastering/",
     }
 }
 
@@ -96,11 +96,11 @@ mod tests {
     fn test_target_url_names_the_deployed_sibling_apps() {
         assert_eq!(
             target_url(SendTarget::Mixing),
-            "https://app.latentmixer.com"
+            "https://app.latentbeats.com/mixing/"
         );
         assert_eq!(
             target_url(SendTarget::Mastering),
-            "https://app.latentmastering.com"
+            "https://app.latentbeats.com/mastering/"
         );
     }
 

@@ -7459,3 +7459,13 @@ one component, so `ends_with("diffusion_models")` was false. Fixed by comparing 
 failing crate and that had hidden whether anything else was broken (nothing was: all four jobs
 green). The `v0.2.0` tag sits one commit before that fix; the change is test-only, so the shipped
 binaries are the same either way.
+
+### 2026-11-28 -- Send to follows the siblings to app.latentbeats.com
+
+latent-mixing and latent-mastering moved to one origin, `app.latentbeats.com/mixing/` and
+`/mastering/`, so they can hand files to each other without a server (cross-origin isolation
+severs `window.opener` between two domains, and storage partitioning blocks a shared iframe).
+The old `app.latentmixer.com` / `app.latentmastering.com` redirect, so v0.2.0's Send to still
+lands; `sendto::target_url` and its test now name the new addresses directly. ARCHITECTURE 8
+and the ROADMAP line follow. The real handoff protocol is still the siblings' to publish; the
+shared origin is the first step toward it.
